@@ -1,0 +1,5 @@
+=========================================
+Testing gridvoting-jax with NumPy 2.0+
+=========================================
+Building package...
+./test_docker.sh: line 12: python: command not found
