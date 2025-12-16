@@ -3,7 +3,7 @@
 **A JAX-powered derivative of the original [gridvoting](https://github.com/drpaulbrewer/gridvoting) project**
 
 [![PyPI version](https://badge.fury.io/py/gridvoting-jax.svg)](https://badge.fury.io/py/gridvoting-jax)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This library provides GPU/TPU/CPU-accelerated spatial voting simulations using Google's JAX framework with float32 precision.
@@ -84,7 +84,7 @@ NO_GPU=1 python your_script.py
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - numpy >= 2.0.0
 - pandas >= 2.2.0
 - scipy >= 1.13.0
