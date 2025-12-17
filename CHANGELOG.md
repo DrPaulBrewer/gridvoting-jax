@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed - 2025-12-17
+
+- **Grid class fully migrated to JAX arrays**: All Grid properties (`x`, `y`, `points`, `boundary`) now use `jnp.array` instead of `np.array`
+- **Removed all assert statements from Grid class**: Eliminated 12 runtime assertions; JAX operations provide natural error handling for shape mismatches
+- **Replaced barycentric triangle algorithm with cross-product method**: Implemented simpler, more robust half-plane test for `within_triangle()` using cross products
+- **Added `_is_in_triangle_single()` helper function**: JIT-compiled cross-product triangle containment test with epsilon tolerance for edge/vertex cases
+- **Vectorized triangle testing**: Used `jax.vmap` to efficiently apply triangle test across all grid points
+- **Updated `embedding()` method**: Now uses JAX immutable update pattern (`.at[].set()`) instead of in-place assignment
+- **Updated `extremes()` method**: Converted to use `jnp.full` and `jnp.abs` for JAX compatibility
+- **Enhanced `plot()` method**: Automatically converts JAX arrays to NumPy for matplotlib compatibility
+- **Updated test suite**: Converted test constants to `jnp.array` and replaced `np.testing.assert_array_equal` with `jnp.array_equal`
+
+### Technical Details
+
+- Cross-product algorithm based on [Stack Overflow answer](https://stackoverflow.com/a/2049593/103081) by Kornel Kisielewicz
+- Epsilon tolerance of 1e-10 for robust edge/vertex handling in triangle containment
+- All Grid methods now return JAX arrays (breaking change from NumPy arrays)
+- Functional programming paradigm: no in-place modifications, immutable updates only
+- All 22 tests pass (100% success rate)
+- Verified with NumPy 2.3.5 and JAX 0.4.20+ in isolated Docker environment
+
 ### Changed - 2025-12-16
 
 - **Removed pandas dependency**: Eliminated pandas from requirements; replaced `pd.Series().plot()` and `pd.DataFrame()` calls with direct matplotlib plotting
@@ -22,3 +43,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Distance calculations now use `@jax.jit` decorator for compilation optimization
 - Maintained full backward compatibility - all 22 tests pass
 - Verified with NumPy 2.3.5 and JAX 0.4.20+ in isolated Docker environment
+

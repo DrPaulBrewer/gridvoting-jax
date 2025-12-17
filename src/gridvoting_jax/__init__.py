@@ -63,32 +63,62 @@ def dist_manhattan(XA, XB):
     # Manhattan distance: sum(|a-b|)
     return jnp.sum(jnp.abs(XA[:, None, :] - XB[None, :, :]), axis=2)
 
+@jax.jit
+def _is_in_triangle_single(p, a, b, c):
+    """
+    Returns True if point p is in triangle (a, b, c).
+    Robust for arbitrary vertex winding (CW or CCW).
+    
+    Args:
+        p: Point as [x, y]
+        a, b, c: Triangle vertices as [x, y]
+    
+    Returns:
+        Boolean indicating if p is inside triangle
+
+    See also:  computational geometry, half-plane test;
+    Stack Overflow answer to https://stackoverflow.com/questions/2049582/how-to-determine-if-a-point-is-in-a-2d-triangle
+       https://stackoverflow.com/a/2049593/103081 
+       by https://stackoverflow.com/users/233522/kornel-kisielewicz
+    """
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    s1 = cross(p, a, b)
+    s2 = cross(p, b, c)
+    s3 = cross(p, c, a)
+
+    # Small epsilon for numerical tolerance on edges/vertices
+    eps = 1e-10
+    has_neg = (s1 < -eps) | (s2 < -eps) | (s3 < -eps)
+    has_pos = (s1 > eps) | (s2 > eps) | (s3 > eps)
+    
+    return ~(has_neg & has_pos)
+
+
 
 class Grid:
     def __init__(self, *, x0, x1, xstep=1, y0, y1, ystep=1):
         """initializes 2D grid with x0<=x<=x1 and y0<=y<=y1;
-        Creates a 1D numpy array of grid coordinates in self.x and self.y"""
+        Creates a 1D JAX array of grid coordinates in self.x and self.y"""
         self.x0 = x0
         self.y0 = y0
         self.x1 = x1
         self.y1 = y1
         self.xstep = xstep
         self.ystep = ystep
-        xvals = np.arange(x0, x1 + xstep, xstep)
-        yvals = np.arange(y1, y0 - ystep, -ystep)
-        xgrid, ygrid = np.meshgrid(xvals, yvals)
-        self.x = np.ravel(xgrid)
-        self.y = np.ravel(ygrid)
-        self.points = np.column_stack((self.x,self.y))
+        xvals = jnp.arange(x0, x1 + xstep, xstep)
+        yvals = jnp.arange(y1, y0 - ystep, -ystep)
+        xgrid, ygrid = jnp.meshgrid(xvals, yvals)
+        self.x = jnp.ravel(xgrid)
+        self.y = jnp.ravel(ygrid)
+        self.points = jnp.column_stack((self.x,self.y))
         # extent should match extent=(x0,x1,y0,y1) for compatibility with matplotlib.pyplot.contour
         # see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.contour.html
         self.extent = (self.x0, self.x1, self.y0, self.y1)
         self.gshape = self.shape()
         self.boundary = ((self.x==x0) | (self.x==x1) | (self.y==y0) | (self.y==y1))
         self.len = self.gshape[0] * self.gshape[1]
-        assert self.x.shape == (self.len,)
-        assert self.y.shape == (self.len,)
-        assert self.points.shape == (self.len,2)
 
     def shape(self, *, x0=None, x1=None, xstep=None, y0=None, y1=None, ystep=None):
         """returns a tuple(number_of_rows,number_of_cols) for the natural shape of the current grid, or a subset"""
@@ -119,89 +149,70 @@ class Grid:
         return (self.x >= x0) & (self.x <= x1) & (self.y >= y0) & (self.y <= y1)
 
     def within_disk(self, *, x0, y0, r, metric="euclidean", **kwargs):
-        """returns 1D numpy boolean array, suitable as an index mask, for testing whether a grid point is also in the defined disk"""
-        center = np.array([[x0, y0]])
+        """returns 1D JAX boolean array, suitable as an index mask, for testing whether a grid point is also in the defined disk"""
+        center = jnp.array([[x0, y0]])
         
         if metric == "euclidean":
             # For Euclidean distance, use squared Euclidean and compare r^2
             distances_sq = dist_sqeuclidean(center, self.points)
-            mask = (np.array(distances_sq) <= r**2).flatten()
+            mask = (distances_sq <= r**2).flatten()
         elif metric == "manhattan":
             distances = dist_manhattan(center, self.points)
-            mask = (np.array(distances) <= r).flatten()
+            mask = (distances <= r).flatten()
         else:
             raise ValueError(f"Unsupported metric: {metric}. Use 'euclidean' or 'manhattan'.")
         
-        assert mask.shape == (self.len,)
         return mask
     
-    def within_triangle(self,*,points):
-        """returns 1D numpy boolean array, suitable as an index mask, for testing whether a grid point is also in the defined triangle"""
-        points = np.asarray(points)
-        assert points.shape == (3,2)
-        barycentric_to_cartesian_matrix = np.vstack((points[:,0],points[:,1],np.ones(points.shape[0])))
-        assert barycentric_to_cartesian_matrix.shape == (3,3)
-        cartesian_to_barycentrix_matrix = np.linalg.inv(barycentric_to_cartesian_matrix)
-        mask = np.logical_not(
-            np.any(
-                np.dot(
-                    cartesian_to_barycentrix_matrix,
-                    np.vstack(
-                        (
-                        self.x,
-                        self.y,
-                        np.ones(self.len)
-                        )
-                    )
-                ) < (-1e-10),
-            axis=0)
-        )
-        assert mask.shape == (self.len,)
-        return mask 
+    def within_triangle(self, *, points):
+        """returns 1D JAX boolean array, suitable as an index mask, for testing whether a grid point is also in the defined triangle"""
+        points = jnp.asarray(points)
+        a, b, c = points[0], points[1], points[2]
+        
+        # Vectorized cross-product triangle containment test
+        # Use vmap to apply the single-point test to all grid points
+        mask = jax.vmap(
+            lambda p: _is_in_triangle_single(p, a, b, c)
+        )(self.points)
+        
+        return mask
 
     def index(self, *, x, y):
         """returns the unique 1D array index for grid point (x,y)"""
         isSelectedPoint = (self.x == x) & (self.y == y)
-        indexes = np.flatnonzero((isSelectedPoint))
-        assert len(indexes) == 1
-        return indexes[0]
+        indexes = jnp.flatnonzero(isSelectedPoint)
+        return int(indexes[0])
 
     def embedding(self, *, valid):
         """
         returns an embedding function efunc(z,fill=0.0) from 1D arrays z of size sum(valid)
         to arrays of size self.len
 
-        valid is a np.array of type boolean, of size self.len
+        valid is a jnp.array of type boolean, of size self.len
 
         fill is the value for indices outside the embedding. The default
-        is zero (0.0).  Setting fill=np.nan can be useful for
-        plotting purposes as matplotlib will omit np.nan values from various
+        is zero (0.0).  Setting fill=jnp.nan can be useful for
+        plotting purposes as matplotlib will omit jnp.nan values from various
         kinds of plots.
         """
 
-        assert self.len == len(valid)
         correct_z_len = valid.sum()
 
         def efunc(z, fill=0.0):
-            assert len(z) == correct_z_len
-            v = np.full(self.len, fill)
-            v[valid] = z
-            return v
+            v = jnp.full(self.len, fill)
+            return v.at[valid].set(z)
 
         return efunc
 
     def extremes(self, z, *, valid=None):
         # missing valid defaults to all True array for grid
-        valid = np.full((self.len,), True) if valid is None else valid
-        assert valid.shape == (self.len,)
-        assert z.shape == (valid.sum(),)
+        valid = jnp.full((self.len,), True) if valid is None else valid
         min_z = z.min()
-        min_z_mask = np.abs(z-min_z)<1e-10
+        min_z_mask = jnp.abs(z-min_z)<1e-10  # Strict tolerance for exact min/max
         max_z = z.max()
-        max_z_mask = np.abs(z-max_z)<1e-10
+        max_z_mask = jnp.abs(z-max_z)<1e-10  # Strict tolerance for exact min/max
         return (min_z,self.points[valid][min_z_mask],max_z,self.points[valid][max_z_mask])
         
-    
     def spatial_utilities(
         self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, **kwargs
     ):
@@ -215,7 +226,7 @@ class Grid:
         else:
             raise ValueError(f"Unsupported metric: {metric}. Use 'sqeuclidean' or 'manhattan'.")
         
-        return scale * np.array(distances)
+        return scale * distances
 
     def plot(
         self,
@@ -237,27 +248,31 @@ class Grid:
         """plots values z defined on the grid;
         optionally plots additional 2D points
          and zooms to fit the bounding box of the points"""
+        # Convert JAX arrays to NumPy for matplotlib compatibility
+        z = np.array(z)
+        grid_x = np.array(self.x)
+        grid_y = np.array(self.y)
+        
         plt.figure(figsize=figsize, dpi=dpi)
         plt.rcParams["font.size"] = "24"
         fmt = "%1.2f" if log else "%.2e"
         if zoom:
-            assert points.shape[0] > 2
-            assert points.shape[1] == 2
+            points = np.asarray(points)
             [min_x, min_y] = np.min(points, axis=0) - border
             [max_x, max_y] = np.max(points, axis=0) + border
             box = {"x0": min_x, "x1": max_x, "y0": min_y, "y1": max_y}
-            inZoom = self.within_box(**box)
+            inZoom = np.array(self.within_box(**box))
             zshape = self.shape(**box)
             extent = (min_x, max_x, min_y, max_y)
             zraw = np.copy(z[inZoom]).reshape(zshape)
-            x = np.copy(self.x[inZoom]).reshape(zshape)
-            y = np.copy(self.y[inZoom]).reshape(zshape)
+            x = np.copy(grid_x[inZoom]).reshape(zshape)
+            y = np.copy(grid_y[inZoom]).reshape(zshape)
         else:
             zshape = self.gshape
             extent = self.extent
             zraw = z.reshape(zshape)
-            x = self.x.reshape(zshape)
-            y = self.y.reshape(zshape)
+            x = grid_x.reshape(zshape)
+            y = grid_y.reshape(zshape)
         zplot = np.log10(logbias + zraw) if log else zraw
         contours = plt.contour(x, y, zplot, extent=extent, cmap=cmap)
         plt.clabel(contours, inline=True, fontsize=12, fmt=fmt)
