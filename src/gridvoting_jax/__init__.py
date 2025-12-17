@@ -2,10 +2,8 @@ __version__ = "0.0.1"
 
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from scipy.spatial.distance import cdist
 from warnings import warn
 import jax
 import jax.numpy as jnp
@@ -31,10 +29,39 @@ if os.environ.get('NO_GPU', '0') != '1':
 else:
     warn("NO_GPU=1: JAX forced to CPU-only mode")
 
-# Use jax.numpy as the array backend
-xp = jnp
-# For compatibility, add asnumpy function
-xp.asnumpy = lambda x: np.array(x)
+@jax.jit
+def dist_sqeuclidean(XA, XB):
+    """JAX-based squared Euclidean pairwise distance calculation.
+    
+    Args:
+        XA: array of shape (m, n)
+        XB: array of shape (p, n)
+    
+    Returns:
+        Distance matrix of shape (m, p)
+    """
+    XA = jnp.asarray(XA)
+    XB = jnp.asarray(XB)
+    # Squared Euclidean: ||a-b||^2 = ||a||^2 + ||b||^2 - 2*a·b
+    XA_sq = jnp.sum(XA**2, axis=1, keepdims=True)
+    XB_sq = jnp.sum(XB**2, axis=1, keepdims=True)
+    return XA_sq + XB_sq.T - 2 * jnp.dot(XA, XB.T)
+
+@jax.jit
+def dist_manhattan(XA, XB):
+    """JAX-based Manhattan pairwise distance calculation.
+    
+    Args:
+        XA: array of shape (m, n)
+        XB: array of shape (p, n)
+    
+    Returns:
+        Distance matrix of shape (m, p)
+    """
+    XA = jnp.asarray(XA)
+    XB = jnp.asarray(XB)
+    # Manhattan distance: sum(|a-b|)
+    return jnp.sum(jnp.abs(XA[:, None, :] - XB[None, :, :]), axis=2)
 
 
 class Grid:
@@ -93,9 +120,18 @@ class Grid:
 
     def within_disk(self, *, x0, y0, r, metric="euclidean", **kwargs):
         """returns 1D numpy boolean array, suitable as an index mask, for testing whether a grid point is also in the defined disk"""
-        mask = (
-            cdist([[x0, y0]], self.points, metric=metric, **kwargs) <= r
-        ).flatten()
+        center = np.array([[x0, y0]])
+        
+        if metric == "euclidean":
+            # For Euclidean distance, use squared Euclidean and compare r^2
+            distances_sq = dist_sqeuclidean(center, self.points)
+            mask = (np.array(distances_sq) <= r**2).flatten()
+        elif metric == "manhattan":
+            distances = dist_manhattan(center, self.points)
+            mask = (np.array(distances) <= r).flatten()
+        else:
+            raise ValueError(f"Unsupported metric: {metric}. Use 'euclidean' or 'manhattan'.")
+        
         assert mask.shape == (self.len,)
         return mask
     
@@ -170,9 +206,16 @@ class Grid:
         self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, **kwargs
     ):
         """returns utility function values for each voter at each grid point"""
-        return scale * cdist(
-            np.asarray(voter_ideal_points), self.points, metric=metric, **kwargs
-        )
+        voter_ideal_points = np.asarray(voter_ideal_points)
+        
+        if metric == "sqeuclidean":
+            distances = dist_sqeuclidean(voter_ideal_points, self.points)
+        elif metric == "manhattan":
+            distances = dist_manhattan(voter_ideal_points, self.points)
+        else:
+            raise ValueError(f"Unsupported metric: {metric}. Use 'sqeuclidean' or 'manhattan'.")
+        
+        return scale * np.array(distances)
 
     def plot(
         self,
@@ -381,10 +424,10 @@ class VotingModel:
 
     def analyze(self):
         self.MarkovChain = MarkovChainCPUGPU(P=self._get_transition_matrix())
-        self.core_points = xp.asnumpy(self.MarkovChain.absorbing_points)
+        self.core_points = np.array(self.MarkovChain.absorbing_points)
         self.core_exists = np.any(self.core_points)
         if not self.core_exists:
-            self.stationary_distribution = xp.asnumpy(
+            self.stationary_distribution = np.array(
                 self.MarkovChain.stationary_distribution
             )
         self.analyzed = True
@@ -393,7 +436,7 @@ class VotingModel:
         """returns array of size number_of_feasible_alternatives
         with value 1 where alternative beats current index by some majority"""
         assert self.analyzed
-        points = xp.asnumpy(self.MarkovChain.P[index, :] > 0).astype("int32")
+        points = np.array(self.MarkovChain.P[index, :] > 0).astype("int32")
         points[index] = 0
         return points
 
@@ -401,7 +444,7 @@ class VotingModel:
         """returns array of size number_of_feasible_alternatives
         with value 1 where current index beats alternative by some majority"""
         assert self.analyzed
-        points = xp.asnumpy(self.MarkovChain.P[:, index] > 0).astype("int32")
+        points = np.array(self.MarkovChain.P[:, index] > 0).astype("int32")
         points[index] = 0
         return points
         
@@ -482,54 +525,12 @@ class VotingModel:
                 fname=_fn("core.png"),
             )
             return None  # when core exists abort as additional plots undefined
-        if diagnostics:
-            df = pd.DataFrame(self.MarkovChain.power_method_diagnostics)
-            df.plot.scatter(
-                "power", "sad", loglog=True, title=title_sad, figsize=figsize
-            )
-            _save("diagnostic_sad.png")
-            df.plot.scatter(
-                "power", "diff1", loglog=True, title=title_diff1, figsize=figsize
-            )
-            _save("diagnostic_diff1.png")
-            df.plot.scatter(
-                "power", "diff2", loglog=True, title=title_diff2, figsize=figsize
-            )
-            _save("diagnostic_diff2.png")
-            df.plot.scatter(
-                "power",
-                "sum1minus1",
-                logx=True,
-                title=title_sum1minus1,
-                figsize=figsize,
-            )
-            _save("diagnostic_sum1minus1.png")
-            df.plot.scatter(
-                "power",
-                "sum2minus1",
-                logx=True,
-                title=title_sum2minus1,
-                figsize=figsize,
-            )
-            _save("diagnostic_sum2minus1.png")
-            if grid is not None:
-                grid.plot(
-                    embedding(
-                        xp.asnumpy(self.MarkovChain.unreachable_points).astype("int32"),
-                        fill=np.nan
-                    ),
-                    log=log,
-                    title=title_unreachable_points,
-                    dpi=dpi,
-                    figsize=figsize,
-                    fname=_fn("unreachable.png"),
-                )
         z = self.stationary_distribution
         if grid is None:
-            pd.Series(z).plot(
-                title=title_stationary_distribution_no_grid, figsize=figsize
-            )
-            _save("stationary_distribubtion_no_grid.png")
+            plt.figure(figsize=figsize)
+            plt.plot(z)
+            plt.title(title_stationary_distribution_no_grid)
+            _save("stationary_distribution_no_grid.png")
         else:
             grid.plot(
                 embedding(z, fill=np.nan),

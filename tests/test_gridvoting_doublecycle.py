@@ -4,8 +4,8 @@ import pytest
 @pytest.fixture
 def double_cycle_mc():
   import gridvoting_jax as gv
-  xp = gv.xp
-  double_cycle_P = xp.array([
+  import jax.numpy as jnp
+  double_cycle_P = jnp.array([
     [1/2,1/2,0,0,0,0],
     [0,1/2,1/2,0,0,0],
     [1/2,0,1/2,0,0,0],

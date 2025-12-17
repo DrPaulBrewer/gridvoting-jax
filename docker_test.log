@@ -2,4 +2,337 @@
 Testing gridvoting-jax with NumPy 2.0+
 =========================================
 Building package...
-./test_docker.sh: line 12: python: command not found
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools>=61.0
+  - wheel
+* Getting build dependencies for sdist...
+/tmp/build-env-uct6du0w/lib/python3.12/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+  self._finalize_license_expression()
+running egg_info
+writing src/gridvoting_jax.egg-info/PKG-INFO
+writing dependency_links to src/gridvoting_jax.egg-info/dependency_links.txt
+writing requirements to src/gridvoting_jax.egg-info/requires.txt
+writing top-level names to src/gridvoting_jax.egg-info/top_level.txt
+reading manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE.md'
+writing manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+* Building sdist...
+/tmp/build-env-uct6du0w/lib/python3.12/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+  self._finalize_license_expression()
+running sdist
+running egg_info
+writing src/gridvoting_jax.egg-info/PKG-INFO
+writing dependency_links to src/gridvoting_jax.egg-info/dependency_links.txt
+writing requirements to src/gridvoting_jax.egg-info/requires.txt
+writing top-level names to src/gridvoting_jax.egg-info/top_level.txt
+reading manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE.md'
+writing manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+running check
+creating gridvoting_jax-0.0.1
+creating gridvoting_jax-0.0.1/src/gridvoting_jax
+creating gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+creating gridvoting_jax-0.0.1/tests
+copying files to gridvoting_jax-0.0.1...
+copying LICENSE.md -> gridvoting_jax-0.0.1
+copying MANIFEST.in -> gridvoting_jax-0.0.1
+copying README.md -> gridvoting_jax-0.0.1
+copying pyproject.toml -> gridvoting_jax-0.0.1
+copying requirements.txt -> gridvoting_jax-0.0.1
+copying setup.cfg -> gridvoting_jax-0.0.1
+copying src/gridvoting_jax/__init__.py -> gridvoting_jax-0.0.1/src/gridvoting_jax
+copying src/gridvoting_jax/py.typed -> gridvoting_jax-0.0.1/src/gridvoting_jax
+copying src/gridvoting_jax.egg-info/PKG-INFO -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+copying src/gridvoting_jax.egg-info/SOURCES.txt -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+copying src/gridvoting_jax.egg-info/dependency_links.txt -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+copying src/gridvoting_jax.egg-info/requires.txt -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+copying src/gridvoting_jax.egg-info/top_level.txt -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+copying tests/test_gridvoting_condorcet_cycle.py -> gridvoting_jax-0.0.1/tests
+copying tests/test_gridvoting_doublecycle.py -> gridvoting_jax-0.0.1/tests
+copying tests/test_gridvoting_grid.py -> gridvoting_jax-0.0.1/tests
+copying tests/test_gridvoting_jax.py -> gridvoting_jax-0.0.1/tests
+copying tests/test_gridvoting_replication.py -> gridvoting_jax-0.0.1/tests
+copying tests/test_gridvoting_topcycle.py -> gridvoting_jax-0.0.1/tests
+copying src/gridvoting_jax.egg-info/SOURCES.txt -> gridvoting_jax-0.0.1/src/gridvoting_jax.egg-info
+Writing gridvoting_jax-0.0.1/setup.cfg
+Creating tar archive
+removing 'gridvoting_jax-0.0.1' (and everything under it)
+* Building wheel from sdist
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools>=61.0
+  - wheel
+* Getting build dependencies for wheel...
+/tmp/build-env-l259ecjj/lib/python3.12/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+  self._finalize_license_expression()
+running egg_info
+writing src/gridvoting_jax.egg-info/PKG-INFO
+writing dependency_links to src/gridvoting_jax.egg-info/dependency_links.txt
+writing requirements to src/gridvoting_jax.egg-info/requires.txt
+writing top-level names to src/gridvoting_jax.egg-info/top_level.txt
+reading manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE.md'
+writing manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+* Building wheel...
+/tmp/build-env-l259ecjj/lib/python3.12/site-packages/setuptools/dist.py:759: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+!!
+
+        ********************************************************************************
+        Please consider removing the following classifiers in favor of a SPDX license expression:
+
+        License :: OSI Approved :: MIT License
+
+        See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+        ********************************************************************************
+
+!!
+  self._finalize_license_expression()
+running bdist_wheel
+running build
+running build_py
+creating build/lib/gridvoting_jax
+copying src/gridvoting_jax/__init__.py -> build/lib/gridvoting_jax
+copying src/gridvoting_jax/py.typed -> build/lib/gridvoting_jax
+installing to build/bdist.linux-x86_64/wheel
+running install
+running install_lib
+creating build/bdist.linux-x86_64/wheel
+creating build/bdist.linux-x86_64/wheel/gridvoting_jax
+copying build/lib/gridvoting_jax/__init__.py -> build/bdist.linux-x86_64/wheel/./gridvoting_jax
+copying build/lib/gridvoting_jax/py.typed -> build/bdist.linux-x86_64/wheel/./gridvoting_jax
+running install_egg_info
+running egg_info
+writing src/gridvoting_jax.egg-info/PKG-INFO
+writing dependency_links to src/gridvoting_jax.egg-info/dependency_links.txt
+writing requirements to src/gridvoting_jax.egg-info/requires.txt
+writing top-level names to src/gridvoting_jax.egg-info/top_level.txt
+reading manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+reading manifest template 'MANIFEST.in'
+adding license file 'LICENSE.md'
+writing manifest file 'src/gridvoting_jax.egg-info/SOURCES.txt'
+Copying src/gridvoting_jax.egg-info to build/bdist.linux-x86_64/wheel/./gridvoting_jax-0.0.1-py3.12.egg-info
+running install_scripts
+creating build/bdist.linux-x86_64/wheel/gridvoting_jax-0.0.1.dist-info/WHEEL
+creating '/home/paul/gridvoting-jax/gridvoting-jax/dist/.tmp-eprj_o8a/gridvoting_jax-0.0.1-py3-none-any.whl' and adding 'build/bdist.linux-x86_64/wheel' to it
+adding 'gridvoting_jax/__init__.py'
+adding 'gridvoting_jax/py.typed'
+adding 'gridvoting_jax-0.0.1.dist-info/licenses/LICENSE.md'
+adding 'gridvoting_jax-0.0.1.dist-info/METADATA'
+adding 'gridvoting_jax-0.0.1.dist-info/WHEEL'
+adding 'gridvoting_jax-0.0.1.dist-info/top_level.txt'
+adding 'gridvoting_jax-0.0.1.dist-info/RECORD'
+removing build/bdist.linux-x86_64/wheel
+Successfully built gridvoting_jax-0.0.1.tar.gz and gridvoting_jax-0.0.1-py3-none-any.whl
+Built: dist/gridvoting_jax-0.0.1-py3-none-any.whl
+Starting Docker container...
+Installing Python and pip...
+Creating virtual environment...
+Installing package...
+Checking NumPy version...
+NumPy version: 2.3.5
+Testing import...
+/venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:28: UserWarning: JAX using CPU (no GPU/TPU detected)
+  warn("JAX using CPU (no GPU/TPU detected)")
+gridvoting-jax version: 0.0.1
+Device: cpu
+Running tests...
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0 -- /venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /tests
+collecting ... collected 22 items
+
+tests/test_gridvoting_condorcet_cycle.py::test_condorcet[True-correct_P0] PASSED [  4%]
+tests/test_gridvoting_condorcet_cycle.py::test_condorcet[False-correct_P1] PASSED [  9%]
+tests/test_gridvoting_doublecycle.py::test_gridvoting_doublecycle_algebra PASSED [ 13%]
+tests/test_gridvoting_grid.py::test_grid_init PASSED                     [ 18%]
+tests/test_gridvoting_grid.py::test_grid_as_xy_vectors PASSED            [ 22%]
+tests/test_gridvoting_grid.py::test_grid_shape[None-None-None-None-None-None-correct0] PASSED [ 27%]
+tests/test_gridvoting_grid.py::test_grid_shape[0-0-None-0-0-None-correct1] PASSED [ 31%]
+tests/test_gridvoting_grid.py::test_grid_shape[-5-5-None--20-20-2-correct2] PASSED [ 36%]
+tests/test_gridvoting_grid.py::test_grid_shape[1-4-None-None-None-None-correct3] PASSED [ 40%]
+tests/test_gridvoting_grid.py::test_grid_embedding PASSED                [ 45%]
+tests/test_gridvoting_grid.py::test_grid_within_box PASSED               [ 50%]
+tests/test_gridvoting_grid.py::test_grid_within_disk PASSED              [ 54%]
+tests/test_gridvoting_grid.py::test_grid_within_triangle_many_right_triangles PASSED [ 59%]
+tests/test_gridvoting_grid.py::test_grid_spatial_utility PASSED          [ 63%]
+tests/test_gridvoting_jax.py::test_module PASSED                         [ 68%]
+tests/test_gridvoting_replication.py::test_replicate_spatial_voting_analysis[params0-correct0] PASSED [ 72%]
+tests/test_gridvoting_replication.py::test_replicate_spatial_voting_analysis[params1-correct1] PASSED [ 77%]
+tests/test_gridvoting_replication.py::test_replicate_core_Plott_theorem_example[params0-correct0] PASSED [ 81%]
+tests/test_gridvoting_replication.py::test_replicate_core_Plott_theorem_example[params1-correct1] PASSED [ 86%]
+tests/test_gridvoting_replication.py::test_replicate_core_Plott_theorem_example[params2-correct2] PASSED [ 90%]
+tests/test_gridvoting_replication.py::test_replicate_core_Plott_theorem_example[params3-correct3] PASSED [ 95%]
+tests/test_gridvoting_topcycle.py::test_gridvoting_topcycle PASSED       [100%]
+
+=============================== warnings summary ===============================
+test_gridvoting_condorcet_cycle.py::test_condorcet[True-correct_P0]
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:28: UserWarning: JAX using CPU (no GPU/TPU detected)
+    warn("JAX using CPU (no GPU/TPU detected)")
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:346: UserWarning: attempting fix of neg components
+    warn('attempting fix of neg components')
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:350: UserWarning: num_zeroed = 1
+    warn('num_zeroed = '+str(num_zeroed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -5.9604645e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 6.128184071307885e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 6.128183516196373e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 7.09579173197028e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:350: UserWarning: num_zeroed = 3
+    warn('num_zeroed = '+str(num_zeroed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -6.927266e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 0.0
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -8.940697e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 2.2577517633237676e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 2.2577516245458895e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:360: UserWarning: fixed min_component 3.54789586598514e-10
+    warn('fixed min_component '+str(min_component))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.08742995e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -7.7344126e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.3694877e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -4.6920917e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -4.9138354e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -7.894067e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -7.80537e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.3943229e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -6.315254e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -6.137859e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -9.1180915e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -7.379623e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.3340087e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.1920929e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:350: UserWarning: num_zeroed = 2
+    warn('num_zeroed = '+str(num_zeroed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -6.182208e-08
+    warn('mass relocated  = '+str(mass_destroyed))
+
+test_gridvoting_topcycle.py::test_gridvoting_topcycle
+  /venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:351: UserWarning: mass relocated  = -1.2364416e-07
+    warn('mass relocated  = '+str(mass_destroyed))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 22 passed, 31 warnings in 12.83s =======================
+Testing NO_GPU mode...
+/venv/lib/python3.12/site-packages/gridvoting_jax/__init__.py:30: UserWarning: NO_GPU=1: JAX forced to CPU-only mode
+  warn("NO_GPU=1: JAX forced to CPU-only mode")
+✓ NO_GPU mode works
+=========================================
+✓ All tests passed with NumPy 2.0+!
+=========================================

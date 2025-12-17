@@ -4,10 +4,6 @@ def test_module():
     import gridvoting_jax as gv
     import jax
     
-    # Test that JAX is being used
-    assert hasattr(gv, 'xp')
-    assert gv.xp.__name__ == 'jax.numpy'
-    
     # Test device detection
     devices = jax.devices()
     assert len(devices) > 0

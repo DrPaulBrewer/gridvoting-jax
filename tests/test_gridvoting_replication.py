@@ -16,7 +16,6 @@ import pytest
 def test_replicate_spatial_voting_analysis(params, correct):
     import gridvoting_jax as gv
     np = gv.np
-    xp = gv.xp
     g = params['g']
     zi = params['zi']
     majority = 2
