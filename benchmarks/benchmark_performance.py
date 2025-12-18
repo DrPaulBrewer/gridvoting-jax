@@ -11,9 +11,7 @@ def benchmark():
         {'g': 40, 'zi': False, 'label': 'g=40, zi=False'},
         {'g': 40, 'zi': True,  'label': 'g=40, zi=True'},
         {'g': 60, 'zi': False, 'label': 'g=60, zi=False'},
-        {'g': 60, 'zi': True,  'label': 'g=60, zi=True'},
-        {'g': 50, 'zi': False, 'label': 'g=50, zi=False'},
-        {'g': 50, 'zi': True,  'label': 'g=50, zi=True'}
+        {'g': 60, 'zi': True,  'label': 'g=60, zi=True'}
     ]
 
     results = []

@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed - 2025-12-17
 
+- **Refactored `solve_for_unit_eigenvector()` method**: Extracted negative probability correction logic into reusable helper function
+- **Created `_move_neg_prob_to_max()` helper function**: JIT-compiled pure function that redistributes mass from negative components to maximum-value indices
+- **Fixed mass redistribution bug**: Mass now distributed equally among **all** indices sharing the maximum value (within TOLERANCE), not just a single index
+- **Removed diagnostic warnings**: Eliminated 4 unnecessary warnings from `solve_for_unit_eigenvector()` while preserving exception-related warnings
+- **JAX JIT compatibility**: Implemented using `jnp.where()` instead of boolean indexing to ensure JIT compilation compatibility
+- **Used TOLERANCE constant**: Applied module-level `TOLERANCE` (5e-5) for float32-compatible floating-point comparisons
+
+### Technical Details
+
+- Helper function uses immutable JAX operations for all array manipulations
+- Correctly handles edge case where multiple indices have identical maximum values
+- Cleaner separation of concerns: negative component correction isolated from eigenvector solving
+- All 22 tests pass (100% success rate)
+- Verified with NumPy 2.3.5 and JAX 0.4.20+ in isolated Docker environment
+
+
 - **Grid class fully migrated to JAX arrays**: All Grid properties (`x`, `y`, `points`, `boundary`) now use `jnp.array` instead of `np.array`
 - **Removed all assert statements from Grid class**: Eliminated 12 runtime assertions; JAX operations provide natural error handling for shape mismatches
 - **Replaced barycentric triangle algorithm with cross-product method**: Implemented simpler, more robust half-plane test for `within_triangle()` using cross products

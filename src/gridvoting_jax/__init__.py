@@ -95,6 +95,39 @@ def _is_in_triangle_single(p, a, b, c):
     
     return ~(has_neg & has_pos)
 
+@jax.jit
+def _move_neg_prob_to_max(pvector):
+    """Fix negative probability components by moving mass to maximum values.
+    
+    Redistributes the total mass from negative components equally among
+    all indices that share the maximum value (within TOLERANCE).
+    
+    Args:
+        pvector: JAX array that may contain small negative values
+        
+    Returns:
+        fixed_pvector: JAX array with negative values zeroed and mass 
+                      redistributed equally to all maximum-value indices
+    """
+    # Identify negative components and calculate mass to redistribute
+    # Use jnp.where to avoid boolean indexing which is incompatible with JIT
+    to_zero = pvector < 0.0
+    mass_destroyed = jnp.where(to_zero, pvector, 0.0).sum()
+    
+    # Zero out negative components
+    fixed_pvector = jnp.where(to_zero, 0.0, pvector)
+    
+    # Find ALL indices with maximum value (within TOLERANCE for float32)
+    max_val = fixed_pvector.max()
+    is_max = jnp.abs(fixed_pvector - max_val) < TOLERANCE
+    num_max_indices = is_max.sum()
+    
+    # Distribute mass equally among all maximum indices
+    mass_per_index = mass_destroyed / num_max_indices
+    fixed_pvector = jnp.where(is_max, fixed_pvector + mass_per_index, fixed_pvector)
+    
+    return fixed_pvector
+
 
 
 class Grid:
@@ -358,21 +391,9 @@ class MarkovChainCPUGPU:
         min_component = float(unit_eigenvector.min())
         # Increased threshold for NumPy 2.0 compatibility (was -1e-7)
         if ((min_component<0.0) and (min_component>-2e-7)):
-            warn('attempting fix of neg components')
-            to_zero = unit_eigenvector < 0.0
-            num_zeroed = to_zero.sum()
-            mass_destroyed = unit_eigenvector[to_zero].sum()
-            warn('num_zeroed = '+str(num_zeroed))
-            warn('mass relocated  = '+str(mass_destroyed))
-            
-            # JAX immutable updates
-            unit_eigenvector = unit_eigenvector.at[to_zero].set(0.0)
-            am = unit_eigenvector.argmax()
-            unit_eigenvector = unit_eigenvector.at[am].add(mass_destroyed)
+            unit_eigenvector = _move_neg_prob_to_max(unit_eigenvector)
             unit_eigenvector = jnp.dot(unit_eigenvector, self.P)
-            
             min_component = float(unit_eigenvector.min())
-            warn('fixed min_component '+str(min_component))
         
         if (min_component<0.0):
             neg_msg = "(negative components: "+str(min_component)+" )"
