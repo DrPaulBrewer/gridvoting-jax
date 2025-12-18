@@ -20,7 +20,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Helper function uses immutable JAX operations for all array manipulations
 - Correctly handles edge case where multiple indices have identical maximum values
 - Cleaner separation of concerns: negative component correction isolated from eigenvector solving
-- All 22 tests pass (100% success rate)
+- All 23 tests pass (100% success rate)
+- Verified with NumPy 2.3.5 and JAX 0.4.20+ in isolated Docker environment
+
+- **Created benchmarks submodule**: Moved standalone `benchmarks/` directory into package as `gridvoting_jax.benchmarks`
+- **Added `benchmarks.performance()` function**: Accessible via `gv.benchmarks.performance()` for running performance benchmarks
+- **Flexible output format**: `performance(dict=True)` returns results dictionary; `performance()` (default) prints formatted output
+- **Removed unused NumPy import**: Eliminated unnecessary `import numpy as np` from benchmark code
+- **Deleted standalone benchmarks directory**: Cleaned up project structure by removing redundant `benchmarks/` directory
+- **Added benchmark test**: Created `test_benchmarks.py` to verify submodule functionality
+- **Marked benchmark test as slow**: Added `@pytest.mark.slow` decorator to allow skipping long-running benchmark tests
+- **Updated GitHub workflows**: Modified CI workflows to skip slow tests with `-m "not slow"` for faster CI runs
+
+### Technical Details
+
+- Benchmarks submodule uses relative imports from parent package
+- Function returns structured dictionary with device info, JAX version, and per-test results
+- Supports future expansion with additional benchmark functions
+- All 23 tests pass (100% success rate) including new benchmark test
 - Verified with NumPy 2.3.5 and JAX 0.4.20+ in isolated Docker environment
 
 

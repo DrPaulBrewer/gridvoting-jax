@@ -648,3 +648,6 @@ class CondorcetCycle(VotingModel):
                 ]
             ),
         )
+
+# Import benchmarks submodule
+from . import benchmarks

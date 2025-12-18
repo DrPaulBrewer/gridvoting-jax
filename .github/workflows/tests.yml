@@ -30,8 +30,8 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest tests/ -v
+        pytest tests/ -v -m "not slow"
     
     - name: Test CPU-only mode
       run: |
-        NO_GPU=1 pytest tests/test_gridvoting_jax.py -v
+        NO_GPU=1 pytest tests/test_gridvoting_jax.py -v -m "not slow"
