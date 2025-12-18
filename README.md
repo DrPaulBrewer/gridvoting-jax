@@ -86,12 +86,12 @@ NO_GPU=1 python your_script.py
 
 - Python 3.9+
 - numpy >= 2.0.0
-- pandas >= 2.2.0
-- scipy >= 1.13.0
 - matplotlib >= 3.8.0
 - jax >= 0.4.20
 
-**Google Colab**: All dependencies are pre-installed (numpy 2.0.2, pandas 2.2.2, scipy 1.16.3, matplotlib 3.10, jax 0.7).
+**Google Colab**: All dependencies are pre-installed (numpy 2.0.2, matplotlib 3.10, jax 0.7).
+
+**Note**: pandas and scipy are NOT required. gridvoting-jax uses only JAX for numerical operations.
 
 ---
 
@@ -105,7 +105,7 @@ gridvoting-jax uses JAX's JIT compilation for high performance:
 
 **Benchmark** (g=20, 1681 alternatives, Nvidia 1080Ti):
 - Analysis time: 0.033s (after JIT compilation)
-- Test suite: 22 tests in ~16s
+- Test suite: 23 tests in ~80s (including slow benchmark test)
 - Speedup: 10-30x faster than CPU-only
 
 ---
@@ -293,6 +293,31 @@ Returns dictionary of diagnostic metrics for the Markov chain.
 
 ---
 
+## Benchmarks
+
+Run performance benchmarks to test solver speed across different grid sizes:
+
+```python
+import gridvoting_jax as gv
+
+# Print formatted benchmark results
+gv.benchmarks.performance()
+
+# Get results as dictionary for programmatic use
+results = gv.benchmarks.performance(dict=True)
+print(f"Device: {results['device']}")
+print(f"JAX version: {results['jax_version']}")
+for test in results['results']:
+    print(f"{test['test_case']}: {test['time_seconds']:.4f}s")
+```
+
+**Benchmark Test Cases**:
+- Grid sizes: g=20, g=40, g=60
+- Voting modes: ZI (Zero Intelligence) and MI (Minimal Intelligence)
+- 6 test cases total
+
+---
+
 ## Testing
 
 ### Run Tests
@@ -301,12 +326,22 @@ Returns dictionary of diagnostic metrics for the Markov chain.
 # Install development dependencies
 pip install -r requirements-dev.txt
 
-# Run all tests
+# Run all tests (23 tests, ~80s)
 pytest tests/
 
+# Skip slow tests (22 tests, ~15s)
+pytest tests/ -m "not slow"
+
+# Run only slow tests (benchmark test)
+pytest tests/ -m slow
+
 # Run with coverage
-pytest tests/ --cov=gridvoting_jax
+pytest tests/ --cov=gridvoting_jax -m "not slow"
 ```
+
+**Test Markers**:
+- `@pytest.mark.slow`: Long-running tests (benchmarks)
+- Use `-m "not slow"` to skip slow tests during development
 
 ### Google Colab
 
