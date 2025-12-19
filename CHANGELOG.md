@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Single-Function Benchmark API**: Exposed `gv.benchmarks.run_comparison_report()` for easy one-line verification.
 - **Google Colab Support**: Added dedicated instructions and code blocks for running benchmarks in Google Colab.
 - **OSF Documentation**: Added `OSF_COMPLETE_DATASET.md` detailing the downloaded reference data.
+- **Docker Verification Script**: Added `test_docker_osf.sh` for comprehensive CPU/GPU testing.
+  - Automatically detects GPU availability (`nvidia-smi`)
+  - Runs 4 benchmark configurations: CPU (Float32/Float64) and GPU (Float32/Float64) if hardware available
+  - Uses isolated Docker environments (Ubuntu 24.04 for CPU, NVIDIA CUDA 12.3.1 for GPU)
+  - Features broken dependency protection (checks for missing NVIDIA Container Toolkit) and output suppression for cleaner logs
 
 ## [0.1.0] - 2025-12-18
 
