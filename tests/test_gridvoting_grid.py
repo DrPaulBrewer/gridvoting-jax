@@ -1,4 +1,5 @@
 import pytest
+import chex
 
 def test_grid_init():
     import gridvoting_jax
@@ -331,6 +332,6 @@ def test_grid_spatial_utility():
            [-61., -52., -45., -40., -37., -36., -37., -40., -45., -52., -61.],
            [-74., -65., -58., -53., -50., -49., -50., -53., -58., -65., -74.],
            [-89., -80., -73., -68., -65., -64., -65., -68., -73., -80., -89.]])
-    np.testing.assert_array_equal(np.array(u), correct_u)
+    chex.assert_trees_all_equal(u, correct_u)
 
 

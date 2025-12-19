@@ -1,4 +1,6 @@
 import pytest
+import chex
+import jax.numpy as jnp
 
 # attempt to replicate grid boundary probability and entropy (H) from 
 # Brewer, Juybari, Moberly (2023), J. Econ Interact Coord, Tab.4-5
@@ -54,12 +56,13 @@ def test_replicate_spatial_voting_analysis(params, correct):
     assert diagnostic_metrics['||𝝿P-𝝿||_L1_norm'] < 5e-5
     summary = vm.summarize_in_context(grid=grid)
     assert summary['entropy_bits'] == pytest.approx(correct['entropy'],abs=0.01)
-    np.testing.assert_array_almost_equal(
+    chex.assert_trees_all_close(
         summary['point_mean'],
-        np.array(correct['mean']),
-        decimal=3
+        jnp.array(correct['mean']),
+        atol=1e-3,
+        rtol=0
     )
-    np.testing.assert_array_equal(summary['prob_max_points'],[[0,-1]])
+    chex.assert_trees_all_equal(summary['prob_max_points'], jnp.array([[0,-1]]))
 
 
 @pytest.mark.parametrize("params,correct",[
@@ -87,6 +90,6 @@ def test_replicate_core_Plott_theorem_example(params,correct):
     )
     vm.analyze()
     summary = vm.summarize_in_context(grid=grid)
-    np.testing.assert_array_equal(summary['core_points'],np.array(correct['core_points']))
+    chex.assert_trees_all_equal(summary['core_points'], jnp.array(correct['core_points']))
 
         

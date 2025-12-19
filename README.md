@@ -75,9 +75,16 @@ pip install gridvoting-jax
 
 **TPU Support**: JAX automatically detects TPUs on Google Cloud.
 
-**CPU-Only Mode**: Set environment variable `NO_GPU=1` to force CPU-only execution:
+**CPU-Only Mode**: Set environment variable `GV_FORCE_CPU=1` to force CPU-only execution:
 ```bash
-NO_GPU=1 python your_script.py
+GV_FORCE_CPU=1 python your_script.py
+```
+
+**Float64 Precision**: By default, JAX uses 32-bit floats for better GPU performance. To enable 64-bit precision for higher accuracy:
+```python
+import gridvoting_jax as gv
+gv.enable_float64()
+# All subsequent JAX operations will use float64
 ```
 
 ---
@@ -88,6 +95,7 @@ NO_GPU=1 python your_script.py
 - numpy >= 2.0.0
 - matplotlib >= 3.8.0
 - jax >= 0.4.20
+- chex >= 0.1.0
 
 **Google Colab**: All dependencies are pre-installed (numpy 2.0.2, matplotlib 3.10, jax 0.7).
 

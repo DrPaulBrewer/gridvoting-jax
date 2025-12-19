@@ -1,4 +1,4 @@
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 import os
 import numpy as np
@@ -7,15 +7,33 @@ import matplotlib.cm as cm
 from warnings import warn
 import jax
 import jax.numpy as jnp
+import chex
 
-# Default tolerance for float32 calculations
+# Default tolerance for floating-point calculations
+# 5e-5 for float32 (default), 1e-10 for float64 (after calling enable_float64())
 TOLERANCE = 5e-5
 
-# Device detection with NO_GPU override
+def enable_float64():
+    """Enable 64-bit floating point precision in JAX.
+    
+    By default, JAX uses 32-bit floats for better GPU performance.
+    Call this function to enable 64-bit precision for higher accuracy.
+    
+    This is a global configuration that affects all subsequent JAX operations.
+    See: https://docs.jax.dev/en/latest/default_dtypes.html
+    
+    Example:
+        >>> import gridvoting_jax as gv
+        >>> gv.enable_float64()
+        >>> # All subsequent JAX operations will use float64
+    """
+    jax.config.update("jax_enable_x64", True)
+
+# Device detection with GV_FORCE_CPU override
 use_accelerator = False
 device_type = 'cpu'
 
-if os.environ.get('NO_GPU', '0') != '1':
+if os.environ.get('GV_FORCE_CPU', '0') != '1':
     # Check for available accelerators (TPU > GPU > CPU)
     devices = jax.devices()
     if devices:
@@ -27,7 +45,7 @@ if os.environ.get('NO_GPU', '0') != '1':
         else:
             warn("JAX using CPU (no GPU/TPU detected)")
 else:
-    warn("NO_GPU=1: JAX forced to CPU-only mode")
+    warn("GV_FORCE_CPU=1: JAX forced to CPU-only mode")
 
 @jax.jit
 def dist_sqeuclidean(XA, XB):
@@ -117,7 +135,7 @@ def _move_neg_prob_to_max(pvector):
     # Zero out negative components
     fixed_pvector = jnp.where(to_zero, 0.0, pvector)
     
-    # Find ALL indices with maximum value (within TOLERANCE for float32)
+    # Find ALL indices with maximum value (within TOLERANCE)
     max_val = fixed_pvector.max()
     is_max = jnp.abs(fixed_pvector - max_val) < TOLERANCE
     num_max_indices = is_max.sum()
@@ -238,7 +256,7 @@ class Grid:
         return efunc
 
     def extremes(self, z, *, valid=None):
-        # missing valid defaults to all True array for grid
+        # if valid is None, defaults to all True array for grid
         valid = jnp.full((self.len,), True) if valid is None else valid
         min_z = z.min()
         min_z_mask = jnp.abs(z-min_z)<1e-10  # Strict tolerance for exact min/max
@@ -250,7 +268,7 @@ class Grid:
         self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, **kwargs
     ):
         """returns utility function values for each voter at each grid point"""
-        voter_ideal_points = np.asarray(voter_ideal_points)
+        voter_ideal_points = jnp.asarray(voter_ideal_points)
         
         if metric == "sqeuclidean":
             distances = dist_sqeuclidean(voter_ideal_points, self.points)
@@ -321,28 +339,31 @@ class Grid:
 
 
 def assert_valid_transition_matrix(P, *, decimal=6):
-    """asserts that jax or numpy array is square and that each row sums to 1.0
-    with default tolerance of 6 decimal places (appropriate for float32)"""
+    """asserts that JAX array is square and that each row sums to 1.0
+    with default tolerance of 6 decimal places (float32) or 10 decimal places (float64)"""
+    P = jnp.asarray(P)
     rows, cols = P.shape
-    assert rows == cols
-    # Convert to numpy for testing
-    P_np = np.array(P)
-    np.testing.assert_array_almost_equal(
-        P_np.sum(axis=1), 
-        np.ones(shape=(rows)), 
-        decimal
-    )
+    chex.assert_shape(P, (rows, cols))  # Ensure square matrix
+    assert rows == cols, f"Matrix must be square, got shape {P.shape}"
+    
+    row_sums = P.sum(axis=1)
+    expected = jnp.ones(rows)
+    tolerance = 10 ** (-decimal) * 1.1  # Slightly increased for numerical stability
+    
+    chex.assert_trees_all_close(row_sums, expected, atol=tolerance, rtol=0)
 
 
 def assert_zero_diagonal_int_matrix(M):
-    """asserts that jax or numpy array is square and the diagonal is 0.0"""
+    """asserts that JAX array is square and the diagonal is 0.0"""
+    M = jnp.asarray(M)
     rows, cols = M.shape
-    assert rows == cols
-    M_np = np.array(M)
-    np.testing.assert_array_equal(
-        np.diag(M_np), 
-        np.zeros(shape=(rows), dtype=int)
-    )
+    chex.assert_shape(M, (rows, cols))  # Ensure square matrix
+    assert rows == cols, f"Matrix must be square, got shape {M.shape}"
+    
+    diagonal = jnp.diag(M)
+    expected = jnp.zeros(rows, dtype=int)
+    
+    chex.assert_trees_all_equal(diagonal, expected)
 
 class MarkovChainCPUGPU:
     def __init__(self, *, P, computeNow=True, tolerance=None):
@@ -355,8 +376,8 @@ class MarkovChainCPUGPU:
         diagP = jnp.diagonal(self.P)
         self.absorbing_points = jnp.equal(diagP, 1.0)
         self.unreachable_points = jnp.equal(jnp.sum(self.P, axis=0), diagP)
-        self.has_unique_stationary_distibution = not jnp.any(self.absorbing_points)
-        if computeNow and self.has_unique_stationary_distibution:
+        self.has_unique_stationary_distribution = not jnp.any(self.absorbing_points)
+        if computeNow and self.has_unique_stationary_distribution:
             self.find_unique_stationary_distribution(tolerance=tolerance)
 
     def L1_norm_of_single_step_change(self, x):
@@ -373,9 +394,9 @@ class MarkovChainCPUGPU:
         v is the eigenvector of eigenvalue 1 to be found; and
         b is the first basis vector, where b[0]=1 and 0 elsewhere."""
         n = self.P.shape[0]
-        Q = jnp.transpose(self.P).astype(jnp.float32) - jnp.eye(n, dtype=jnp.float32)
-        Q = Q.at[0].set(jnp.ones(n, dtype=jnp.float32))  # JAX immutable update
-        b = jnp.zeros(n, dtype=jnp.float32)
+        Q = jnp.transpose(self.P) - jnp.eye(n)
+        Q = Q.at[0].set(jnp.ones(n))  # JAX immutable update
+        b = jnp.zeros(n)
         b = b.at[0].set(1.0)  # JAX immutable update
         
         error_unable_msg = "unable to find unique unit eigenvector "
@@ -456,38 +477,36 @@ class VotingModel:
 
     def E_𝝿(self,z):
         """returns mean, i.e., expected value of z under the stationary distribution"""
-        return np.dot(self.stationary_distribution,z)
+        return jnp.dot(self.stationary_distribution,z)
 
     def analyze(self):
         self.MarkovChain = MarkovChainCPUGPU(P=self._get_transition_matrix())
-        self.core_points = np.array(self.MarkovChain.absorbing_points)
-        self.core_exists = np.any(self.core_points)
+        self.core_points = self.MarkovChain.absorbing_points
+        self.core_exists = jnp.any(self.core_points)
         if not self.core_exists:
-            self.stationary_distribution = np.array(
-                self.MarkovChain.stationary_distribution
-            )
+            self.stationary_distribution = self.MarkovChain.stationary_distribution
         self.analyzed = True
 
     def what_beats(self, *, index):
         """returns array of size number_of_feasible_alternatives
         with value 1 where alternative beats current index by some majority"""
         assert self.analyzed
-        points = np.array(self.MarkovChain.P[index, :] > 0).astype("int32")
-        points[index] = 0
+        points = (self.MarkovChain.P[index, :] > 0).astype("int32")
+        points = points.at[index].set(0)
         return points
 
     def what_is_beaten_by(self, *, index):
         """returns array of size number_of_feasible_alternatives
         with value 1 where current index beats alternative by some majority"""
         assert self.analyzed
-        points = np.array(self.MarkovChain.P[:, index] > 0).astype("int32")
-        points[index] = 0
+        points = (self.MarkovChain.P[:, index] > 0).astype("int32")
+        points = points.at[index].set(0)
         return points
         
     def summarize_in_context(self,*,grid,valid=None):
         """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""
         # missing valid defaults to all True array for grid
-        valid = np.full((grid.len,), True) if valid is None else valid
+        valid = jnp.full((grid.len,), True) if valid is None else valid
         # check valid array shape 
         assert valid.shape == (grid.len,)
         # get X and Y coordinates for valid grid points
@@ -503,11 +522,11 @@ class VotingModel:
         # first check that the number of valid points matches the dimensionality of the stationary distribution
         assert (valid.sum(),) == self.stationary_distribution.shape
         point_mean = self.E_𝝿(valid_points) 
-        cov = np.cov(valid_points,rowvar=False,ddof=0,aweights=self.stationary_distribution)
+        cov = jnp.cov(valid_points, rowvar=False, ddof=0, aweights=self.stationary_distribution)
         (prob_min,prob_min_points,prob_max,prob_max_points) = \
             grid.extremes(self.stationary_distribution,valid=valid)
         _nonzero_statd = self.stationary_distribution[self.stationary_distribution>0]
-        entropy_bits = -_nonzero_statd.dot(np.log2(_nonzero_statd))
+        entropy_bits = -_nonzero_statd.dot(jnp.log2(_nonzero_statd))
         return {
             'core_exists': self.core_exists,
             'point_mean': point_mean,
@@ -618,12 +637,12 @@ class VotingModel:
             cP = jnp.divide(
                 jnp.add(cV, jnp.diag(jnp.subtract(nfa, cV_sum_of_row))), 
                 nfa
-            ).astype(jnp.float32)
+            )
         else:
             cP = jnp.divide(
                 jnp.add(cV, jnp.eye(nfa)), 
                 (1 + cV_sum_of_row)[:, jnp.newaxis]
-            ).astype(jnp.float32)
+            )
         
         assert_valid_transition_matrix(cP)
         return cP
@@ -640,7 +659,7 @@ class CondorcetCycle(VotingModel):
             number_of_voters=3,
             majority=2,
             number_of_feasible_alternatives=3,
-            utility_functions=np.array(
+            utility_functions=jnp.array(
                 [
                     [3, 2, 1],  # first agent prefers A>B>C
                     [1, 3, 2],  # second agent prefers B>C>A

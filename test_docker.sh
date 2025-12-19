@@ -7,17 +7,9 @@ echo "========================================="
 echo "Testing gridvoting-jax with NumPy 2.0+"
 echo "========================================="
 
-# Build the package
-echo "Building package..."
-python3 -m build
-
-# Get the wheel file
-WHEEL_FILE=$(ls dist/*.whl | head -1)
-echo "Built: $WHEEL_FILE"
-
 # Create and run Docker container
 echo "Starting Docker container..."
-docker run --rm -v "$(pwd)/dist:/dist" -v "$(pwd)/tests:/tests" ubuntu:24.04 /bin/bash -c "
+docker run --rm -v "$(pwd):/workspace" -w /workspace ubuntu:24.04 /bin/bash -c "
     set -e
     echo 'Installing Python and pip...'
     apt-get update -qq
@@ -27,8 +19,14 @@ docker run --rm -v "$(pwd)/dist:/dist" -v "$(pwd)/tests:/tests" ubuntu:24.04 /bi
     python3 -m venv /venv
     source /venv/bin/activate
     
+    echo 'Installing build tools...'
+    pip install --quiet build
+    
+    echo 'Building package...'
+    python3 -m build
+    
     echo 'Installing package...'
-    pip install --quiet /dist/*.whl
+    pip install --quiet dist/*.whl
     pip install --quiet pytest
     
     echo 'Checking NumPy version...'
@@ -38,10 +36,10 @@ docker run --rm -v "$(pwd)/dist:/dist" -v "$(pwd)/tests:/tests" ubuntu:24.04 /bi
     python3 -c 'import gridvoting_jax as gv; print(f\"gridvoting-jax version: {gv.__version__}\"); print(f\"Device: {gv.device_type}\")'
     
     echo 'Running tests...'
-    pytest /tests/ -v --tb=short
+    pytest tests/ -v --tb=short
     
-    echo 'Testing NO_GPU mode...'
-    NO_GPU=1 python3 -c 'import gridvoting_jax as gv; assert gv.device_type == \"cpu\", \"NO_GPU mode failed\"; print(\"✓ NO_GPU mode works\")'
+    echo 'Testing GV_FORCE_CPU mode...'
+    GV_FORCE_CPU=1 python3 -c 'import gridvoting_jax as gv; assert gv.device_type == \"cpu\", \"GV_FORCE_CPU mode failed\"; print(\"✓ GV_FORCE_CPU mode works\")'
     
     echo '========================================='
     echo '✓ All tests passed with NumPy 2.0+!'

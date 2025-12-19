@@ -1,4 +1,5 @@
 import pytest
+import chex
 def test_gridvoting_topcycle():
   import gridvoting_jax as gv
   from itertools import permutations
@@ -15,10 +16,11 @@ def test_gridvoting_topcycle():
     correct_stationary_distribution = np.array([1/3,1/3,1/3,0.,0.,0.])[aperm]
     vm = gv.VotingModel(utility_functions=u,number_of_feasible_alternatives=6,number_of_voters=3,majority=2,zi=False)
     vm.analyze()
-    np.testing.assert_array_almost_equal(
-      np.array(vm.stationary_distribution),  # Convert JAX to NumPy
+    chex.assert_trees_all_close(
+      vm.stationary_distribution,
       correct_stationary_distribution,
-      decimal=6
+      atol=1e-6,
+      rtol=0
     )
     # Check that lower cycle probabilities are effectively zero (with tolerance for NumPy 2.0)
     zero_mask = correct_stationary_distribution==0.0

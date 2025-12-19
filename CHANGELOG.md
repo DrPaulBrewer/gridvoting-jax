@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2025-12-18
+
+### Changed - BREAKING CHANGE
+
+- **Environment variable renamed**: Changed CPU-only mode trigger from `NO_GPU=1` to `GV_FORCE_CPU=1`
+  - **Rationale**: Clearer, more descriptive naming with project-specific prefix (`GV_` for GridVoting)
+  - **Migration**: Users must update scripts from `NO_GPU=1` to `GV_FORCE_CPU=1`
+  - **Old variable no longer works**: This is a hard cutover; `NO_GPU=1` will not force CPU mode
+- **Updated warning message**: CPU-only mode now displays `"GV_FORCE_CPU=1: JAX forced to CPU-only mode"`
+- **Fixed typo in property name**: `MarkovChainCPUGPU.has_unique_stationary_distibution` → `MarkovChainCPUGPU.has_unique_stationary_distribution`
+  - **Rationale**: Correct spelling of "distribution" (was missing 'r')
+  - **Migration**: Update any code accessing this property to use the correct spelling
+- **Version bump**: Incremented to 0.1.0 to reflect breaking changes
+- **Converted NumPy to JAX in non-plotting code**: Replaced `np.asarray`, `np.dot`, and `np.array` with JAX equivalents (`jnp.asarray`, `jnp.dot`, `jnp.array`) in core computational functions
+  - Updated `Grid.extremes()` comment for clarity
+  - Updated `Grid.spatial_utilities()` to use `jnp.asarray` for voter ideal points
+  - Updated `VotingModel.E_𝝿()` to use `jnp.dot` for expected value calculation
+  - Updated `CondorcetCycle.__init__()` to use `jnp.array` for utility functions
+- **Migrated to chex for assertions**: Replaced NumPy testing assertions with JAX-compatible chex assertions
+  - **Rationale**: Enable JIT-compatible assertions, better integration with JAX ecosystem
+  - **Source code**: Updated `assert_valid_transition_matrix()` and `assert_zero_diagonal_int_matrix()` to use chex; now expect only JAX arrays (removed "or numpy" from docstrings)
+  - **Tests**: Replaced all `np.testing.assert_*` calls with `chex.assert_*` equivalents across 4 test files
+  - **New dependency**: Added `chex>=0.1.0` to requirements
+- **Removed unnecessary NumPy usage in non-plotting code**: Replaced remaining NumPy functions with JAX equivalents
+  - **Rationale**: Consistency with JAX-first approach, avoid unnecessary array conversions, better JIT compatibility
+  - **VotingModel.analyze()**: Removed `np.array()` conversions (already JAX arrays), use `jnp.any()`
+  - **VotingModel.what_beats()** and **what_is_beaten_by()**: Removed `np.array()` conversions, use JAX immutable updates
+  - **VotingModel.summarize_in_context()**: Replaced `np.full()`, `np.cov()`, `np.log2()` with `jnp.full()`, `jnp.cov()`, `jnp.log2()`
+  - **Breaking change**: These methods now return JAX arrays instead of NumPy arrays
+- **Removed float32 type casts and added float64 support**: Removed explicit `float32` dtype specifications to allow flexible precision
+  - **Rationale**: Let JAX infer dtype, support both float32 (default) and float64 (via `enable_float64()`)
+  - **New function**: Added `enable_float64()` to enable 64-bit precision globally (see https://docs.jax.dev/en/latest/default_dtypes.html)
+  - **Locations**: `MarkovChainCPUGPU.solve_for_unit_eigenvector()` (3 casts), `VotingModel._get_transition_matrix()` (2 casts)
+  - **Tolerance**: Updated documentation to reflect 6 decimal places for float32, 10 for float64
+  - **Non-breaking**: Default behavior unchanged (still uses float32)
+
 ### Changed - 2025-12-17
 
 - **Refactored `solve_for_unit_eigenvector()` method**: Extracted negative probability correction logic into reusable helper function
