@@ -326,6 +326,38 @@ for test in results['results']:
 
 ---
 
+## Replication & Verification against OSF Data
+
+You can automatically verify the library's output against the original A100 GPU replication data deposited on OSF. This benchmark downloads the reference data and compares stationary distributions using the L1 norm.
+
+```python
+from gridvoting_jax.benchmarks.osf_comparison import run_comparison_report
+
+# Run complete comparison report
+# Automatically downloads reference data to /tmp/gridvoting_osf_cache
+report = run_comparison_report()
+
+# Or test specific configurations
+# report = run_comparison_report([(20, False)])  # g=20, MI mode
+```
+
+### Google Colab Usage
+
+In a Colab notebook, you can run the full verification suite in a single cell:
+
+```python
+!pip install gridvoting-jax
+
+from gridvoting_jax.benchmarks.osf_comparison import run_comparison_report
+
+# Run all 8 replication configurations (g=20, 40, 60, 80)
+report = run_comparison_report()
+```
+
+This ensures your simulation results match the published scientific record.
+
+---
+
 ## Testing
 
 ### Run Tests

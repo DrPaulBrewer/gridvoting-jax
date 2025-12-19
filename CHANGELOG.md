@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-19
+
+### Added
+- **OSF Replication Data Benchmark**: Added verification benchmark that compares library output against original A100 GPU replication data from OSF repository (`osf_comparison` benchmark).
+- **Automatic Data Caching**: New benchmark automatically downloads and caches 8 reference stationary distribution datasets to `/tmp/gridvoting_osf_cache`.
+- **L1 Norm Comparison**: Implemented L1 norm metric for rigorous verification of stationary distributions against ground truth.
+- **Single-Function Benchmark API**: Exposed `gv.benchmarks.run_comparison_report()` for easy one-line verification.
+- **Google Colab Support**: Added dedicated instructions and code blocks for running benchmarks in Google Colab.
+- **OSF Documentation**: Added `OSF_COMPLETE_DATASET.md` detailing the downloaded reference data.
+
 ## [0.1.0] - 2025-12-18
 
 ### Changed - BREAKING CHANGE
