@@ -182,7 +182,7 @@ This JAX version differs from the original in several ways:
 | **Device Detection** | GPU/CPU | TPU/GPU/CPU |
 | **Import** | `import gridvoting` | `import gridvoting_jax` |
 
-**Numerical Accuracy**: Float32 provides ~7 decimal digits of precision, which is sufficient for spatial voting simulations. Tolerance of 5e-5 ensures robust convergence on grids up to 60x60.
+**Numerical Accuracy**: Float32 provides ~7 decimal digits of precision, which is sufficient for many spatial voting simulations. 
 
 ---
 
@@ -329,12 +329,12 @@ Creates visualization plots of the stationary distribution.
 
 ---
 
-### class MarkovChainCPUGPU
+### class MarkovChain
 
 #### Constructor
 
 ```python
-gridvoting_jax.MarkovChainCPUGPU(P, computeNow=True, tolerance=5e-5)
+gridvoting_jax.MarkovChain(P, computeNow=True, tolerance=5e-5)
 ```
 
 **Parameters:**

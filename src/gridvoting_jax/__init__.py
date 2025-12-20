@@ -1,4 +1,4 @@
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 import os
 import numpy as np
@@ -365,9 +365,9 @@ def assert_zero_diagonal_int_matrix(M):
     expected = jnp.zeros(rows, dtype=int)    
     chex.assert_trees_all_equal(diagonal, expected)
 
-class MarkovChainCPUGPU:
+class MarkovChain:
     def __init__(self, *, P, computeNow=True, tolerance=None):
-        """initializes a MarkovChainCPUGPU instance by copying in the transition
+        """initializes a MarkovChain instance by copying in the transition
         matrix P and calculating chain properties"""
         if tolerance is None:
             tolerance = TOLERANCE
@@ -482,7 +482,7 @@ class VotingModel:
         return jnp.dot(self.stationary_distribution,z)
 
     def analyze(self):
-        self.MarkovChain = MarkovChainCPUGPU(P=self._get_transition_matrix())
+        self.MarkovChain = MarkovChain(P=self._get_transition_matrix())
         self.core_points = self.MarkovChain.absorbing_points
         self.core_exists = jnp.any(self.core_points)
         if not self.core_exists:

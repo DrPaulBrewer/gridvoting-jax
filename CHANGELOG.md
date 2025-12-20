@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.3.3] - 2025-12-20
+
+### Changed - BREAKING CHANGE
+- **Renamed Class**: `MarkovChainCPUGPU` is now `MarkovChain`. The old name has been removed.
+
+### Documentation
+- **README**: Updated numerical accuracy section to use more cautious language regarding Float32 precision limitations.
+
 ## [0.3.2] - 2025-12-20
 
 ### Fixed
