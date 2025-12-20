@@ -272,6 +272,12 @@ Returns an embedding function `efunc(z, fill=0.0)` that maps 1D arrays of size `
 - `valid`: boolean array of length `grid.len` selecting valid grid points
 - `fill`: value for invalid indices (default 0.0, use `np.nan` for plotting)
 
+**`grid.extremes(z, valid=None)`**
+
+Returns tuple `(min_z, points_min, max_z, points_max)`.
+- `z`: 1D array of values
+- `valid`: optional boolean mask. If provided, `min_z`/`max_z` are calculated over all `z`, but `points_min`/`points_max` return only points where `valid` is True.
+
 **`grid.plot(z, title=None, log=True, points=None, zoom=False, ...)`**
 
 Creates a contour plot of values z defined on the grid.

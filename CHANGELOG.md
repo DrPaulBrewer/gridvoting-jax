@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-12-20
+
+### Fixed
+- **Grid.extremes()**: Updated logic to correctly calculate min/max over the entire array `z` while restricting returned points to those valid in the `valid` mask.
+- **Helper Assertions**: Fixed `assert_valid_transition_matrix` and `assert_zero_diagonal_int_matrix` to correctly check for square matrices `(rows, rows)`.
+- **MarkovChainCPUGPU**: 
+  - Increased negative probability tolerance in `solve_for_unit_eigenvector` from -2e-7 to -1e-5.
+  - Refactored to use new `evolve()` method for cleaner code.
+  - Fixed indentation error in `evolve()` method.
+
 ## [0.3.1] - 2025-12-19
 ### Fixed
 - Patched GitHub Actions workflow for Docker publishing to support manual triggers and fix casing issues.

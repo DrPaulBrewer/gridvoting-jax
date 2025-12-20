@@ -1,4 +1,4 @@
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 import os
 import numpy as np
@@ -256,16 +256,20 @@ class Grid:
         return efunc
 
     def extremes(self, z, *, valid=None):
-        # if valid is None, defaults to all True array for grid
-        valid = jnp.full((self.len,), True) if valid is None else valid
-        min_z = z.min()
+        # if valid is None return unrestricted min,points_min,max,points_max
+        # if valid is a boolean array, return constrained min,points_min,max,points_max
+        # note that min/max is always calculated over all of z, it is the points that must be restricted
+        # because valid indicates that z came from a subset of the points
+        min_z = float(z.min())
         min_z_mask = jnp.abs(z-min_z)<1e-10  # Strict tolerance for exact min/max
-        max_z = z.max()
+        max_z = float(z.max())
         max_z_mask = jnp.abs(z-max_z)<1e-10  # Strict tolerance for exact min/max
+        if valid is None:
+           return (min_z,self.points[min_z_mask],max_z,self.points[max_z_mask]) 
         return (min_z,self.points[valid][min_z_mask],max_z,self.points[valid][max_z_mask])
-        
+
     def spatial_utilities(
-        self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, **kwargs
+        self, *, voter_ideal_points, metric="sqeuclidean", scale=-1
     ):
         """returns utility function values for each voter at each grid point"""
         voter_ideal_points = jnp.asarray(voter_ideal_points)
@@ -337,32 +341,28 @@ class Grid:
         else:
             plt.savefig(fname)
 
-
+@chex.chexify
+@jax.jit
 def assert_valid_transition_matrix(P, *, decimal=6):
     """asserts that JAX array is square and that each row sums to 1.0
     with default tolerance of 6 decimal places (float32) or 10 decimal places (float64)"""
     P = jnp.asarray(P)
     rows, cols = P.shape
-    chex.assert_shape(P, (rows, cols))  # Ensure square matrix
-    assert rows == cols, f"Matrix must be square, got shape {P.shape}"
-    
+    chex.assert_shape(P, (rows, rows))  # Ensure square matrix
     row_sums = P.sum(axis=1)
     expected = jnp.ones(rows)
-    tolerance = 10 ** (-decimal) * 1.1  # Slightly increased for numerical stability
-    
+    tolerance = 10 ** (-decimal) * 1.1  # Slightly increased for numerical stability    
     chex.assert_trees_all_close(row_sums, expected, atol=tolerance, rtol=0)
 
-
+@chex.chexify
+@jax.jit
 def assert_zero_diagonal_int_matrix(M):
     """asserts that JAX array is square and the diagonal is 0.0"""
     M = jnp.asarray(M)
     rows, cols = M.shape
-    chex.assert_shape(M, (rows, cols))  # Ensure square matrix
-    assert rows == cols, f"Matrix must be square, got shape {M.shape}"
-    
+    chex.assert_shape(M, (rows, rows))  # Ensure square matrix
     diagonal = jnp.diag(M)
-    expected = jnp.zeros(rows, dtype=int)
-    
+    expected = jnp.zeros(rows, dtype=int)    
     chex.assert_trees_all_equal(diagonal, expected)
 
 class MarkovChainCPUGPU:
@@ -380,9 +380,13 @@ class MarkovChainCPUGPU:
         if computeNow and self.has_unique_stationary_distribution:
             self.find_unique_stationary_distribution(tolerance=tolerance)
 
+    def evolve(self, x):
+        """ evolve the probability vector x_t one step in the Markov Chain by returning x*P. """
+        return jnp.dot(x,self.P)
+
     def L1_norm_of_single_step_change(self, x):
         """returns float(L1(xP-x))"""
-        return float(jnp.linalg.norm(jnp.dot(x, self.P) - x, ord=1))
+        return float(jnp.linalg.norm(self.evolve(x) - x, ord=1))
 
     def solve_for_unit_eigenvector(self):
         """This is another way to potentially find the stationary distribution,
@@ -397,8 +401,7 @@ class MarkovChainCPUGPU:
         Q = jnp.transpose(self.P) - jnp.eye(n)
         Q = Q.at[0].set(jnp.ones(n))  # JAX immutable update
         b = jnp.zeros(n)
-        b = b.at[0].set(1.0)  # JAX immutable update
-        
+        b = b.at[0].set(1.0)  # JAX immutable update        
         error_unable_msg = "unable to find unique unit eigenvector "
         try:
             unit_eigenvector = jnp.linalg.solve(Q, b)
@@ -410,10 +413,9 @@ class MarkovChainCPUGPU:
             raise RuntimeError(error_unable_msg+"(nan)")
         
         min_component = float(unit_eigenvector.min())
-        # Increased threshold for NumPy 2.0 compatibility (was -1e-7)
-        if ((min_component<0.0) and (min_component>-2e-7)):
+        if ((min_component<0.0) and (min_component>-1e-5)):
             unit_eigenvector = _move_neg_prob_to_max(unit_eigenvector)
-            unit_eigenvector = jnp.dot(unit_eigenvector, self.P)
+            unit_eigenvector = self.evolve(unit_eigenvector)
             min_component = float(unit_eigenvector.min())
         
         if (min_component<0.0):
@@ -442,7 +444,7 @@ class MarkovChainCPUGPU:
         """ return Markov chain approximation metrics in mathematician-friendly format """
         metrics = {
             '||F||': self.P.shape[0],
-            '(𝝨𝝿)-1':  float(self.stationary_distribution.sum())-1.0, # cast to float to avoid cupy array singleton
+            '(𝝨𝝿)-1':  float(self.stationary_distribution.sum())-1.0, # cast to float to avoid singleton
             '||𝝿P-𝝿||_L1_norm': self.L1_norm_of_single_step_change(
                               self.stationary_distribution
                           )
@@ -550,7 +552,7 @@ class VotingModel:
         dpi=72,
         figsize=(10, 10),
         fprefix=None,
-        title_core="Core (aborbing) points",
+        title_core="Core (absorbing) points",
         title_sad="L1 norm of difference in two rows of P^power",
         title_diff1="L1 norm of change in corner row",
         title_diff2="L1 norm of change in center row",

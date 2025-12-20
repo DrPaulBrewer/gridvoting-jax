@@ -13,13 +13,17 @@ echo "========================================="
 echo "OSF Benchmark Docker Verification (Fast)"
 echo "========================================="
 
+docker pull $IMAGE_CPU
+
 # 1. Detect GPU
 HAS_GPU=false
 if command -v nvidia-smi &> /dev/null; then
     if nvidia-smi &> /dev/null; then
         echo "GPU Detected: $(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
-        
+        # Download Docker GPU Image
+        docker pull $IMAGE_GPU
         # Check if Docker supports GPUs
+        echo "Downloading Docker Image $IMAGE_GPU"
         echo "Checking Docker GPU support..."
         if docker run --rm --gpus all "$IMAGE_GPU" nvidia-smi &> /dev/null; then
             echo "✓ Docker GPU support confirmed."
