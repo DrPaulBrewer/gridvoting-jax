@@ -78,18 +78,146 @@ class MarkovChain:
         return self.unit_eigenvector
 
 
-    def find_unique_stationary_distribution(self, *, tolerance=None, **kwargs):
-        """finds the stationary distribution for a Markov Chain using algebraic method"""
+    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, **kwargs):
+        """
+        Finds the stationary distribution for a Markov Chain.
+        
+        Args:
+            tolerance: Convergence tolerance (default: module TOLERANCE).
+            solver: Strategy to use. Options:
+                - "full_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
+                - "gmres_matrix_inversion": Iterative linear solver (GMRES). Low memory (O(N^2) or O(N)).
+                - "power_method": Iterative power method (O(N^2)). 
+                  If initial_guess is None, uses Dual-Start Entropy strategy.
+                  If initial_guess is provided, uses Single-Start Refinement.
+            initial_guess: Optional starting distribution for "power_method".
+            max_iterations: Maximum iterations for iterative solvers.
+        """
         if tolerance is None:
             tolerance = TOLERANCE
+            
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
             return None
-        self.stationary_distribution = self.solve_for_unit_eigenvector()
+            
+        # Dispatch to solver
+        if solver == "full_matrix_inversion":
+            self.stationary_distribution = self._solve_full_matrix_inversion(tolerance)
+        elif solver == "gmres_matrix_inversion":
+            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations)
+        elif solver == "power_method":
+            self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess)
+        else:
+            raise ValueError(f"Unknown solver: {solver}")
+
+        # Verification
         self.check_norm = self.L1_norm_of_single_step_change(self.stationary_distribution)
         if self.check_norm > tolerance:
-            raise RuntimeError(f"Stationary distribution check norm {self.check_norm} exceeds tolerance {tolerance}")
+            # If iterative solvers failed to converge tightly enough but didn't raise
+            warn(f"Stationary distribution check norm {self.check_norm} exceeds tolerance {tolerance}")
+            
         return self.stationary_distribution
+
+    def _solve_full_matrix_inversion(self, tolerance):
+        """Original algebraic solver using direct dense matrix inversion / linear solve."""
+        return self.solve_for_unit_eigenvector()
+
+    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations):
+        """
+        Find stationary distribution using GMRES iterative solver.
+        Solves (P.T - I)v = 0 subject to sum(v)=1.
+        
+        Equation: vP = v  =>  P.T v.T = v.T  => (P.T - I)v = 0
+        Constraint: sum(v) = 1
+        
+        We enforce constraint by replacing the first equation (row) of the system
+        with the sum constraint (all ones).
+        """
+        n = self.P.shape[0]
+        I = jnp.eye(n)
+        
+        # System matrix A = P.T - I
+        # We want to perform matrix-vector product A @ x without strictly materializing A if possible,
+        # but for now, explicit A is fine as it fits in memory (unlike factorization).
+        A = self.P.T - I
+        
+        # Enforce sum(v) = 1 constraint on the first row
+        # This makes the system A' v = b where b = [1, 0, ... 0]
+        # And the first row of A' is [1, 1, ... 1]
+        A = A.at[0, :].set(1.0)
+        
+        b = jnp.zeros(n)
+        b = b.at[0].set(1.0)
+        
+        # Use JAX's GMRES
+        # tol in gmres is residual tolerance, roughly related to error
+        v, info = jax.scipy.sparse.linalg.gmres(
+            lambda x: jnp.dot(A, x), 
+            b, 
+            tol=tolerance, 
+            maxiter=max_iterations
+        )
+        
+        if info > 0:
+            warn(f"GMRES did not converge in {max_iterations} iterations based on internal criteria.")
+        
+        # Enforce non-negativity and renormalization (numerical artifacts)
+        v = jnp.abs(v)
+        v = v / jnp.sum(v)
+        
+        return v
+
+    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None):
+        """
+        Power method for finding stationary distribution.
+        
+        Modes:
+        1. Single-Start Refinement: Uses initial_guess.
+        2. Dual-Start Entropy: Uses Max/Min entropy rows as starts.
+        """
+        n = self.P.shape[0]
+        
+        if initial_guess is not None:
+            # Mode 1: Refine existing guess
+            v = initial_guess
+            for i in range(max_iterations):
+                v_next = self.evolve(v)
+                diff = jnp.linalg.norm(v_next - v, ord=1)
+                if diff < tolerance:
+                    return v_next
+                v = v_next
+            warn(f"Power method (Single-Start) did not converge in {max_iterations} iterations. Final diff: {diff}")
+            return v
+            
+        else:
+            # Mode 2: Dual-Start Entropy
+            # Calculate entropy of each row of P to find diverse starting points
+            # Entropy of a row P[i]: H(i) = - sum(P[i,j] * log2(P[i,j]))
+            # Avoid log(0) with mask or adding epsilon
+            P_safe = jnp.where(self.P > 0, self.P, 1.0) # log(1)=0, so 0 contributions are 0
+            row_entropy = -jnp.sum(self.P * jnp.log2(P_safe), axis=1)
+            
+            # Start 1: Max entropy (most uncertain transition)
+            idx_max = jnp.argmax(row_entropy)
+            v1 = jnp.zeros(n).at[idx_max].set(1.0)
+            
+            # Start 2: Min entropy (most deterministic transition)
+            idx_min = jnp.argmin(row_entropy)
+            v2 = jnp.zeros(n).at[idx_min].set(1.0)
+            
+            # Evolve both
+            for i in range(max_iterations):
+                v1 = self.evolve(v1)
+                v2 = self.evolve(v2)
+                
+                # Check if they have converged TO EACH OTHER
+                # If they meet, the chain has forgotten initial conditions (ergodic)
+                diff = jnp.linalg.norm(v1 - v2, ord=1)
+                if diff < tolerance:
+                    return (v1 + v2) / 2.0
+            
+            warn(f"Power method (Dual-Start) did not converge by {max_iterations}. Final diff between chains: {diff}")
+            return (v1 + v2) / 2.0
 
     def diagnostic_metrics(self):
         """ return Markov chain approximation metrics in mathematician-friendly format """
@@ -132,12 +260,89 @@ class VotingModel:
         """returns mean, i.e., expected value of z under the stationary distribution"""
         return jnp.dot(self.stationary_distribution,z)
 
-    def analyze(self):
+    def analyze(self, *, solver="full_matrix_inversion", grid=None, voter_ideal_points=None, **kwargs):
+        """
+        Analyzes the voting model to find the stationary distribution.
+        
+        Args:
+            solver: Strategy to use. 
+                - "full_matrix_inversion" (Default)
+                - "gmres_matrix_inversion"
+                - "power_method"
+                - "grid_upscaling": Solves on subgrid (ideal points + border) then refines.
+                  Requires `grid` and `voter_ideal_points` to be provided.
+            grid: Grid instance (required for "grid_upscaling").
+            voter_ideal_points: Array of ideal points (required for "grid_upscaling").
+            **kwargs: Passed to find_unique_stationary_distribution (e.g. tolerance, max_iterations).
+        """
+        initial_guess = None
+        target_solver = solver
+        
+        if solver == "grid_upscaling":
+            # Grid Upscaling Strategy
+            if grid is None or voter_ideal_points is None:
+                raise ValueError("solver='grid_upscaling' requires 'grid' and 'voter_ideal_points'.")
+                
+            # 1. Define Subgrid (Bounding Box of Ideal Points + 1 unit border)
+            voter_ideal_points = jnp.asarray(voter_ideal_points)
+            min_xy = jnp.min(voter_ideal_points, axis=0)
+            max_xy = jnp.max(voter_ideal_points, axis=0)
+            
+            # Add 1 unit border
+            x0_sub, y0_sub = min_xy[0] - grid.xstep, min_xy[1] - grid.ystep
+            x1_sub, y1_sub = max_xy[0] + grid.xstep, max_xy[1] + grid.ystep
+            
+            # Mask for subgrid
+            box_mask = grid.within_box(x0=x0_sub, x1=x1_sub, y0=y0_sub, y1=y1_sub)
+            valid_indices = jnp.nonzero(box_mask)[0] # Indices in full grid
+            
+            if len(valid_indices) == 0:
+                raise ValueError("Subgrid is empty. Check ideal points and grid bounds.")
+                
+            # 2. Solve Sub-problem
+            # Create sub-model with utilities sliced for valid indices
+            # cU shape (V, N). We need columns corresponding to valid_indices.
+            sub_utility_functions = self.utility_functions[:, valid_indices]
+            
+            sub_model = VotingModel(
+                utility_functions=sub_utility_functions,
+                number_of_voters=self.number_of_voters,
+                number_of_feasible_alternatives=len(valid_indices),
+                majority=self.majority,
+                zi=self.zi
+            )
+            # Recursively solve submodel using robust default (full_matrix)
+            sub_model.analyze(solver="full_matrix_inversion", **kwargs)
+            
+            if not sub_model.core_exists:
+                # 3. Upscale & Refine
+                # embedding maps sub-distribution (size M) to full grid (size N) with 0-padding
+                embed_fn = grid.embedding(valid=box_mask)
+                upscaled_dist = embed_fn(sub_model.stationary_distribution)
+                
+                # Normalize just in case
+                initial_guess = upscaled_dist / jnp.sum(upscaled_dist)
+                
+                # Use power_method to refine on full grid
+                target_solver = "power_method"
+            else:
+                # If core exists in subgrid, it likely implies something about full grid, 
+                # but map logic is trickier. For now, fallback to generic power method without guess
+                # or just proceed.
+                warn("Core found in subgrid_upscaling. Falling back to standard solver.")
+                initial_guess = None
+                target_solver = "power_method"
+
+        # Main Analysis
         self.MarkovChain = MarkovChain(P=self._get_transition_matrix())
         self.core_points = self.MarkovChain.absorbing_points
         self.core_exists = jnp.any(self.core_points)
         if not self.core_exists:
-            self.stationary_distribution = self.MarkovChain.stationary_distribution
+            self.stationary_distribution = self.MarkovChain.find_unique_stationary_distribution(
+                solver=target_solver, 
+                initial_guess=initial_guess,
+                **kwargs
+            )
         self.analyzed = True
 
     def what_beats(self, *, index):

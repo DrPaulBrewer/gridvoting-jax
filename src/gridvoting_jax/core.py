@@ -6,8 +6,14 @@ import chex
 from warnings import warn
 
 # Default tolerances
-# 5e-5 for float32 (default), 1e-10 for float64 (after calling enable_float64())
-TOLERANCE = 5e-5
+# Check for Float64 override via environment
+# This allows JAX to start in float64 mode and sets tighter tolerances
+if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64") in ["1", "True", "true"]:
+    jax.config.update("jax_enable_x64", True)
+    TOLERANCE = 1e-10
+    warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, TOLERANCE set to 1e-10")
+else:
+    TOLERANCE = 5e-5
 
 # Epsilon for geometric tests (e.g. point in triangle) to handle numerical noise
 # Previously hardcoded as 1e-10 in _is_in_triangle_single, Grid.extremes
@@ -35,7 +41,12 @@ def enable_float64():
         >>> gv.enable_float64()
         >>> # All subsequent JAX operations will use float64
     """
+    global TOLERANCE
     jax.config.update("jax_enable_x64", True)
+    TOLERANCE = 1e-10
+    # Note: If TOLERANCE was imported by other modules using 'from ...', 
+    # they will hold the old value. Use 'import core; core.TOLERANCE' or set env var.
+    warn("enable_float64 called: JAX float64 enabled, TOLERANCE set to 1e-10")
 
 # Device detection with GV_FORCE_CPU override
 use_accelerator = False

@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
-## [0.4.1] - 2025-12-20
+## [0.5.0] - 2025-12-20
+
+### Added
+- **Alternative Solvers**: Introduced `gmres_matrix_inversion` (memory-efficient), `power_method` (iterative), and `grid_upscaling` (multi-grid) solvers for `MarkovChain`.
+- **Large Grid Support**: Solved OOM issues on large grids (e.g., g=80) using GMRES and batched processing.
+- **Benchmark Expansion**: Updated `osf_comparison.py` to support all solvers, floating point precision reporting, and auto-skipping of OOM-prone configurations.
+- **Float64 Auto-detection**: `core.py` now respects `GV_ENABLE_FLOAT64` or `JAX_ENABLE_X64` environment variables.
+
+### Changed
+- `MarkovChain.find_unique_stationary_distribution` now accepts `solver` and `initial_guess`.
+- `VotingModel.analyze` now accepts `solver` and `grid` arguments. - 2025-12-20
 
 ### Fixed
 - **Memory Optimization**: Implemented batched execution for transition matrix calculation. Resolves Out-of-Memory (OOM) errors for large grids (e.g., g>=60). Memory complexity reduced from O(V*N^2) to O(V*N*B), enabling simulations with g=80+ on standard hardware.

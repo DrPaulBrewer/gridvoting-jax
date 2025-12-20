@@ -207,7 +207,7 @@ def format_comparison_report(
     return "\n".join(report)
 
 
-def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None) -> Dict:
+def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kwargs) -> Dict:
     """
     Run complete OSF comparison report for specified configurations.
     
@@ -236,10 +236,11 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None) -> D
     # Import here to avoid circular dependency
     try:
         import gridvoting_jax as gv
+        import jax
         from ..datasets import OSF_CACHE_DIR
     except ImportError:
         return {
-            'error': 'gridvoting_jax not available',
+            'error': 'gridvoting_jax or jax not available',
             'results': [],
             # Need to get cache dir string from datasets if possible, else "unknown"
             'cache_dir': "unknown"
@@ -251,45 +252,57 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None) -> D
     # Determine which configs to test
     if configs is None:
         configs = ALL_CONFIGS
+
+    # Determine solvers
+    solvers = kwargs.get('solvers', ["full_matrix_inversion", "gmres_matrix_inversion", "power_method", "grid_upscaling"])
     
-    print("="*70)
-    print("OSF Stationary Distribution Comparison Report")
-    print("Using L1 norm as primary comparison metric")
-    print("="*70)
+    # Check precision
+    try:
+        # Try new JAX config API then fallback
+        is_float64 = jax.config.q("jax_enable_x64") if hasattr(jax.config, "q") else jax.config.jax_enable_x64
+        # Or even simpler:
+        import jax.numpy as jnp
+        is_float64 = (jnp.zeros(1).dtype == jnp.float64)
+    except:
+        is_float64 = False
+        
+    precision = "Float64" if is_float64 else "Float32"
+
+    print("="*80)
+    print(f"OSF Stationary Distribution Comparison Report")
+    print(f"Precision: {precision}")
+    print(f"Solvers: {', '.join(solvers)}")
+    print("="*80)
     print(f"\nCache directory: {cache_dir}")
-    print(f"Testing {len(configs)} configurations\n")
+    print(f"Testing {len(configs)} configurations x {len(solvers)} solvers\n")
     
     results = []
     
     for g, zi in configs:
         mode = 'ZI' if zi else 'MI'
-        print(f"\n{'='*70}")
-        print(f"Configuration: g={g}, mode={mode}")
-        print(f"{'='*70}")
         
-        # Load OSF reference
+        # Load OSF reference once per config
+        print(f"\n{'='*80}")
+        print(f"Configuration: g={g}, mode={mode}")
+        print(f"{'='*80}")
         print(f"Loading OSF reference data...")
         osf_df = load_osf_distribution(g=g, zi=zi)
         
         if osf_df is None:
             print(f"  ✗ OSF data not available for g={g}, {mode}")
-            results.append({
-                'g': g,
-                'zi': zi,
-                'mode': mode,
-                'error': 'OSF data not available'
-            })
             continue
-        
-        print(f"  ✓ Loaded {len(osf_df)} grid points")
-        
-        # Run benchmark
-        print(f"Running benchmark...")
-        try:
-            start_time = time.time()
             
-            # Setup
-            grid = gv.Grid(x0=-g, x1=g, y0=-g, y1=g)
+        print(f"  ✓ Loaded {len(osf_df)} grid points")
+
+        # Setup Model (Once per config)
+        try:
+             # Setup
+            grid = gv.Grid(x0=-g, x1=g, y0=-g, y1=g) # Note: xstep defaults so it matches OSF 2*g implied resolution?
+            # Wait, in benchmark_solvers_vs_osf we manually set step. 
+            # OSF uses integer steps usually on [-g, g]? No, let's check Grid default.
+            # Grid default step is 1.0. 
+            # g=20 -> -20 to 20. 41 points. Correct.
+            
             number_of_alternatives = (2*g+1)**2
             voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
             
@@ -305,73 +318,111 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None) -> D
                 number_of_voters=3,
                 number_of_feasible_alternatives=number_of_alternatives
             )
-            
-            vm.analyze()
-            runtime = time.time() - start_time
-            
-            print(f"  ✓ Completed in {runtime:.2f} seconds")
-            
-            # Compare
-            print(f"Comparing with OSF data (L1 norm)...")
-            metrics = compare_distributions(osf_df, vm.stationary_distribution)
-            
-            # Print report
-            print(f"\n{format_comparison_report(g, zi, metrics, runtime)}")
-            
-            # Store results
-            results.append({
-                'g': g,
-                'zi': zi,
-                'mode': mode,
-                'runtime': runtime,
-                'l1_norm': metrics['l1_norm'],
-                'l2_norm': metrics['l2_norm'],
-                'max_abs_diff': metrics['max_abs_diff'],
-                'correlation': metrics['correlation'],
-                'osf_sum': metrics['osf_sum'],
-                'benchmark_sum': metrics['benchmark_sum'],
-            })
-            
         except Exception as e:
-            print(f"  ✗ Error running benchmark: {e}")
-            results.append({
-                'g': g,
-                'zi': zi,
-                'mode': mode,
-                'error': str(e)
-            })
-    
+            print(f"  ✗ Error setting up model: {e}")
+            continue
+
+        for solver in solvers:
+            # Skip full_matrix_inversion for g>=60 to prevent OOM (requires >16GB usually)
+            if solver == "full_matrix_inversion" and g >= 60:
+                print(f"\n  Skipping {solver} for g={g} (OOM risk)")
+                results.append({
+                    'g': g,
+                    'zi': zi,
+                    'mode': mode,
+                    'solver': solver,
+                    'precision': precision,
+                    'error': 'Skipped (OOM risk for dense solver)'
+                })
+                continue
+
+            print(f"\n  Running {solver}...")
+            try:
+                start_time = time.time()
+                
+                # Pass extra args for grid_upscaling
+                vm.analyze(
+                    solver=solver,
+                    grid=grid,
+                    voter_ideal_points=voter_ideal_points,
+                    tolerance=1e-6,
+                    max_iterations=5000
+                )
+                runtime = time.time() - start_time
+                
+                print(f"    ✓ Completed in {runtime:.2f} seconds")
+                
+                # Compare
+                metrics = compare_distributions(osf_df, vm.stationary_distribution)
+                
+                # Print concise status here
+                status = "✓ Excellent" if metrics['l1_norm'] < 1e-6 else \
+                         "✓ Good" if metrics['l1_norm'] < 1e-4 else \
+                         "⚠ Acceptable" if metrics['l1_norm'] < 1e-2 else "✗ Poor"
+                print(f"    L1 Norm: {metrics['l1_norm']:.2e} ({status})")
+                
+                # Store results
+                results.append({
+                    'g': g,
+                    'zi': zi,
+                    'mode': mode,
+                    'solver': solver,
+                    'precision': precision,
+                    'runtime': runtime,
+                    'l1_norm': metrics['l1_norm'],
+                    'l2_norm': metrics['l2_norm'],
+                    'max_abs_diff': metrics['max_abs_diff'],
+                    'correlation': metrics['correlation'],
+                    'osf_sum': metrics['osf_sum'],
+                    'benchmark_sum': metrics['benchmark_sum'],
+                })
+                
+                # Reset analyzed state? VotingModel caches.
+                # Actually, vm.analyze() re-runs if called again? 
+                # Currently: self.analyzed = True. It checks?
+                # Let's check VotingModel.analyze source.
+                # It does "if self.core_exists ... self.stationary_distribution = ..."
+                # It does NOT check `if self.analyzed: return`. It overwrites.
+                # BUT `self.MarkovChain` is created inside analyze.
+                # So calling analyze again re-runs. Good.
+                
+            except Exception as e:
+                print(f"    ✗ Error: {e}")
+                results.append({
+                    'g': g,
+                    'zi': zi,
+                    'mode': mode,
+                    'solver': solver,
+                    'precision': precision,
+                    'error': str(e)
+                })
+
     # Print summary
-    print(f"\n{'='*70}")
+    print(f"\n{'='*80}")
     print("SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'='*80}")
     
     successful = [r for r in results if 'l1_norm' in r]
     
     if successful:
-        print(f"\n{'Config':<15} {'Runtime':<12} {'L1 Norm':<15} {'Status':<15}")
-        print(f"{'-'*70}")
+        # Sort by g, then mode, then solver
+        successful.sort(key=lambda x: (x['g'], x['mode'], x['solver']))
+        
+        print(f"\n{'Config':<15} {'Solver':<25} {'Time':<10} {'L1 Norm':<12} {'Status':<15}")
+        print(f"{'-'*80}")
         
         for r in successful:
             config = f"g={r['g']}, {r['mode']}"
             status = "✓ Excellent" if r['l1_norm'] < 1e-6 else \
                      "✓ Good" if r['l1_norm'] < 1e-4 else \
                      "⚠ Acceptable" if r['l1_norm'] < 1e-2 else "✗ Poor"
-            print(f"{config:<15} {r['runtime']:<12.2f} {r['l1_norm']:<15.2e} {status:<15}")
+            print(f"{config:<15} {r['solver']:<25} {r['runtime']:<10.2f} {r['l1_norm']:<12.2e} {status:<15}")
         
-        # Overall statistics
-        l1_norms = [r['l1_norm'] for r in successful]
-        print(f"\nOverall L1 norm statistics:")
-        print(f"  Mean:   {np.mean(l1_norms):.2e}")
-        print(f"  Median: {np.median(l1_norms):.2e}")
-        print(f"  Max:    {np.max(l1_norms):.2e}")
-        print(f"  Min:    {np.min(l1_norms):.2e}")
-    
     failed = [r for r in results if 'error' in r]
     if failed:
-        print(f"\nFailed configurations: {len(failed)}")
+        print(f"\nFailed configs: {len(failed)}")
         for r in failed:
-            print(f"  g={r['g']}, {r['mode']}: {r['error']}")
+            print(f"  g={r['g']}, {r['mode']}, {r['solver']}: {r['error']}")
     
     return {
         'results': results,
@@ -379,23 +430,19 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None) -> D
         'summary': {
             'total': len(results),
             'successful': len(successful),
-            'failed': len(failed),
-            'mean_l1': np.mean([r['l1_norm'] for r in successful]) if successful else None,
+            'failed': len(failed)
         }
     }
 
 
 # Example usage
 if __name__ == '__main__':
+    # Check for CLI args or Env vars?
+    # For now, just run full suite if executed directly
     print("Available OSF distributions:")
     for (g, zi), filename in get_available_distributions().items():
         mode = 'ZI' if zi else 'MI'
         print(f"  g={g}, {mode}: {filename}")
     
-    print("\nLoading g=20, MI distribution:")
-    df = load_osf_distribution(g=20, zi=False)
-    if df is not None:
-        print(f"  Loaded {len(df)} rows")
-        print(f"  Columns: {list(df.columns)}")
-        probs = 10 ** df['log10prob']
-        print(f"  Probability sum: {probs.sum():.10f}")
+    print("\nRunning full comparison report...")
+    run_comparison_report()
