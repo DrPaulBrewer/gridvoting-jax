@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-12-19
+### Fixed
+- Patched GitHub Actions workflow for Docker publishing to support manual triggers and fix casing issues.
+
 ## [0.3.0] - 2025-12-19
 
 ### Added
