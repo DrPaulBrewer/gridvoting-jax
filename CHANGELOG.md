@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-12-19
+
+### Added
+- Dockerfiles for CPU (`Dockerfiles/Dockerfile.cpu`) and GPU (`Dockerfiles/Dockerfile.gpu`) images with baked-in OSF benchmark data.
+- GitHub Actions workflow (`.github/workflows/docker-publish.yml`) to auto-publish images to GHCR on release.
+- `run_osf_benchmark` entrypoint scripts in Docker images for easy execution.
+- Configurable OSF cache location via `GV_OSF_CACHE_DIR` environment variable.
+- Replaced `test_docker_osf.sh` with an optimized version that uses pre-built GHCR images instead of building locally, significantly reducing runtime.
+
+### Changed
+
 ## [0.2.0] - 2025-12-19
 
 ### Added
