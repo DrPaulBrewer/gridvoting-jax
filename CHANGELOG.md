@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.5.1] - 2025-12-20
+
+### Fixed
+- **Test Failure**: Fixed `test_solver_invalid_arg` in `test_solvers.py` which failed to raise `ValueError` because the test setup created an accidental Core. Updated test to use a Condorcet Cycle (no Core).
+
 ## [0.5.0] - 2025-12-20
 
 ### Added

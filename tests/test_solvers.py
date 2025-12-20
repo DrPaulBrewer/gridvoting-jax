@@ -86,8 +86,17 @@ def test_solvers_consistency():
     assert l1_upscale < 1e-4
 
 def test_solver_invalid_arg():
-    grid = Grid(x0=-1.0, x1=1.0, xstep=1.0, y0=-1.0, y1=1.0, ystep=1.0)
-    utils = jnp.zeros((3, len(grid.points)))
+    grid = Grid(x0=-1.0, x1=1.0, xstep=0.2, y0=-1.0, y1=1.0, ystep=0.2)
+    
+    # Use triangular configuration to ensure NO Core (cycle)
+    # This forces analyze() to call the solver
+    voter_ideal_points = jnp.array([
+        [0.0, 0.8],
+        [-0.7, -0.4],
+        [0.7, -0.4]
+    ])
+    utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
+    
     model = VotingModel(
         utility_functions=utils,
         number_of_voters=3,
@@ -99,7 +108,9 @@ def test_solver_invalid_arg():
         model.analyze(solver="fake_solver")
 
 def test_upscaling_missing_args():
+    # Setup standard grid (geometry not strictly critical here as check is early, but good practice)
     grid = Grid(x0=-1.0, x1=1.0, xstep=1.0, y0=-1.0, y1=1.0, ystep=1.0)
+    # Using zeros is fine here because the arg check happens BEFORE core check
     utils = jnp.zeros((3, len(grid.points)))
     model = VotingModel(
         utility_functions=utils,
