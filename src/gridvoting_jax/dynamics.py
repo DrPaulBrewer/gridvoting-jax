@@ -78,7 +78,7 @@ class MarkovChain:
         return self.unit_eigenvector
 
 
-    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, **kwargs):
+    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=10.0, **kwargs):
         """
         Finds the stationary distribution for a Markov Chain.
         
@@ -92,6 +92,7 @@ class MarkovChain:
                   If initial_guess is provided, uses Single-Start Refinement.
             initial_guess: Optional starting distribution for "power_method".
             max_iterations: Maximum iterations for iterative solvers.
+            timeout: Maximum time in seconds for iterative solvers (default: 10.0).
         """
         if tolerance is None:
             tolerance = TOLERANCE
@@ -100,13 +101,46 @@ class MarkovChain:
             self.stationary_distribution = None
             return None
             
+        # Memory Check
+        try:
+            from .core import get_available_memory_bytes
+            available_mem = get_available_memory_bytes()
+            
+            if available_mem is not None:
+                n = self.P.shape[0]
+                # Determine element size (float32=4, float64=8)
+                item_size = self.P.dtype.itemsize
+                
+                estimated_needed = 0
+                if solver == "full_matrix_inversion":
+                    # P(N^2) + Q(N^2) + Result(N^2) + Overhead
+                    estimated_needed = 3 * (n**2) * item_size
+                elif solver == "gmres_matrix_inversion":
+                     # Matrix-vector product based (often doesn't materialize full matrix if sparse, 
+                     # but here explicit P is used). 
+                     # P(N^2) + Vectors(k*N)
+                    estimated_needed = (n**2) * item_size + (max_iterations * n * item_size)
+                
+                # Safety margin (allow using up to 90% of available)
+                if estimated_needed > available_mem * 0.9:
+                    msg = (f"Estimated memory required ({estimated_needed / 1e9:.2f} GB) "
+                           f"exceeds 90% of available memory ({available_mem / 1e9:.2f} GB) "
+                           f"for solver '{solver}'.")
+                    raise MemoryError(msg)
+        except ImportError:
+            pass # Core might not be fully initialized or circular import
+        except MemoryError:
+            raise # Re-raise actual memory errors
+        except Exception as e:
+            warn(f"Memory check failed: {e}")
+
         # Dispatch to solver
         if solver == "full_matrix_inversion":
             self.stationary_distribution = self._solve_full_matrix_inversion(tolerance)
         elif solver == "gmres_matrix_inversion":
             self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations)
         elif solver == "power_method":
-            self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess)
+            self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess, timeout)
         else:
             raise ValueError(f"Unknown solver: {solver}")
 
@@ -167,15 +201,24 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None):
+    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, timeout=10.0):
         """
         Power method for finding stationary distribution.
         
         Modes:
         1. Single-Start Refinement: Uses initial_guess.
         2. Dual-Start Entropy: Uses Max/Min entropy rows as starts.
+        
+        Args:
+            timeout: Max execution time in seconds.
         """
+        import time
         n = self.P.shape[0]
+        start_time = time.time()
+        
+        # Adaptive batching for time checks
+        check_interval = 10
+        next_check = check_interval
         
         if initial_guess is not None:
             # Mode 1: Refine existing guess
@@ -186,6 +229,17 @@ class MarkovChain:
                 if diff < tolerance:
                     return v_next
                 v = v_next
+                
+                # Check timeout
+                if i >= next_check:
+                    if (time.time() - start_time) > timeout:
+                        warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
+                        return v
+                    # Adaptive: Increase interval if we are safe
+                    if check_interval < 1000:
+                        check_interval *= 2
+                    next_check = i + check_interval
+                    
             warn(f"Power method (Single-Start) did not converge in {max_iterations} iterations. Final diff: {diff}")
             return v
             
@@ -215,6 +269,16 @@ class MarkovChain:
                 diff = jnp.linalg.norm(v1 - v2, ord=1)
                 if diff < tolerance:
                     return (v1 + v2) / 2.0
+                
+                # Check timeout
+                if i >= next_check:
+                    if (time.time() - start_time) > timeout:
+                        warn(f"Power method timed out after {timeout}s (iter {i}). Diff between starts: {diff}")
+                        return (v1 + v2) / 2.0
+                    # Adaptive: Increase interval
+                    if check_interval < 1000:
+                        check_interval *= 2
+                    next_check = i + check_interval
             
             warn(f"Power method (Dual-Start) did not converge by {max_iterations}. Final diff between chains: {diff}")
             return (v1 + v2) / 2.0

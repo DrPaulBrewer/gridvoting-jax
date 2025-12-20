@@ -323,18 +323,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
             continue
 
         for solver in solvers:
-            # Skip full_matrix_inversion for g>=60 to prevent OOM (requires >16GB usually)
-            if solver == "full_matrix_inversion" and g >= 60:
-                print(f"\n  Skipping {solver} for g={g} (OOM risk)")
-                results.append({
-                    'g': g,
-                    'zi': zi,
-                    'mode': mode,
-                    'solver': solver,
-                    'precision': precision,
-                    'error': 'Skipped (OOM risk for dense solver)'
-                })
-                continue
+
 
             print(f"\n  Running {solver}...")
             try:

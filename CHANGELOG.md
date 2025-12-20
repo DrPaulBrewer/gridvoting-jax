@@ -55,7 +55,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Refactored to use new `evolve()` method for cleaner code.
   - Fixed indentation error in `evolve()` method.
 
-## [0.3.1] - 2025-12-19
+## [0.6.0] - 2025-12-20
+### Added
+- **Refactored Solvers**: Removed `g>=60` limit for `full_matrix_inversion`.
+- **Memory Safeguards**: Added `get_available_memory_bytes` to check system memory (Linux/Mac/JAX) and prevent OOM errors before they crash the kernel.
+- **Adaptive Timeout**: Added `timeout` parameter (default 10s) to `power_method` solver with adaptive checking.
+
+## [0.5.1] - 2025-12-19
 ### Fixed
 - Patched GitHub Actions workflow for Docker publishing to support manual triggers and fix casing issues.
 

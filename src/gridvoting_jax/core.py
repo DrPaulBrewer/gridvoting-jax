@@ -129,3 +129,54 @@ def _move_neg_prob_to_max(pvector):
     fixed_pvector = jnp.where(is_max, fixed_pvector + mass_per_index, fixed_pvector)
     
     return fixed_pvector
+
+def get_available_memory_bytes():
+    """ Estimate available memory in bytes on the active device.
+    
+    Returns:
+        int or None: Available memory in bytes, or None if undetermined.
+    """
+    global use_accelerator
+    
+    # 1. GPU/TPU Memory via JAX
+    if use_accelerator:
+        try:
+            # Stats for the default device
+            stats = jax.devices()[0].memory_stats()
+            if 'bytes_limit' in stats and 'bytes_in_use' in stats:
+                return stats['bytes_limit'] - stats['bytes_in_use']
+        except Exception:
+            pass # Fallback to system memory if device stats fail
+
+    # 2. System Memory (CPU)
+    
+    # Try psutil (most robust cross-platform)
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        pass
+
+    # Try /proc/meminfo (Linux)
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            mem_info = {}
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    key = parts[0].rstrip(':')
+                    value = int(parts[1]) * 1024 # kB to bytes
+                    mem_info[key] = value
+            
+            # Available is ideal, falling back to free + buffers + cached
+            if 'MemAvailable' in mem_info:
+                return mem_info['MemAvailable']
+            elif 'MemFree' in mem_info:
+                return mem_info['MemFree'] + mem_info.get('Buffers', 0) + mem_info.get('Cached', 0)
+    except Exception:
+        pass
+
+    # Note: macOS 'vm_stat' parsing is complex without external tools, 
+    # skipping here to avoid fragility. psutil is recommended for Mac.
+    
+    return None
