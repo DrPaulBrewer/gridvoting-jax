@@ -1,0 +1,61 @@
+name: Docker Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-cpu:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CPU image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfiles/Dockerfile.cpu
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-cpu:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-cpu:${{ github.ref_name }}
+
+  build-and-push-gpu:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push GPU image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfiles/Dockerfile.gpu
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-all:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-all:${{ github.ref_name }}

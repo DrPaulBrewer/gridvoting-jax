@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional, List, Any
 
 
-# Cache directory in /tmp
-OSF_CACHE_DIR = Path('/tmp/gridvoting_osf_cache')
+import os
+
+# Cache directory
+OSF_CACHE_DIR = Path(os.environ.get('GV_OSF_CACHE_DIR', '/tmp/gridvoting_osf_cache'))
 OSF_FILE_ID = 'kms9z'  # Zip file with A100 GPU replication data
 
 # All available configurations

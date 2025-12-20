@@ -2,7 +2,7 @@
 
 **A JAX-powered derivative of the original [gridvoting](https://github.com/drpaulbrewer/gridvoting) project**
 
-[![PyPI version](https://badge.fury.io/py/gridvoting-jax.svg)](https://badge.fury.io/py/gridvoting-jax)
+[![PyPI version](https://img.shields.io/pypi/v/gridvoting-jax.svg)](https://pypi.org/project/gridvoting-jax/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -78,6 +78,57 @@ pip install gridvoting-jax
 **CPU-Only Mode**: Set environment variable `GV_FORCE_CPU=1` to force CPU-only execution:
 ```bash
 GV_FORCE_CPU=1 python your_script.py
+```
+
+### Docker Usage
+
+The project includes `Dockerfile`s for building CPU and GPU images.
+
+**Building Docker Images:**
+
+```bash
+# Build CPU image
+docker build -f docker/Dockerfile.cpu -t gridvoting-jax-cpu .
+
+# Build GPU image
+docker build -f docker/Dockerfile.gpu -t gridvoting-jax-gpu .
+```
+
+**Testing Docker Images:**
+
+A `test_docker.sh` script is provided to run a quick test inside the Docker containers.
+To execute:
+```bash
+./test_docker.sh
+```
+
+### Run OSF Benchmarks
+To run the full suite of OSF comparison benchmarks using the pre-built Docker images (GHCR):
+```bash
+./test_docker_osf.sh
+```
+This script automatically detects GPU availability and runs both Float32 and Float64 benchmarks.
+
+### Using Pre-built Docker Images
+
+The project provides pre-built Docker images with all dependencies and OSF benchmark data included.
+
+**CPU Image:**
+```bash
+# Run python shell
+docker run --rm -it ghcr.io/[user]/gridvoting-jax-cpu python3
+
+# Run OSF Benchmark
+docker run --rm ghcr.io/[user]/gridvoting-jax-cpu run_osf_benchmark
+```
+
+**GPU Image:**
+```bash
+# Run python shell with GPU access
+docker run --rm --gpus all -it ghcr.io/[user]/gridvoting-jax-all python3
+
+# Run OSF Benchmark
+docker run --rm --gpus all ghcr.io/[user]/gridvoting-jax-all run_osf_benchmark
 ```
 
 **Float64 Precision**: By default, JAX uses 32-bit floats for better GPU performance. To enable 64-bit precision for higher accuracy:
