@@ -17,7 +17,7 @@ import jax.numpy as jnp
 ])
 def test_replicate_spatial_voting_analysis(params, correct):
     import gridvoting_jax as gv
-    np = gv.np
+    import numpy as np
     g = params['g']
     zi = params['zi']
     majority = 2
@@ -73,7 +73,7 @@ def test_replicate_spatial_voting_analysis(params, correct):
 ])
 def test_replicate_core_Plott_theorem_example(params,correct):
     import gridvoting_jax as gv
-    np = gv.np
+    import numpy as np
     g = params['g']
     zi = params['zi']
     grid = gv.Grid(x0=-g,x1=g,y0=-g,y1=g)

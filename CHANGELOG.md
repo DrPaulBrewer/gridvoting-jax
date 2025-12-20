@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-12-20
+
+### Added
+- **Modularization**: Codebase split into `core`, `spatial`, `dynamics`, and `datasets` submodules.
+- **Datasets**: New `datasets` module for managing data downloads.
+- **Configuration**: Centralized configuration and tolerances in `core`.
+
+### Changed
+- **Facade**: `__init__.py` now acts as a facade, exporting the public API from submodules.
+- **Internal**: `_move_neg_prob_to_max` is no longer exported in the public API.
+
 ## [0.3.3] - 2025-12-20
 
 ### Changed - BREAKING CHANGE

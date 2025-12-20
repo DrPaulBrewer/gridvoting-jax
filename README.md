@@ -207,154 +207,71 @@ At each t, there is a majority-rule vote between alternative `f[t]` and a challe
 
 ---
 
-## API Documentation
+## API Documentation (v0.4.0+)
 
-### class Grid
+The package is organized into four main submodules, but the public API is exposed at the top level for convenience.
 
-#### Constructor
-
-```python
-gridvoting_jax.Grid(x0, x1, xstep=1, y0, y1, ystep=1)
-```
-
-Constructs a 2D grid in x and y dimensions.
-
-**Parameters:**
-- `x0`: leftmost grid x-coordinate
-- `x1`: rightmost grid x-coordinate  
-- `xstep=1`: optional, grid spacing in x dimension
-- `y0`: lowest grid y-coordinate
-- `y1`: highest grid y-coordinate
-- `ystep=1`: optional, grid spacing in y dimension
-
-**Example:**
 ```python
 import gridvoting_jax as gv
-grid = gv.Grid(x0=-5, x1=5, y0=-7, y1=7)
 ```
 
-**Instance Properties:**
-- `grid.x0, grid.x1, grid.xstep, grid.y0, grid.y1, grid.ystep` - constructor parameters
-- `grid.points` - 2D numpy array of grid points in typewriter order `[[x0,y1],[x0+1,y1],...,[x1,y0]]`
-- `grid.x` - 1D numpy array of x-coordinates in typewriter order
-- `grid.y` - 1D numpy array of y-coordinates in typewriter order
-- `grid.gshape` - natural shape `(number_of_rows, number_of_cols)`
-- `grid.extent` - tuple `(x0, x1, y0, y1)` for matplotlib
-- `grid.len` - number of points on the grid
-- `grid.boundary` - 1D boolean array indicating boundary points
+### Core Configuration (`gv.core`)
 
-#### Methods
+Centralized configuration and constants.
 
-**`grid.spatial_utilities(voter_ideal_points, metric='sqeuclidean', scale=-1)`**
+- **`gv.enable_float64()`**: Enable 64-bit floating point precision globally for JAX. Call this before any other operations if high precision is required.
+- **`gv.TOLERANCE`**: Default tolerance for floating-point comparisons (5e-5 for float32).
 
-Returns utility function values for each voter at each grid point as a function of distance from an ideal point.
+### Spatial Components (`gv.spatial`)
 
-- `voter_ideal_points`: array of 2D coordinates `[[xv1,yv1],[xv2,yv2],...]`
-- `metric`: distance metric (default `'sqeuclidean'`). See [scipy.spatial.distance.cdist](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html)
-
-**`grid.within_box(x0=None, x1=None, y0=None, y1=None)`**
-
-Returns 1D boolean array for testing whether grid points are in the defined box.
-
-**`grid.within_disk(x0, y0, r, metric='euclidean')`**
-
-Returns 1D boolean array for testing whether grid points are in the defined disk.
-
-**`grid.within_triangle(points)`**
-
-Returns 1D boolean array for testing whether grid points are in the defined triangle.
-- `points`: shape `(3,2)` array of triangle vertices
-
-**`grid.embedding(valid)`**
-
-Returns an embedding function `efunc(z, fill=0.0)` that maps 1D arrays of size `valid.sum()` to arrays of size `grid.len`.
-
-- `valid`: boolean array of length `grid.len` selecting valid grid points
-- `fill`: value for invalid indices (default 0.0, use `np.nan` for plotting)
-
-**`grid.extremes(z, valid=None)`**
-
-Returns tuple `(min_z, points_min, max_z, points_max)`.
-- `z`: 1D array of values
-- `valid`: optional boolean mask. If provided, `min_z`/`max_z` are calculated over all `z`, but `points_min`/`points_max` return only points where `valid` is True.
-
-**`grid.plot(z, title=None, log=True, points=None, zoom=False, ...)`**
-
-Creates a contour plot of values z defined on the grid.
-
----
-
-### class VotingModel
-
-#### Constructor
+#### `class Grid`
 
 ```python
-gridvoting_jax.VotingModel(
-    utility_functions,
-    number_of_voters,
-    number_of_feasible_alternatives,
-    majority,
-    zi
-)
+grid = gv.Grid(x0, x1, xstep=1, y0, y1, ystep=1)
 ```
 
-**Parameters:**
-- `utility_functions`: 2D array of shape `(number_of_voters, number_of_feasible_alternatives)`
-- `number_of_voters`: integer
-- `number_of_feasible_alternatives`: integer
-- `majority`: integer, number of votes needed to win
-- `zi`: boolean, True for Zero Intelligence, False for Minimal Intelligence
+Constructs a 2D grid.
 
-#### Methods
+**Properties:**
+- `grid.points`: JAX array of shape `(N, 2)` containing `[x, y]` coordinates.
+- `grid.x`, `grid.y`: 1D JAX arrays of x and y coordinates.
+- `grid.boundary`: 1D boolean mask for boundary points.
 
-**`analyze()`**
+**Methods:**
+- **`spatial_utilities(voter_ideal_points, metric='sqeuclidean')`**: Euclidean distance based utility calculation.
+- **`within_box/disk/triangle(...)`**: Geometric query methods returning boolean masks.
+- **`extremes(z, valid=None)`**: Find min/max values and their locations.
+- **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib.
 
-Computes the transition matrix and stationary distribution.
+### Dynamics & Voting (`gv.dynamics`)
 
-**`what_beats(index)`**
-
-Returns array indicating which alternatives beat the alternative at `index`.
-
-**`what_is_beaten_by(index)`**
-
-Returns array indicating which alternatives are beaten by the alternative at `index`.
-
-**`summarize_in_context(grid, valid=None)`**
-
-Calculate summary statistics for stationary distribution using grid coordinates.
-
-**`plots(grid, voter_ideal_points, ...)`**
-
-Creates visualization plots of the stationary distribution.
-
----
-
-### class MarkovChain
-
-#### Constructor
+#### `class VotingModel`
 
 ```python
-gridvoting_jax.MarkovChain(P, computeNow=True, tolerance=5e-5)
+vm = gv.VotingModel(utility_functions, number_of_voters, number_of_feasible_alternatives, majority, zi)
 ```
 
-**Parameters:**
-- `P`: valid transition matrix (square JAX/numpy array whose rows sum to 1.0)
-- `computeNow=True`: immediately compute Markov Chain properties
-- `tolerance=5e-5`: tolerance for checking convergence (appropriate for float32)
+**Methods:**
+- **`analyze()`**: Computes the transition matrix and stationary distribution.
+- **`what_beats(index)`**: Returns alternatives that beat the given index.
+- **`summarize_in_context(grid)`**: Calculates entropy, mean, and covariance of the stationary distribution.
 
-#### Methods
+#### `class MarkovChain`
 
-**`solve_for_unit_eigenvector()`**
+```python
+mc = gv.MarkovChain(P, computeNow=True, tolerance=5e-5)
+```
 
-Finds the stationary distribution by solving for the unit eigenvector.
+Handles the underlying Markov process.
 
-**`find_unique_stationary_distribution(tolerance=5e-5)`**
+**Methods:**
+- **`find_unique_stationary_distribution()`**: Solves for the stationary distribution (πP = π).
 
-Finds the unique stationary distribution using the algebraic method.
+### Datasets (`gv.datasets`)
 
-**`diagnostic_metrics()`**
+*New in v0.4.0*
 
-Returns dictionary of diagnostic metrics for the Markov chain.
+- **`gv.datasets.fetch_osf_spatial_voting_2022_a100()`**: Downloads and caches the reference dataset from the OSF repository. Returns the path to the cache directory.
 
 ---
 

@@ -4,7 +4,7 @@ import chex
 def test_grid_init():
     import gridvoting_jax
     import jax.numpy as jnp
-    np = gridvoting_jax.np
+    import numpy as np
     grid = gridvoting_jax.Grid(x0=-5,x1=5,y0=-7,y1=7)
     assert grid.x0 == -5
     assert grid.x1 == 5
@@ -80,7 +80,7 @@ def test_grid_init():
 def test_grid_as_xy_vectors():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    np = gv.np
+    import numpy as np
     grid = gv.Grid(x0=-3,x1=3,y0=-5,y1=5)
     correct_vectors = jnp.array([
        [-3,  5],
@@ -180,7 +180,7 @@ def test_grid_shape(x0,x1,xstep,y0,y1,ystep,correct):
 def test_grid_embedding():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    np = gv.np
+    import numpy as np
     grid = gv.Grid(x0=-5,x1=5,y0=-7,y1=7)
     triangle = (grid.x>=0) & (grid.y>=0) & ((grid.x+grid.y)<=4)
     correct_triangle = jnp.array([
@@ -253,7 +253,7 @@ def test_grid_embedding():
 def test_grid_within_box():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    np = gv.np
+    import numpy as np
     grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
     box = grid.within_box(x0=20,y0=20,x1=30,y1=40)
     assert box.shape == (grid.len,)
@@ -266,7 +266,7 @@ def test_grid_within_box():
 def test_grid_within_disk():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    np = gv.np
+    import numpy as np
     grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
     disk = grid.within_disk(x0=30,y0=40,r=50)
     assert grid.x[disk][0] == 30
@@ -279,7 +279,7 @@ def test_grid_within_disk():
 def test_grid_within_triangle_many_right_triangles():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    np = gv.np
+    import numpy as np
     grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
     for cx in range(0,80,5):
         for cy in range(0,80,5):
