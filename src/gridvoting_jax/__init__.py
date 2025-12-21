@@ -1,4 +1,4 @@
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 
 # Core configuration and types
 from .core import (
@@ -16,11 +16,12 @@ from .spatial import (
 )
 
 # Dynamical systems / Voting
-from .dynamics import (
-    MarkovChain,
-    VotingModel,
-    CondorcetCycle
-)
+from .dynamics import MarkovChain
+from .models import VotingModel, SpatialVotingModel
+from .models.examples import condorcet_cycle
+
+# Backward compatibility alias
+CondorcetCycle = condorcet_cycle
 
 # Datasets
 from . import datasets

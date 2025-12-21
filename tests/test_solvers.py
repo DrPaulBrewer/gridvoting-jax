@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from gridvoting_jax.core import TOLERANCE
 from gridvoting_jax.spatial import Grid
-from gridvoting_jax.dynamics import VotingModel
+from gridvoting_jax import VotingModel, SpatialVotingModel
 
 def test_solvers_consistency():
     """Verify all solvers produce consistent results on a small grid."""
@@ -65,25 +65,22 @@ def test_solvers_consistency():
     print(f"Power Method L1 Diff: {l1_power}")
     assert l1_power < 1e-4
 
-    # Test Grid Upscaling
-    model_upscale = VotingModel(
-        utility_functions=utils,
+
+    # Test Grid Upscaling (now uses SpatialVotingModel)
+    model_upscale = SpatialVotingModel(
+        voter_ideal_points=voter_ideal_points,
+        grid=grid,
         number_of_voters=3,
-        number_of_feasible_alternatives=len(grid.points),
         majority=2,
         zi=False
     )
-    model_upscale.analyze(
-        solver="grid_upscaling", 
-        grid=grid, 
-        voter_ideal_points=voter_ideal_points,
-        tolerance=1e-5
-    )
+    model_upscale.analyze(solver="grid_upscaling", tolerance=1e-5)
     dist_upscale = model_upscale.stationary_distribution
     
     l1_upscale = float(jnp.linalg.norm(base_dist - dist_upscale, ord=1))
     print(f"Upscaling L1 Diff: {l1_upscale}")
     assert l1_upscale < 1e-4
+
 
 def test_solver_invalid_arg():
     grid = Grid(x0=-1.0, x1=1.0, xstep=0.2, y0=-1.0, y1=1.0, ystep=0.2)
@@ -107,20 +104,10 @@ def test_solver_invalid_arg():
     with pytest.raises(ValueError, match="Unknown solver"):
         model.analyze(solver="fake_solver")
 
-def test_upscaling_missing_args():
-    # Setup standard grid (geometry not strictly critical here as check is early, but good practice)
-    grid = Grid(x0=-1.0, x1=1.0, xstep=1.0, y0=-1.0, y1=1.0, ystep=1.0)
-    # Using zeros is fine here because the arg check happens BEFORE core check
-    utils = jnp.zeros((3, len(grid.points)))
-    model = VotingModel(
-        utility_functions=utils,
-        number_of_voters=3,
-        number_of_feasible_alternatives=len(grid.points),
-        majority=2,
-        zi=False
-    )
-    with pytest.raises(ValueError, match="requires 'grid' and 'voter_ideal_points'"):
-        model.analyze(solver="grid_upscaling")
+
+# test_upscaling_missing_args removed - grid_upscaling is now in SpatialVotingModel
+# which requires grid and voter_ideal_points in __init__, so this test is obsolete
+
 
 if __name__ == "__main__":
     test_solvers_consistency()

@@ -8,6 +8,99 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.8.0] - 2025-12-21
+
+### Changed - BREAKING
+
+- **Module Restructuring**: Major refactoring to separate models from dynamics
+  - `MarkovChain` moved to `dynamics/markov.py`
+  - `VotingModel` moved to `models/base.py` (geometry-agnostic)
+  - Created `SpatialVotingModel` in `models/spatial.py` (geometry-aware)
+  - `CondorcetCycle` converted to example function `condorcet_cycle()` in `models/examples/condorcet.py`
+  - **Flat imports maintained**: All classes still accessible via `from gridvoting_jax import VotingModel, SpatialVotingModel, MarkovChain, CondorcetCycle`
+  - `CondorcetCycle` is now an alias to `condorcet_cycle()` function for backward compatibility
+
+- **VotingModel API Changes**:
+  - Removed `grid` and `voter_ideal_points` parameters from `VotingModel.analyze()`
+  - Removed `grid_upscaling` solver from `VotingModel` (now in `SpatialVotingModel`)
+  - `VotingModel` is now geometry-agnostic, only accepts `utility_functions`
+
+- **SpatialVotingModel** (NEW):
+  - Handles spatial voting models with ideal points and grids
+  - Computes utility functions using `grid.spatial_utilities()`
+  - Supports `grid_upscaling` solver
+  - Provides `plot_stationary_distribution()` method using `grid.plot()`
+  - Delegates to underlying `VotingModel` for core analysis
+
+### Migration Guide
+
+**For spatial models** (most common use case):
+
+```python
+# OLD (v0.7.x):
+from gridvoting_jax import VotingModel, Grid
+
+grid = Grid(x0=-20, x1=20, y0=-20, y1=20)
+voter_ideal_points = jnp.array([[0,0], [1,0], [2,0]])
+utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
+
+model = VotingModel(
+    utility_functions=utils,
+    number_of_voters=3,
+    number_of_feasible_alternatives=grid.len,
+    majority=2,
+    zi=False
+)
+model.analyze(solver="grid_upscaling", grid=grid, voter_ideal_points=voter_ideal_points)
+
+# NEW (v0.8.0):
+from gridvoting_jax import SpatialVotingModel, Grid
+
+grid = Grid(x0=-20, x1=20, y0=-20, y1=20)
+voter_ideal_points = jnp.array([[0,0], [1,0], [2,0]])
+
+model = SpatialVotingModel(
+    voter_ideal_points=voter_ideal_points,
+    grid=grid,
+    number_of_voters=3,
+    majority=2,
+    zi=False
+)
+model.analyze(solver="grid_upscaling")  # or "full_matrix_inversion", "power_method", etc.
+```
+
+**For non-spatial models** (no changes needed):
+
+```python
+# Works in both v0.7.x and v0.8.0:
+from gridvoting_jax import VotingModel
+
+model = VotingModel(
+    utility_functions=my_utils,
+    number_of_voters=3,
+    number_of_feasible_alternatives=100,
+    majority=2,
+    zi=False
+)
+model.analyze()  # No changes needed
+```
+
+**For CondorcetCycle**:
+
+```python
+# OLD (v0.7.x):
+from gridvoting_jax import CondorcetCycle
+model = CondorcetCycle(zi=False)
+
+# NEW (v0.8.0) - Option 1 (recommended):
+from gridvoting_jax import condorcet_cycle
+model = condorcet_cycle(zi=False)
+
+# NEW (v0.8.0) - Option 2 (backward compatible):
+from gridvoting_jax import CondorcetCycle  # Now an alias to condorcet_cycle()
+model = CondorcetCycle(zi=False)  # Still works!
+```
+
 ## [0.7.2] - 2025-12-21
 
 ### Changed
