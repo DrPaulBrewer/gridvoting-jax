@@ -296,27 +296,19 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
         # Setup Model (Once per config)
         try:
-             # Setup
-            grid = gv.Grid(x0=-g, x1=g, y0=-g, y1=g) # Note: xstep defaults so it matches OSF 2*g implied resolution?
-            # Wait, in benchmark_solvers_vs_osf we manually set step. 
-            # OSF uses integer steps usually on [-g, g]? No, let's check Grid default.
-            # Grid default step is 1.0. 
-            # g=20 -> -20 to 20. 41 points. Correct.
-            
-            number_of_alternatives = (2*g+1)**2
+            # Setup grid
+            grid = gv.Grid(x0=-g, x1=g, y0=-g, y1=g)
             voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
             
-            u = grid.spatial_utilities(
+            # Create SpatialVotingModel (v0.8.0 API)
+            # This works for all solvers including grid_upscaling
+            vm = gv.SpatialVotingModel(
                 voter_ideal_points=voter_ideal_points,
-                metric='sqeuclidean'
-            )
-            
-            vm = gv.VotingModel(
-                utility_functions=u,
+                grid=grid,
+                number_of_voters=3,
                 majority=2,
                 zi=zi,
-                number_of_voters=3,
-                number_of_feasible_alternatives=number_of_alternatives
+                distance_measure='sqeuclidean'
             )
         except Exception as e:
             print(f"  ✗ Error setting up model: {e}")
@@ -329,11 +321,9 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
             try:
                 start_time = time.time()
                 
-                # Pass extra args for grid_upscaling
+                # Analyze with solver (v0.8.0 API - no grid/voter_ideal_points needed)
                 vm.analyze(
                     solver=solver,
-                    grid=grid,
-                    voter_ideal_points=voter_ideal_points,
                     tolerance=1e-6,
                     max_iterations=5000
                 )

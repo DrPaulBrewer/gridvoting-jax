@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.8.1] - 2025-12-21
+
+### Fixed
+
+- **OSF Benchmark**: Updated `osf_comparison.py` to use `SpatialVotingModel` instead of `VotingModel` for compatibility with v0.8.0 API changes. This fixes the `grid_upscaling` solver which was failing with "Unknown solver" error.
+
 ## [0.8.0] - 2025-12-21
 
 ### Changed - BREAKING
