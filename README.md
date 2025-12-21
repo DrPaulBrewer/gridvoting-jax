@@ -259,13 +259,14 @@ vm = gv.VotingModel(utility_functions, number_of_voters, number_of_feasible_alte
 #### `class MarkovChain`
 
 ```python
-mc = gv.MarkovChain(P, computeNow=True, tolerance=5e-5)
+mc = gv.MarkovChain(P, tolerance=5e-5)
+mc.find_unique_stationary_distribution()
 ```
 
 Handles the underlying Markov process.
 
 **Methods:**
-- **`find_unique_stationary_distribution()`**: Solves for the stationary distribution (πP = π).
+- **`find_unique_stationary_distribution(solver="full_matrix_inversion", ...)`**: Solves for the stationary distribution (πP = π). Must be called explicitly to compute the stationary distribution.
 
 ### Datasets (`gv.datasets`)
 

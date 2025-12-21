@@ -16,7 +16,7 @@ from .core import (
 from .spatial import Grid
 
 class MarkovChain:
-    def __init__(self, *, P, computeNow=True, tolerance=None):
+    def __init__(self, *, P, tolerance=None):
         """initializes a MarkovChain instance by copying in the transition
         matrix P and calculating chain properties"""
         if tolerance is None:
@@ -27,8 +27,7 @@ class MarkovChain:
         self.absorbing_points = jnp.equal(diagP, 1.0)
         self.unreachable_points = jnp.equal(jnp.sum(self.P, axis=0), diagP)
         self.has_unique_stationary_distribution = not jnp.any(self.absorbing_points)
-        if computeNow and self.has_unique_stationary_distribution:
-            self.find_unique_stationary_distribution(tolerance=tolerance)
+
 
     def evolve(self, x):
         """ evolve the probability vector x_t one step in the Markov Chain by returning x*P. """

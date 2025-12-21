@@ -13,7 +13,7 @@ def double_cycle_mc():
     [0,0,0,0,1/2,1/2],
     [0,0,0,1/2,0,1/2]
   ])
-  mc = gv.MarkovChain(P=double_cycle_P,computeNow=False)
+  mc = gv.MarkovChain(P=double_cycle_P)
   return mc
   
   

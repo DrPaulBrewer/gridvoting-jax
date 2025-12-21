@@ -62,6 +62,9 @@ if os.environ.get('GV_FORCE_CPU', '0') != '1':
             device_type = default_device.platform
             if device_type in ['gpu', 'tpu']:
                 use_accelerator = True
+                # Set GPU allocator to reduce fragmentation issues
+                if device_type == 'gpu' and 'TF_GPU_ALLOCATOR' not in os.environ:
+                    os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
                 warn(f"JAX using {device_type.upper()}: {default_device}")
             else:
                 warn("JAX using CPU (no GPU/TPU detected)")
@@ -70,6 +73,7 @@ if os.environ.get('GV_FORCE_CPU', '0') != '1':
          warn("JAX initialization failed to detect devices, falling back to CPU")
 else:
     warn("GV_FORCE_CPU=1: JAX forced to CPU-only mode")
+
 
 
 @chex.chexify

@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+
+## [0.7.0] - 2025-12-21
+
+### Changed - BREAKING CHANGE
+
+- **Removed `computeNow` parameter from `MarkovChain.__init__`**: The `computeNow` parameter has been completely removed.
+  - **Rationale**: The default `computeNow=True` behavior caused a critical bug where all solver configurations incorrectly triggered `full_matrix_inversion` during initialization, preventing efficient solvers (`power_method`, `gmres`) from running and causing incorrect memory error messages.
+  - **Migration**: Users must now explicitly call `find_unique_stationary_distribution()` after creating a `MarkovChain` instance if they want to compute the stationary distribution.
+  - **Example**:
+    ```python
+    # Before (v0.6.0 and earlier):
+    mc = gv.MarkovChain(P, computeNow=True)
+    
+    # After (v0.7.0+):
+    mc = gv.MarkovChain(P)
+    mc.find_unique_stationary_distribution()
+    ```
+  - **Impact**: `VotingModel.analyze()` is unaffected and continues to work correctly. Only direct `MarkovChain` usage requires updates.
+
+### Added
+
+- **GPU Memory Allocator**: Automatically sets `TF_GPU_ALLOCATOR=cuda_malloc_async` for GPU devices to reduce memory fragmentation issues.
+  - **Rationale**: Addresses JAX BFC allocator fragmentation that prevented large grids (g=60+) from running on GPUs with sufficient VRAM.
+  - **Behavior**: Only sets if not already defined in environment; can be overridden by user.
+
+### Fixed
+
+- **Solver Selection Bug**: Fixed critical bug where `MarkovChain` initialization always ran `full_matrix_inversion` solver regardless of the requested solver in `VotingModel.analyze()`.
+- **Memory Error Messages**: Error messages now correctly reference the actual solver being used instead of always showing `'full_matrix_inversion'`.
+- **Large Grid Support**: Enables `g=80` grids to run successfully on CPU with `power_method` and `gmres_matrix_inversion` solvers.
+
 ## [0.5.1] - 2025-12-20
 
 ### Fixed
