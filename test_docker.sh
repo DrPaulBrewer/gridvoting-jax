@@ -8,9 +8,14 @@ echo "Testing gridvoting-jax with NumPy 2.0+"
 echo "========================================="
 
 # Create and run Docker container
+# Source mounted read-only to prevent artifact pollution
 echo "Starting Docker container..."
-docker run --rm -v "$(pwd):/workspace" -w /workspace ubuntu:24.04 /bin/bash -c "
+docker run --rm -v "$(pwd):/source:ro" ubuntu:24.04 /bin/bash -c "
     set -e
+    echo 'Copying source to container workspace...'
+    cp -r /source /workspace
+    cd /workspace
+    
     echo 'Installing Python and pip...'
     apt-get update -qq
     apt-get install -y -qq python3 python3-pip python3-venv > /dev/null 2>&1

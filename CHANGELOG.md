@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 
+
+## [0.7.2] - 2025-12-21
+
+### Changed
+
+- **Docker Testing**: Modified `test_docker.sh` to use read-only mount with internal copy, preventing build artifact pollution in host directory.
+
 ## [0.7.1] - 2025-12-21
 
 ### Fixed
