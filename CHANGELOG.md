@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 
+## [0.7.1] - 2025-12-21
+
+### Fixed
+
+- **Power Method Solver (Dual-Start Mode)**: Fixed bug where `jnp.argmax`/`jnp.argmin` could return arrays instead of scalars, causing indexing errors.
+
+### Changed
+
+- **Power Method Performance**: Optimized both single-start and dual-start modes.
+  - Convergence checks deferred to time check intervals (adaptive: 10 → 20 → 40 → ... iterations)
+  - Replaced Python loops with JAX `lax.fori_loop` for compiled batched evolution
+  - Dual-start mode: Stack/unstack operations reduced from O(iterations) to O(checks)
+  - Expected performance improvement: 10-100x fewer L1 norm computations, faster compiled loops
+
+
 ## [0.7.0] - 2025-12-21
 
 ### Changed - BREAKING CHANGE

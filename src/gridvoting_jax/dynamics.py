@@ -1,5 +1,6 @@
 
 import jax
+import jax.lax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -222,23 +223,36 @@ class MarkovChain:
         if initial_guess is not None:
             # Mode 1: Refine existing guess
             v = initial_guess
-            for i in range(max_iterations):
-                v_next = self.evolve(v)
-                diff = jnp.linalg.norm(v_next - v, ord=1)
-                if diff < tolerance:
-                    return v_next
-                v = v_next
+            i = 0
+            while i < max_iterations:
+                # Evolve until next check using JAX compiled loop
+                batch_end = min(next_check, max_iterations)
+                batch_size = batch_end - i
                 
-                # Check timeout
-                if i >= next_check:
-                    if (time.time() - start_time) > timeout:
-                        warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
-                        return v
-                    # Adaptive: Increase interval if we are safe
-                    if check_interval < 1000:
-                        check_interval *= 2
-                    next_check = i + check_interval
-                    
+                # Use lax.fori_loop for compiled batched evolution
+                # Pass P as part of carry to avoid closure capture
+                def evolve_step(_, carry):
+                    vec, P = carry
+                    return (jnp.dot(vec, P), P)
+                v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
+                i = batch_end
+                
+                # Check convergence and timeout
+                diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
+                if diff < tolerance:
+                    return v
+                
+                if (time.time() - start_time) > timeout:
+                    warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
+                    return v
+                
+                # Adaptive: Increase interval
+                if check_interval < 1000:
+                    check_interval *= 2
+                next_check = i + check_interval
+                
+            # Final check
+            diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
             warn(f"Power method (Single-Start) did not converge in {max_iterations} iterations. Final diff: {diff}")
             return v
             
@@ -251,34 +265,51 @@ class MarkovChain:
             row_entropy = -jnp.sum(self.P * jnp.log2(P_safe), axis=1)
             
             # Start 1: Max entropy (most uncertain transition)
-            idx_max = jnp.argmax(row_entropy)
+            idx_max = jnp.argmax(row_entropy).item()
             v1 = jnp.zeros(n).at[idx_max].set(1.0)
             
             # Start 2: Min entropy (most deterministic transition)
-            idx_min = jnp.argmin(row_entropy)
+            idx_min = jnp.argmin(row_entropy).item()
             v2 = jnp.zeros(n).at[idx_min].set(1.0)
             
-            # Evolve both
-            for i in range(max_iterations):
-                v1 = self.evolve(v1)
-                v2 = self.evolve(v2)
+            # Evolve both (batched with deferred checks)
+            i = 0
+            while i < max_iterations:
+                # Stack once per batch
+                V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
                 
-                # Check if they have converged TO EACH OTHER
-                # If they meet, the chain has forgotten initial conditions (ergodic)
+                # Evolve batch until next check using JAX compiled loop
+                batch_end = min(next_check, max_iterations)
+                batch_size = batch_end - i
+                
+                # Use lax.fori_loop for compiled batched evolution
+                # Pass P as part of carry to avoid closure capture
+                def evolve_batch_step(_, carry):
+                    V_state, P = carry
+                    return (jnp.dot(V_state, P), P)
+                V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
+                i = batch_end
+                
+                # Unpack once per batch
+                v1, v2 = V[0], V[1]
+                
+                # Check convergence
                 diff = jnp.linalg.norm(v1 - v2, ord=1)
                 if diff < tolerance:
                     return (v1 + v2) / 2.0
                 
                 # Check timeout
-                if i >= next_check:
-                    if (time.time() - start_time) > timeout:
-                        warn(f"Power method timed out after {timeout}s (iter {i}). Diff between starts: {diff}")
-                        return (v1 + v2) / 2.0
-                    # Adaptive: Increase interval
-                    if check_interval < 1000:
-                        check_interval *= 2
-                    next_check = i + check_interval
+                if (time.time() - start_time) > timeout:
+                    warn(f"Power method timed out after {timeout}s (iter {i}). Diff between starts: {diff}")
+                    return (v1 + v2) / 2.0
+                
+                # Adaptive: Increase interval
+                if check_interval < 1000:
+                    check_interval *= 2
+                next_check = i + check_interval
             
+            # Final convergence check
+            diff = jnp.linalg.norm(v1 - v2, ord=1)
             warn(f"Power method (Dual-Start) did not converge by {max_iterations}. Final diff between chains: {diff}")
             return (v1 + v2) / 2.0
 
