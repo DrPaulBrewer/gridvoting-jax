@@ -28,32 +28,40 @@ This project is derived from the original `gridvoting` module, which was develop
 
 ## Quick Start
 
+### Spatial Voting Example
+
 ```python
 import gridvoting_jax as gv
 
-# Create a grid
-grid = gv.Grid(x0=-20, x1=20, y0=-20, y1=20)
+# Use a pre-built example or create your own
+# Triangle 1 from Brewer, Juybari & Moberly (2023)
+# Voter ideal points: [[-15, -9], [0, 17], [15, -9]]
+# https://doi.org/10.1007/s11403-023-00387-8
+model = gv.bjm_spatial_triangle(g=20, zi=False)
+model.analyze()
 
-# Define voter ideal points
-voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
-
-# Generate utility functions
-utilities = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
-
-# Create and analyze voting model
-vm = gv.VotingModel(
-    utility_functions=utilities,
-    majority=2,
-    zi=False,  # Minimal Intelligence agenda
-    number_of_voters=3,
-    number_of_feasible_alternatives=grid.len
-)
-
-vm.analyze()
-
-# View results
 print(f"Device: {gv.device_type}")  # Shows 'gpu', 'tpu', or 'cpu'
-print(f"Stationary distribution: {vm.stationary_distribution[:5]}...")
+print(f"Core exists: {model.core_exists}")
+print(f"Stationary distribution: {model.stationary_distribution[:5]}...")
+```
+
+### Budget Voting Example (New in v0.9.0)
+
+```python
+import gridvoting_jax as gv
+
+# Create budget voting model (divide $100 among 3 voters)
+model = gv.BudgetVotingModel(budget=100, zi=False)
+model.analyze()
+
+print(f"Alternatives: {model.number_of_alternatives}")  # 5151
+print(f"GiniSS inequality: {model.GiniSS[:5]}...")
+
+# Get voter utility distributions
+utility_values, probabilities = model.voter_utility_distribution(voter_index=0)
+
+# Get GiniSS inequality distribution
+gini_values, gini_probs = model.giniss_distribution(granularity=0.10)
 ```
 
 ---
@@ -71,11 +79,13 @@ All dependencies are pre-installed! Just run:
 pip install gridvoting-jax
 ```
 
-**GPU Support**: JAX automatically detects and uses NVIDIA GPUs (CUDA) when available.
+**GPU Support**: JAX automatically detects and uses NVIDIA GPUs (CUDA) when available. An Nvidia A100 works well if you have one, but even an old 2017 gaming Nvidia 1080Ti will run some models.
 
-**TPU Support**: JAX automatically detects TPUs on Google Cloud.
+**TPU Support**: JAX automatically detects TPUs on Google Cloud. TPUs we tried have been quirky with this code.
 
-**CPU-Only Mode**: Set environment variable `GV_FORCE_CPU=1` to force CPU-only execution:
+**CPU Support**: Should run with most CPUs. It will fall back to CPU mode if a GPU or TPU is not detected. RAM >=32GB is useful for some tasks.
+
+**CPU-Only Mode**: If you have a GPU or TPU but want to force CPU-only execution, set environment variable `GV_FORCE_CPU=1`:
 ```bash
 GV_FORCE_CPU=1 python your_script.py
 ```
@@ -156,16 +166,7 @@ gv.enable_float64()
 
 ## Performance
 
-gridvoting-jax uses JAX's JIT compilation for high performance:
-
-- **First run**: ~1-2s (includes JIT compilation)
-- **Subsequent runs**: ~0.03-0.05s (comparable to CuPy)
-- **Vectorized operations**: All computations run on GPU/TPU when available
-
-**Benchmark** (g=20, 1681 alternatives, Nvidia 1080Ti):
-- Analysis time: 0.033s (after JIT compilation)
-- Test suite: 23 tests in ~80s (including slow benchmark test)
-- Speedup: 10-30x faster than CPU-only
+*Under review*
 
 ---
 
@@ -174,9 +175,9 @@ gridvoting-jax uses JAX's JIT compilation for high performance:
 This JAX version differs from the original in several ways:
 
 | Feature | Original gridvoting | gridvoting-jax |
-|---------|-------------------|----------------|
+|---------|---------------------|----------------|
 | **Backend** | NumPy/CuPy | JAX |
-| **Precision** | Float64 | Float32 |
+| **Precision** | Float64 | Float32 (default)<br>Float64 (available) |
 | **Solver** | Power + Algebraic | Algebraic only |
 | **Tolerance** | 1e-10 | 5e-5 |
 | **Device Detection** | GPU/CPU | TPU/GPU/CPU |
@@ -207,9 +208,9 @@ At each t, there is a majority-rule vote between alternative `f[t]` and a challe
 
 ---
 
-## API Documentation (v0.4.0+)
+## API Documentation (v0.9.0)
 
-The package is organized into four main submodules, but the public API is exposed at the top level for convenience.
+The package is organized into submodules, but the public API is exposed at the top level for convenience.
 
 ```python
 import gridvoting_jax as gv
@@ -219,8 +220,10 @@ import gridvoting_jax as gv
 
 Centralized configuration and constants.
 
-- **`gv.enable_float64()`**: Enable 64-bit floating point precision globally for JAX. Call this before any other operations if high precision is required.
-- **`gv.TOLERANCE`**: Default tolerance for floating-point comparisons (5e-5 for float32).
+- **`gv.enable_float64()`**: Enable 64-bit floating point precision globally for JAX
+- **`gv.TOLERANCE`**: Default tolerance for floating-point comparisons (5e-5 for float32)
+- **`gv.device_type`**: Current device type ('gpu', 'tpu', or 'cpu')
+- **`gv.use_accelerator`**: Boolean indicating if GPU/TPU is available
 
 ### Spatial Components (`gv.spatial`)
 
@@ -230,49 +233,155 @@ Centralized configuration and constants.
 grid = gv.Grid(x0, x1, xstep=1, y0, y1, ystep=1)
 ```
 
-Constructs a 2D grid.
+Constructs a 2D grid for spatial voting models.
 
 **Properties:**
-- `grid.points`: JAX array of shape `(N, 2)` containing `[x, y]` coordinates.
-- `grid.x`, `grid.y`: 1D JAX arrays of x and y coordinates.
-- `grid.boundary`: 1D boolean mask for boundary points.
+- `grid.points`: JAX array of shape `(N, 2)` containing `[x, y]` coordinates
+- `grid.x`, `grid.y`: 1D JAX arrays of x and y coordinates
+- `grid.boundary`: 1D boolean mask for boundary points
+- `grid.len`: Total number of grid points
 
 **Methods:**
-- **`spatial_utilities(voter_ideal_points, metric='sqeuclidean')`**: Euclidean distance based utility calculation.
-- **`within_box/disk/triangle(...)`**: Geometric query methods returning boolean masks.
-- **`extremes(z, valid=None)`**: Find min/max values and their locations.
-- **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib.
+- **`spatial_utilities(voter_ideal_points, metric='sqeuclidean')`**: Distance-based utility calculation
+- **`within_box/disk/triangle(...)`**: Geometric query methods returning boolean masks
+- **`extremes(z, valid=None)`**: Find min/max values and their locations
+- **`embedding(valid)`**: Create embedding function for plotting subsets
+- **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib
 
-### Dynamics & Voting (`gv.dynamics`)
+### Voting Models
 
 #### `class VotingModel`
 
+Geometry-agnostic base voting model.
+
 ```python
-vm = gv.VotingModel(utility_functions, number_of_voters, number_of_feasible_alternatives, majority, zi)
+vm = gv.VotingModel(
+    utility_functions,
+    number_of_voters,
+    number_of_feasible_alternatives,
+    majority,
+    zi
+)
 ```
 
 **Methods:**
-- **`analyze()`**: Computes the transition matrix and stationary distribution.
-- **`what_beats(index)`**: Returns alternatives that beat the given index.
-- **`summarize_in_context(grid)`**: Calculates entropy, mean, and covariance of the stationary distribution.
+- **`analyze(solver="full_matrix_inversion")`**: Compute stationary distribution
+- **`what_beats(index)`**: Returns alternatives that beat the given index
+- **`summarize_in_context(grid)`**: Calculate entropy, mean, and covariance
+
+**Properties:**
+- `stationary_distribution`: Probability distribution over alternatives
+- `core_exists`: Boolean indicating if a core exists
+- `core_points`: Boolean mask of core points
+
+#### `class SpatialVotingModel`
+
+Geometry-aware spatial voting model (delegates to `VotingModel`).
+
+```python
+model = gv.SpatialVotingModel(
+    voter_ideal_points,
+    grid,
+    number_of_voters,
+    majority,
+    zi
+)
+```
+
+**Additional Methods:**
+- **`plot_stationary_distribution(**kwargs)`**: Visualize results on grid
+
+#### `class BudgetVotingModel` *(New in v0.9.0)*
+
+Budget allocation voting model for dividing a fixed budget among 3 voters.
+
+```python
+model = gv.BudgetVotingModel(budget=100, zi=False)
+```
+
+**Features:**
+- Feasible set forms triangular simplex: `x + y <= budget`
+- Number of alternatives: `(budget+1)*(budget+2)//2`
+- Utility functions: `u1=x`, `u2=y`, `u3=budget-x-y`
+- GiniSS inequality index: scaled to [0,1]
+- Symmetry property: `π[x,y] ≈ π[y,x]`
+
+**Methods:**
+- **`analyze(solver="full_matrix_inversion")`**: Compute stationary distribution
+- **`voter_utility_distribution(voter_index)`**: Probability distribution of voter payoffs
+- **`giniss_distribution(granularity=0.10)`**: Probability distribution of GiniSS index
+- **`plot_stationary_distribution(**kwargs)`**: Visualize on triangular simplex
+
+**Properties:**
+- `budget`: Total budget to allocate
+- `u1, u2, u3`: Utility for each voter at each alternative
+- `GiniSS`: Gini-like inequality index for each alternative
+- `stationary_distribution`: Probability distribution over allocations
+
+### Example Models *(New in v0.9.0)*
+
+#### Plott's Theorem Examples
+
+Demonstrate core existence conditions from Plott's median voter theorem:
+
+> Plott, C. R. (1967). A notion of equilibrium and its possibility under majority rule. *American Economic Review*, 57(4), 787-806.
+
+```python
+# Core existence examples
+model = gv.core1(g=20, zi=False)  # 5 voters on horizontal line
+model = gv.core2(g=20, zi=False)  # 5 voters on vertical line  
+model = gv.core3(g=20, zi=False)  # 5 voters on diagonal
+model = gv.core4(g=20, zi=False)  # 4 corners + center
+model = gv.ring_with_central_core(g=20, r=10, voters=7)  # Ring + center
+
+# No-core example
+model = gv.nocore_triangle(g=20, zi=False)  # Equilateral triangle (cycling)
+```
+
+#### Shapes Submodule
+
+Random and geometric configurations:
+
+```python
+# Random triangle
+model = gv.shapes.random_triangle(g=20, within=10, zi=False)
+
+# Ring of voters (must be odd)
+model = gv.shapes.ring(g=20, r=10, voters=5, round_ideal_points=True)
+```
+
+#### BJM Research Examples
+
+Examples from published research:
+
+> Brewer, P., Juybari, J. & Moberly, R. (2023). A comparison of zero- and minimal-intelligence agendas in majority-rule voting models. *Journal of Economic Interaction and Coordination*. https://doi.org/10.1007/s11403-023-00387-8
+
+```python
+# Spatial voting (Triangle 1 from OSF)
+model = gv.bjm_spatial_triangle(g=20, zi=False)
+
+# Budget voting
+model = gv.bjm_budget_triangle(budget=100, zi=False)
+```
+
+### Markov Chain (`gv.dynamics`)
 
 #### `class MarkovChain`
 
 ```python
 mc = gv.MarkovChain(P, tolerance=5e-5)
-mc.find_unique_stationary_distribution()
+mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 ```
 
-Handles the underlying Markov process.
-
-**Methods:**
-- **`find_unique_stationary_distribution(solver="full_matrix_inversion", ...)`**: Solves for the stationary distribution (πP = π). Must be called explicitly to compute the stationary distribution.
+**Solvers:**
+- `"full_matrix_inversion"`: Direct matrix inversion (default)
+- `"gmres_matrix_inversion"`: Iterative GMRES solver
+- `"power_method"`: Power iteration method
+- `"grid_upscaling"`: Spatial upscaling (SpatialVotingModel only)
 
 ### Datasets (`gv.datasets`)
 
-*New in v0.4.0*
-
-- **`gv.datasets.fetch_osf_spatial_voting_2022_a100()`**: Downloads and caches the reference dataset from the OSF repository. Returns the path to the cache directory.
+- **`gv.datasets.fetch_osf_spatial_voting_2022_a100()`**: Downloads OSF reference dataset
 
 ---
 
@@ -329,7 +438,7 @@ from gridvoting_jax.benchmarks.osf_comparison import run_comparison_report
 report = run_comparison_report()
 ```
 
-This ensures your simulation results match the published scientific record.
+This compares your computer's simulation results to the published scientific record.
 
 ---
 
@@ -341,10 +450,10 @@ This ensures your simulation results match the published scientific record.
 # Install development dependencies
 pip install -r requirements-dev.txt
 
-# Run all tests (23 tests, ~80s)
+# Run all tests (43 tests in v0.9.0)
 pytest tests/
 
-# Skip slow tests (22 tests, ~15s)
+# Skip slow tests
 pytest tests/ -m "not slow"
 
 # Run only slow tests (benchmark test)
@@ -353,6 +462,13 @@ pytest tests/ -m slow
 # Run with coverage
 pytest tests/ --cov=gridvoting_jax -m "not slow"
 ```
+
+**Test Coverage (v0.9.0)**:
+- Budget voting: 7 tests (symmetry, ZI/MI modes, distributions)
+- Plott's theorem examples: 3 tests (core existence/absence)
+- Shapes: 4 tests (random triangles, rings)
+- BJM examples: 3 tests (OSF validation)
+- Core functionality: 26 tests (grid, voting, solvers)
 
 **Test Markers**:
 - `@pytest.mark.slow`: Long-running tests (benchmarks)

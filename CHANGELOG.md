@@ -8,6 +8,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.9.0] - 2025-12-22
+
+### Added
+
+- **Budget Voting Model**: New `BudgetVotingModel` class for budget allocation voting scenarios
+  - Models division of fixed budget among 3 voters
+  - Feasible set forms triangular simplex: `x + y <= budget`, `x >= 0`, `y >= 0`
+  - Number of alternatives: `(budget+1)*(budget+2)//2`
+  - Utility functions: `u1=x`, `u2=y`, `u3=budget-x-y`
+  - GiniSS inequality index calculation
+  - Symmetry property: `π[x,y] ≈ π[y,x]` within triangle
+  - Voter utility distribution methods with JIT optimization
+  - GiniSS distribution with adjustable granularity (default 0.10 = 11 bins)
+  - Supports both ZI (Zero Intelligence) and MI (Minimal Intelligence) modes
+
+- **Plott Theorem Examples** (`models/examples/plott_theorem.py`):
+  - `core1-4()`: Core existence examples (horizontal line, vertical line, diagonal, corners+center)
+  - `nocore_triangle()`: Equilateral triangle with no core (cycling)
+  - `ring_with_central_core()`: Central voter at origin + even voters on ring (core at origin)
+
+- **Shapes Submodule** (`models/examples/shapes/`):
+  - `random_triangle(g=20, within=10)`: Random non-degenerate triangle of voter ideal points
+  - `ring(g=20, r=10, voters=5, round_ideal_points=True, majority=None)`: Voters uniformly on circle
+    - Voters must be odd
+    - Adjustable majority parameter (default: (voters+1)//2)
+
+- **BJM Research Examples**:
+  - `bjm_spatial_triangle()`: Triangle 1 configuration for OSF spatial voting validation
+  - `bjm_budget_triangle()`: Budget voting example for OSF validation
+
+- **Comprehensive Test Suite**:
+  - `test_budget_voting.py`: Tests for BudgetVotingModel including symmetry, ZI/MI modes, distributions
+  - `test_plott_examples.py`: Core existence tests for Plott's theorem examples
+  - `test_shapes.py`: Tests for random_triangle and ring with validation
+  - `test_bjm_budget_osf.py`: OSF validation placeholder (requires OSF data loader)
+
+### Changed
+
+- Version bumped to 0.9.0 (minor version for significant new features)
+- Updated top-level `__init__.py` to export all new models and examples
+
+
 ## [0.8.2] - 2025-12-21
 
 ### Changed

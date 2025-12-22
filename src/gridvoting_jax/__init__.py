@@ -1,30 +1,46 @@
-__version__ = "0.8.2"
+"""gridvoting-jax: Spatial voting models with JAX."""
 
-# Core configuration and types
-from .core import (
-    TOLERANCE, 
-    enable_float64,
-    device_type,
-    use_accelerator
-)
+__version__ = "0.9.0"
 
-# Spatial components (Grid, Distances)
-from .spatial import (
-    Grid,
-    dist_sqeuclidean,
-    dist_manhattan
-)
+# Core utilities
+from .core import TOLERANCE, enable_float64, device_type, use_accelerator
 
-# Dynamical systems / Voting
+# Core components
 from .dynamics import MarkovChain
-from .models import VotingModel, SpatialVotingModel
-from .models.examples import condorcet_cycle
+from .spatial import Grid, dist_sqeuclidean, dist_manhattan
 
-# Backward compatibility alias
+# Models
+from .models import VotingModel, SpatialVotingModel, BudgetVotingModel
+
+# Examples
+from .models.examples import (
+    condorcet_cycle,
+    core1, core2, core3, core4, nocore_triangle, ring_with_central_core,
+    bjm_spatial_triangle, bjm_budget_triangle,
+    shapes
+)
+
+# Datasets and benchmarks
+from . import datasets
+from . import benchmarks
+
+# Backward compatibility
 CondorcetCycle = condorcet_cycle
 
-# Datasets
-from . import datasets
-
-# Benchmarks
-from . import benchmarks
+__all__ = [
+    # Version
+    '__version__',
+    # Core utilities
+    'TOLERANCE', 'enable_float64', 'device_type', 'use_accelerator',
+    # Core components
+    'MarkovChain', 'Grid', 'dist_sqeuclidean', 'dist_manhattan',
+    # Models
+    'VotingModel', 'SpatialVotingModel', 'BudgetVotingModel',
+    # Examples
+    'condorcet_cycle', 'CondorcetCycle',
+    'core1', 'core2', 'core3', 'core4', 'nocore_triangle', 'ring_with_central_core',
+    'bjm_spatial_triangle', 'bjm_budget_triangle',
+    'shapes',
+    # Modules
+    'datasets', 'benchmarks',
+]
