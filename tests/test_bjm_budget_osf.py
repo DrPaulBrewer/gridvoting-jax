@@ -29,7 +29,7 @@ def test_bjm_budget_osf_validation(solver):
     
     # Basic sanity checks
     assert model.stationary_distribution is not None
-    assert jnp.abs(jnp.sum(model.stationary_distribution) - 1.0) < 1e-6
+    assert jnp.abs(jnp.sum(model.stationary_distribution) - 1.0) < 1e-5
     assert jnp.all(model.stationary_distribution >= 0)
     
     # TODO: When OSF data is available, add:

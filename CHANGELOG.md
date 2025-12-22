@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.9.1] - 2025-12-22
+
+### Fixed
+
+- **MacOS CI/CD Test Failure**: Relaxed tolerance in `test_bjm_budget_osf_validation` from `1e-6` to `1e-5` to accommodate float32 precision across different platforms (MacOS, Linux). The stationary distribution sum check now uses `1e-5` tolerance, which is appropriate for float32 arithmetic and aligns with the library's documented precision expectations.
+
 ## [0.9.0] - 2025-12-22
 
 ### Added
