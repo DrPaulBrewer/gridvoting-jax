@@ -10,6 +10,7 @@ The OSF data is automatically downloaded and cached in /tmp on first use.
 
 import numpy as np
 import time
+import gc
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List, Any
 
@@ -254,7 +255,14 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
         configs = ALL_CONFIGS
 
     # Determine solvers
-    solvers = kwargs.get('solvers', ["full_matrix_inversion", "gmres_matrix_inversion", "power_method", "grid_upscaling"])
+    # PB 2025.12.21 One solver per line for future editing convenience
+    solvers = kwargs.get('solvers', [
+        "power_method", 
+        "grid_upscaling",
+        "gmres_matrix_inversion",
+        "full_matrix_inversion"
+    ])
+
     
     # Check precision
     try:
@@ -364,7 +372,6 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
                 # It does NOT check `if self.analyzed: return`. It overwrites.
                 # BUT `self.MarkovChain` is created inside analyze.
                 # So calling analyze again re-runs. Good.
-                
             except Exception as e:
                 print(f"    ✗ Error: {e}")
                 results.append({
@@ -375,6 +382,10 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
                     'precision': precision,
                     'error': str(e)
                 })
+            
+    # Clean up model
+    del vm
+    gc.collect()
 
     # Print summary
     print(f"\n{'='*80}")

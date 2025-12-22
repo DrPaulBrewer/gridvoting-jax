@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.8.2] - 2025-12-21
+
+### Changed
+
+- **OSF Benchmark Performance**: Optimized `osf_comparison.py` for better memory management and solver ordering
+  - Reordered solvers from least to most memory-intensive: `power_method`, `grid_upscaling`, `gmres_matrix_inversion`, `full_matrix_inversion`
+  - Added explicit garbage collection (`gc.collect()`) after model cleanup to free memory between benchmark runs
+  - Improved code maintainability: one solver per line for easier future editing
+
+
+
 ## [0.8.1] - 2025-12-21
 
 ### Fixed
