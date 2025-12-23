@@ -1,8 +1,11 @@
 ARG VERSION
 FROM ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cuda12:latest
 
+# Re-declare ARG after FROM to make it available in this build stage
+ARG VERSION
+
 # Install gridvoting-jax from PyPI (strip 'v' prefix from version)
-RUN /bin/bash -c "pip install --no-cache-dir gridvoting-jax==${VERSION#v}"
+RUN pip install --no-cache-dir gridvoting-jax==$(echo ${VERSION} | sed 's/^v//')
 
 WORKDIR /workspace
 CMD ["python3"]
