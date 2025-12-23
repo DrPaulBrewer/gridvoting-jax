@@ -2,7 +2,7 @@ ARG VERSION
 FROM ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cpu:latest
 
 # Install gridvoting-jax from PyPI (strip 'v' prefix from version)
-RUN pip install --no-cache-dir gridvoting-jax==${VERSION#v}
+RUN /bin/bash -c "pip install --no-cache-dir gridvoting-jax==${VERSION#v}"
 
 WORKDIR /workspace
 CMD ["python3"]
