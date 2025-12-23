@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+
+## [0.10.1] - 2025-12-23
+
+### Fixed
+
+- **Docker Base Images**: Updated Python version from 3.11 to 3.12 for Ubuntu 24.04 compatibility
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cpu`
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cuda12`
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cuda13`
+  - Ubuntu 24.04 uses Python 3.12 by default; python3.11 package does not exist
+
+- **CI Test Stability**: Marked large grid tests as slow to prevent OOM on GitHub Actions runners
+  - `test_lazy_g60()` - Changed from `@pytest.mark.large_grid` to `@pytest.mark.slow`
+  - `test_lazy_g80_oom_prevention()` - Changed from `@pytest.mark.large_grid` to `@pytest.mark.slow`
+  - Prevents exit code 137 (OOM killed) on CI runners with ~7GB memory limit
+
 ## [0.10.0] - 2025-12-23
 
 ### Added - Lazy Solver Infrastructure (MAJOR)
