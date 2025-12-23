@@ -1,0 +1,36 @@
+FROM nvidia/cuda:13.1.0-base-ubuntu22.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Set cache directory for OSF data
+ENV GV_OSF_CACHE_DIR=/data/osf_cache
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3-pip \
+    python3.11-venv \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create venv
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install base dependencies
+RUN pip install --no-cache-dir --upgrade pip build wheel setuptools \
+    requests pandas ipython pytest
+
+# Install JAX with CUDA 13 support
+RUN pip install --no-cache-dir "jax[cuda13]"
+
+# Download OSF data (baked into base image)
+COPY Dockerfiles/download_data.py /tmp/
+RUN mkdir -p /data/osf_cache && \
+    python3 /tmp/download_data.py && \
+    rm /tmp/download_data.py
+
+WORKDIR /workspace
+CMD ["python3"]

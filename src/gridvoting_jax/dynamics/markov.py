@@ -74,7 +74,7 @@ class MarkovChain:
         return self.unit_eigenvector
 
 
-    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=10.0, **kwargs):
+    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=30.0, **kwargs):
         """
         Finds the stationary distribution for a Markov Chain.
         
@@ -152,7 +152,7 @@ class MarkovChain:
         """Original algebraic solver using direct dense matrix inversion / linear solve."""
         return self.solve_for_unit_eigenvector()
 
-    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations):
+    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, initial_guess=None):
         """
         Find stationary distribution using GMRES iterative solver.
         Solves (P.T - I)v = 0 subject to sum(v)=1.
@@ -162,6 +162,11 @@ class MarkovChain:
         
         We enforce constraint by replacing the first equation (row) of the system
         with the sum constraint (all ones).
+        
+        Args:
+            tolerance: Convergence tolerance
+            max_iterations: Maximum GMRES iterations
+            initial_guess: Optional initial guess for GMRES (useful for grid upscaling)
         """
         n = self.P.shape[0]
         I = jnp.eye(n)
@@ -179,11 +184,15 @@ class MarkovChain:
         b = jnp.zeros(n)
         b = b.at[0].set(1.0)
         
+        # Prepare initial guess
+        x0 = initial_guess if initial_guess is not None else jnp.ones(n) / n
+        
         # Use JAX's GMRES
         # tol in gmres is residual tolerance, roughly related to error
         v, info = jax.scipy.sparse.linalg.gmres(
             lambda x: jnp.dot(A, x), 
-            b, 
+            b,
+            x0=x0,
             tol=tolerance, 
             maxiter=max_iterations
         )
@@ -197,7 +206,7 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, timeout=10.0):
+    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, timeout=30.0):
         """
         Power method for finding stationary distribution.
         

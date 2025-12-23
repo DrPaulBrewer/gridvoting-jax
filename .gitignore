@@ -12,6 +12,7 @@ build/
 .pypirc
 
 # Testing
+test*.txt
 .pytest_cache/
 .coverage
 htmlcov/
@@ -21,3 +22,12 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+tmpdocs/
+
+# Log files that may contain sensitive info
+vm_*.txt
+*.log
+test_output_*.txt
+
+# Pre-commit
+.secrets.baseline

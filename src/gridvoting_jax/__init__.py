@@ -1,12 +1,12 @@
 """gridvoting-jax: Spatial voting models with JAX."""
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 # Core utilities
 from .core import TOLERANCE, enable_float64, device_type, use_accelerator
 
 # Core components
-from .dynamics import MarkovChain
+from .dynamics import MarkovChain, LazyMarkovChain, FlexMarkovChain, LazyTransitionMatrix
 from .spatial import Grid, dist_sqeuclidean, dist_manhattan
 
 # Models
@@ -33,7 +33,8 @@ __all__ = [
     # Core utilities
     'TOLERANCE', 'enable_float64', 'device_type', 'use_accelerator',
     # Core components
-    'MarkovChain', 'Grid', 'dist_sqeuclidean', 'dist_manhattan',
+    'MarkovChain', 'LazyMarkovChain', 'FlexMarkovChain', 'LazyTransitionMatrix',
+    'Grid', 'dist_sqeuclidean', 'dist_manhattan',
     # Models
     'VotingModel', 'SpatialVotingModel', 'BudgetVotingModel',
     # Examples

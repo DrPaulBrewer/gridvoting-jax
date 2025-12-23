@@ -1,0 +1,9 @@
+FROM ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cuda13:latest
+
+# Install dev dependencies
+RUN pip install --no-cache-dir pytest-cov black ruff mypy
+
+# Workspace will have source code mounted
+WORKDIR /workspace
+
+CMD ["python3"]

@@ -1,0 +1,53 @@
+name: Security Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+      
+      - name: Scan for secrets
+        run: |
+          detect-secrets scan --all-files --force-use-all-plugins \
+            --exclude-files '\.git/.*' \
+            --exclude-files 'package-lock\.json' \
+            > .secrets.baseline
+      
+      - name: Check for SSH keys
+        run: |
+          if grep -r "BEGIN.*PRIVATE KEY\|ssh-rsa\|ssh-ed25519" \
+             --include="*.py" --include="*.sh" --include="*.txt" \
+             --exclude-dir=".git" .; then
+            echo "ERROR: SSH keys found in repository"
+            exit 1
+          fi
+      
+      - name: Check for credentials
+        run: |
+          if grep -r "password\s*=\|api_key\s*=\|secret\s*=\|token\s*=" \
+             --include="*.py" --include="*.sh" \
+             --exclude-dir=".git" \
+             --exclude-dir="tests" .; then
+            echo "ERROR: Potential credentials found"
+            exit 1
+          fi
+      
+      - name: Check for sensitive paths
+        run: |
+          if grep -r "\.ssh/\|/secret/" \
+             --include="*.py" --include="*.sh" --include="*.txt" \
+             --exclude-dir=".git" .; then
+            echo "ERROR: Sensitive paths found in code/logs"
+            exit 1
+          fi

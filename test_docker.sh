@@ -1,52 +1,90 @@
 #!/bin/bash
-# Docker test script for gridvoting-jax with NumPy 2.0+
+# Docker test script with support for dev and versioned images from GHCR
+# Usage:
+#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [pytest args...]
+#   
+# Examples:
+#   ./test_docker.sh --dev --gpu tests/
+#   ./test_docker.sh --version=v0.9.1 --cpu
+#   ./test_docker.sh --dev  # defaults to CPU
 
 set -e
 
-echo "========================================="
-echo "Testing gridvoting-jax with NumPy 2.0+"
-echo "========================================="
+MODE="dev"  # dev or release
+VERSION="latest"
+CUDA_TYPE="cpu"
+PYTEST_ARGS="tests/"
 
-# Create and run Docker container
-# Source mounted read-only to prevent artifact pollution
-echo "Starting Docker container..."
-docker run --rm -v "$(pwd):/source:ro" ubuntu:24.04 /bin/bash -c "
-    set -e
-    echo 'Copying source to container workspace...'
-    cp -r /source /workspace
-    cd /workspace
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dev)
+            MODE="dev"
+            shift
+            ;;
+        --version=*)
+            MODE="release"
+            VERSION="${1#*=}"
+            shift
+            ;;
+        --cpu)
+            CUDA_TYPE="cpu"
+            shift
+            ;;
+        --gpu)
+            # Auto-detect CUDA version
+            if command -v nvidia-smi &> /dev/null; then
+                CUDA_VER=$(nvidia-smi | grep "CUDA Version" | awk '{print $9}' | cut -d. -f1)
+                if [[ "$CUDA_VER" == "12" ]]; then
+                    CUDA_TYPE="cuda12"
+                elif [[ "$CUDA_VER" == "13" ]]; then
+                    CUDA_TYPE="cuda13"
+                else
+                    echo "Warning: Unknown CUDA version $CUDA_VER, defaulting to cuda12"
+                    CUDA_TYPE="cuda12"
+                fi
+            else
+                echo "Error: --gpu specified but nvidia-smi not found"
+                exit 1
+            fi
+            shift
+            ;;
+        *)
+            PYTEST_ARGS="$@"
+            break
+            ;;
+    esac
+done
+
+# Determine image name
+REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
+
+if [ "$MODE" == "dev" ]; then
+    IMAGE="${REGISTRY}/gridvoting-jax-dev-${CUDA_TYPE}:latest"
+    echo "Using dev image: $IMAGE"
     
-    echo 'Installing Python and pip...'
-    apt-get update -qq
-    apt-get install -y -qq python3 python3-pip python3-venv > /dev/null 2>&1
+    # Pull latest dev image
+    docker pull "$IMAGE"
     
-    echo 'Creating virtual environment...'
-    python3 -m venv /venv
-    source /venv/bin/activate
+    # Run with mounted source code
+    docker run --rm \
+        -v "$(pwd):/workspace" \
+        ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
+        "$IMAGE" \
+        python3 -m pytest $PYTEST_ARGS
+else
+    # Release mode
+    IMAGE="${REGISTRY}/gridvoting-jax-${CUDA_TYPE/cpu/cpu}:${VERSION}"
+    IMAGE="${IMAGE/cuda12/gpu-cuda12}"
+    IMAGE="${IMAGE/cuda13/gpu-cuda13}"
+    echo "Using release image: $IMAGE"
     
-    echo 'Installing build tools...'
-    pip install --quiet build
+    # Pull release image
+    docker pull "$IMAGE"
     
-    echo 'Building package...'
-    python3 -m build
-    
-    echo 'Installing package...'
-    pip install --quiet dist/*.whl
-    pip install --quiet pytest
-    
-    echo 'Checking NumPy version...'
-    python3 -c 'import numpy; print(f\"NumPy version: {numpy.__version__}\")'
-    
-    echo 'Testing import...'
-    python3 -c 'import gridvoting_jax as gv; print(f\"gridvoting-jax version: {gv.__version__}\"); print(f\"Device: {gv.device_type}\")'
-    
-    echo 'Running tests...'
-    pytest tests/ -v --tb=short
-    
-    echo 'Testing GV_FORCE_CPU mode...'
-    GV_FORCE_CPU=1 python3 -c 'import gridvoting_jax as gv; assert gv.device_type == \"cpu\", \"GV_FORCE_CPU mode failed\"; print(\"✓ GV_FORCE_CPU mode works\")'
-    
-    echo '========================================='
-    echo '✓ All tests passed with NumPy 2.0+!'
-    echo '========================================='
-"
+    # Run tests
+    docker run --rm \
+        ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
+        "$IMAGE" \
+        python3 -m pytest $PYTEST_ARGS
+fi

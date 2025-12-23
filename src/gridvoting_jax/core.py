@@ -1,11 +1,51 @@
-
 import os
+from warnings import warn
+
+# ============================================================================
+# CPU Configuration - Must be set BEFORE importing JAX
+# ============================================================================
+
+# Detect number of CPU cores for optimal parallelization
+cpu_count = os.cpu_count()
+if cpu_count is None:
+    cpu_count = 1  # Fallback if detection fails
+    warn("Could not detect CPU count, defaulting to 1 thread")
+
+# Configure JAX CPU parallelization (only if not already set by user)
+if 'XLA_FLAGS' not in os.environ:
+    # Enable multi-threaded Eigen operations and set parallelism threads
+    # intra_op: parallelism within a single operation (e.g., matrix multiply)
+    # inter_op: parallelism across independent operations
+    # xla_force_host_platform_device_count: exposes CPU cores as separate devices
+    #   This is critical for parallelizing iterative solvers like GMRES and power method
+    xla_flags = (
+        f'--xla_cpu_multi_thread_eigen=true '
+        f'--xla_force_host_platform_device_count={cpu_count} '
+        f'intra_op_parallelism_threads={cpu_count} '
+        f'inter_op_parallelism_threads={cpu_count}'
+    )
+    os.environ['XLA_FLAGS'] = xla_flags
+
+if 'OMP_NUM_THREADS' not in os.environ:
+    # Set OpenMP threads for CPU operations
+    os.environ['OMP_NUM_THREADS'] = str(cpu_count)
+
+if 'MKL_NUM_THREADS' not in os.environ:
+    # Set Intel MKL threads (if MKL is being used by JAX)
+    os.environ['MKL_NUM_THREADS'] = str(cpu_count)
+
+# ============================================================================
+# JAX Import - Now with optimized CPU settings
+# ============================================================================
+
 import jax
 import jax.numpy as jnp
 import chex
-from warnings import warn
 
+# ============================================================================
 # Default tolerances
+# ============================================================================
+
 # Check for Float64 override via environment
 # This allows JAX to start in float64 mode and sets tighter tolerances
 if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64") in ["1", "True", "true"]:

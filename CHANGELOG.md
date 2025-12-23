@@ -8,6 +8,134 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.10.0] - 2025-12-23
+
+### Added - Lazy Solver Infrastructure (MAJOR)
+
+- **Lazy Transition Matrix**: Memory-efficient matrix operations without materializing full P matrix
+  - `LazyTransitionMatrix` class with batched and non-batched implementations
+  - `rmatvec()`: Non-batched transpose matrix-vector product (for GMRES)
+  - `rmatvec_batched()`: Batched version for power method (more memory efficient)
+  - `matvec()`: Forward matrix-vector product
+  - `todense()`: Materialize full matrix for testing/comparison
+  - Fixed batch size (128) for optimal memory/performance tradeoff
+
+- **Lazy Markov Chain Solvers**:
+  - `LazyMarkovChain`: Always-lazy implementation for iterative solvers
+  - `FlexMarkovChain`: Auto-selects dense or lazy based on available memory
+  - `FlexMarkovChain.from_voting_model()`: Factory method for clean separation of concerns
+  - Memory estimation functions: `estimate_memory_for_dense_matrix()`, `should_use_lazy()`
+  - Adaptive batching in power method with timing-based optimization
+
+- **Grid Upscaling for Large Grids**:
+  - Enhanced `grid_upscaling` solver to work with g=80 and g=100
+  - Uses bounding box of voter ideal points + 1 unit border as subgrid
+  - Solves on subgrid, then upscales and refines on full grid with GMRES
+  - Lazy GMRES integration for memory efficiency
+  - No full matrix construction required
+
+### Fixed - Critical Lazy Solver Bugs
+
+- **Power Method Convergence** (was failing with inf/nan):
+  - Bug #1: Fixed check_norm calculation (was measuring renormalization instead of evolution)
+  - Bug #2: Fixed `rmatvec_batched()` implementation (was using batched v instead of full v vector)
+  - Result: Power method now achieves 1.07e-08 accuracy on g=80 (excellent!)
+
+### Added - OSF Validation \u0026 Large Grid Support
+
+- **g=80 Validation**: Successfully validated against OSF reference data with L1 norm ~1e-08
+- **g=100 Support** (NEW - First Time!):
+  - Successfully computed stationary distribution for g=100 (10,201 alternatives)
+  - Validated g=80 subgrid within g=100 (within 1% difference)
+  - Outside probability: ~1.5e-09 (much less than 1%, proving grid upscaling correctness)
+  - Enables research on larger spatial voting models
+
+### Added - Benchmarks \u0026 Testing
+
+- **Benchmark Scripts**:
+  - `benchmarks/lazy_vs_dense.py`: Compare lazy power method, lazy GMRES, dense solvers
+    - Grouped output by grid size
+    - Accuracy classification (Excellent/Good/Acceptable/Poor)
+    - JAX memory tracking (optional via `--no-memory`)
+    - Flags: `--quick`, `--extended`, `--output`
+  
+  - `benchmarks/memory_profiling.py`: GPU/CPU profiling via nvidia-smi and JAX stats
+  
+  - `benchmarks/osf_accuracy.py`: OSF validation with accuracy ranking
+    - L1 norm, max difference, correlation metrics
+    - Grouped output by grid size
+
+- **Quick Tests Organization**:
+  - Organized 17 test files into `quick_tests/` directory
+  - Created `quick_tests/README.md` with comprehensive index
+  - Test scripts for lazy solvers, grid upscaling, OSF validation
+
+### Added - Docker Infrastructure Reorganization
+
+- **Three-Tier Docker System**:
+  - **Base Images**: JAX + CUDA + OSF data (built once, cached on GHCR)
+    - `jax-base-cpu`: Ubuntu 24.04, JAX CPU, OSF data
+    - `jax-base-cuda12`: CUDA 12.2, JAX with `jax[cuda12]`, OSF data
+    - `jax-base-cuda13`: CUDA 13.1, JAX with `jax[cuda13]`, OSF data
+  
+  - **Release Images**: Fast builds (~30 seconds) from PyPI for each version
+    - `gridvoting-jax-cpu:vX.Y.Z`
+    - `gridvoting-jax-gpu-cuda12:vX.Y.Z`
+    - `gridvoting-jax-gpu-cuda13:vX.Y.Z`
+    - All releases preserved on GHCR for reproducible research
+  
+  - **Dev Images**: Local development with mounted source code
+    - `gridvoting-jax-dev-cpu:latest`
+    - `gridvoting-jax-dev-cuda12:latest`
+    - `gridvoting-jax-dev-cuda13:latest`
+
+- **Build Time Improvement**: 95% faster release builds (30s vs 5-10min)
+- **Version History**: All releases preserved on GHCR for reproducible research
+
+- **GitHub Actions Workflows**:
+  - `docker-base-images.yml`: Builds base and dev images (manual trigger only)
+  - Updated `docker-publish.yml`: Builds versioned release images after PyPI publish
+
+- **Enhanced Test Scripts**:
+  - `test_docker.sh`: New `--dev` and `--version=vX.Y.Z` flags
+  - `test_docker_osf.sh`: Same flags plus `--quick`, `--extended`, `--float64`
+  - `test_docker_lazy.sh`: Lazy solver test suite
+  - Auto-detection of CUDA 12 vs 13
+  - Pull from GHCR by default for faster testing
+
+- **Documentation**:
+  - `docs/docker.md`: Comprehensive Docker usage guide
+  - Image types, quick start, development workflow, CI/CD pipeline, troubleshooting
+
+### Changed
+
+- **CUDA 13 Support**: Using `jax[cuda13]` package for better performance and bug fixes
+- **Docker File Structure**: Organized into `Dockerfiles/base/`, `Dockerfiles/release/`, `Dockerfiles/dev/`
+- **GHCR Integration**: All images hosted on GitHub Container Registry
+- **Solver Selection**: `FlexMarkovChain` auto-selects lazy vs dense based on memory
+
+### Removed
+
+- Legacy Dockerfiles: `Dockerfile.cpu`, `Dockerfile.gpu`, `Dockerfile.gpu-cuda12`, `Dockerfile.gpu-cuda13`
+
+### Added - Security \u0026 Repository Cleanup
+
+- Pre-commit workflow to help prevent dev-sec issues
+- Updated `.gitignore` with security patterns
+
+### Performance Improvements
+
+- **95% faster Docker builds** (30s vs 5-10min for releases)
+- **g=100 now computable** (10,201 alternatives - previously impossible)
+- **Memory-efficient lazy solvers** (no full matrix construction)
+- **GPU support validated** on both CUDA 12 (GTX 1080 Ti) and CUDA 13 (L4 GPU)
+
+### Notes
+
+> **⚠️ Docker Images - Experimental**  
+> The new Docker infrastructure is still being tested and may not work correctly in all environments. Images should be finalized after a few patches (v0.10.1, v0.10.2, etc.). Please report any issues on GitHub.
+
+
 ## [0.9.1] - 2025-12-22
 
 ### Fixed

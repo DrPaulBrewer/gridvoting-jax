@@ -1,90 +1,107 @@
 #!/bin/bash
-# Script to run OSF benchmarks using pre-built Docker images.
-# Replaces test_docker_osf.sh with reduced overhead by skipping environment setup.
+# OSF validation test script with Docker support
+# Usage:
+#   ./test_docker_osf.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--quick|--extended] [--float64]
 
 set -e
 
-# Configuration
-REPO="ghcr.io/drpaulbrewer/gridvoting-jax"
-IMAGE_CPU="${REPO}-cpu:latest"
-IMAGE_GPU="${REPO}-all:latest"
+MODE="dev"
+VERSION="latest"
+CUDA_TYPE="cpu"
+GRID_SIZES="20 40 60 80"
+PRECISION="float32"
 
-echo "========================================="
-echo "OSF Benchmark Docker Verification (Fast)"
-echo "========================================="
-
-docker pull $IMAGE_CPU
-
-# 1. Detect GPU
-HAS_GPU=false
-if command -v nvidia-smi &> /dev/null; then
-    if nvidia-smi &> /dev/null; then
-        echo "GPU Detected: $(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
-        # Download Docker GPU Image
-        docker pull $IMAGE_GPU
-        # Check if Docker supports GPUs
-        echo "Downloading Docker Image $IMAGE_GPU"
-        echo "Checking Docker GPU support..."
-        if docker run --rm --gpus all "$IMAGE_GPU" nvidia-smi &> /dev/null; then
-            echo "✓ Docker GPU support confirmed."
-            HAS_GPU=true
-        else
-            echo "⚠ WARNING: GPU detected on host, but Docker GPU support is missing."
-            echo "  Error: 'could not select device driver' or similar."
-            echo "  Skipping GPU tests."
-            HAS_GPU=false
-        fi
-    else
-        echo "nvidia-smi found but failed to run. Assuming CPU only."
-    fi
-else
-    echo "nvidia-smi not found. Assuming CPU only."
-fi
-
-# Define tests: "Name|DockerFlags|Image|EnvVars|PythonCommand"
-TESTS=(
-    "CPU_Float32|--rm|$IMAGE_CPU| |run_comparison_report()"
-    "CPU_Float64|--rm|$IMAGE_CPU| |gv.enable_float64(); run_comparison_report()"
-)
-
-if [ "$HAS_GPU" = true ]; then
-    TESTS+=(
-        "GPU_Float32|--gpus all --rm|$IMAGE_GPU| |run_comparison_report()"
-        "GPU_Float64|--gpus all --rm|$IMAGE_GPU| |gv.enable_float64(); run_comparison_report()"
-    )
-fi
-
-echo "Scheduled tests:"
-for test_entry in "${TESTS[@]}"; do
-    IFS='|' read -r name flags image env cmd <<< "$test_entry"
-    echo "  - $name ($image)"
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dev)
+            MODE="dev"
+            shift
+            ;;
+        --version=*)
+            MODE="release"
+            VERSION="${1#*=}"
+            shift
+            ;;
+        --cpu)
+            CUDA_TYPE="cpu"
+            shift
+            ;;
+        --gpu)
+            if command -v nvidia-smi &> /dev/null; then
+                CUDA_VER=$(nvidia-smi | grep "CUDA Version" | awk '{print $9}' | cut -d. -f1)
+                if [[ "$CUDA_VER" == "12" ]]; then
+                    CUDA_TYPE="cuda12"
+                elif [[ "$CUDA_VER" == "13" ]]; then
+                    CUDA_TYPE="cuda13"
+                else
+                    CUDA_TYPE="cuda12"
+                fi
+            else
+                echo "Error: --gpu specified but nvidia-smi not found"
+                exit 1
+            fi
+            shift
+            ;;
+        --quick)
+            GRID_SIZES="20 40"
+            shift
+            ;;
+        --extended)
+            GRID_SIZES="20 40 60 80 100"
+            shift
+            ;;
+        --float64)
+            PRECISION="float64"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
 done
-echo "========================================="
 
-# 2. Run Tests
-for test_entry in "${TESTS[@]}"; do
-    IFS='|' read -r name flags image env cmd <<< "$test_entry"
+echo "========================================="
+echo "OSF Validation - Docker"
+echo "========================================="
+echo "Mode: $MODE"
+echo "CUDA: $CUDA_TYPE"
+echo "Grid sizes: $GRID_SIZES"
+echo "Precision: $PRECISION"
+echo ""
+
+# Determine image
+REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
+
+if [ "$MODE" == "dev" ]; then
+    IMAGE="${REGISTRY}/gridvoting-jax-dev-${CUDA_TYPE}:latest"
+    echo "Pulling dev image: $IMAGE"
+    docker pull "$IMAGE"
     
+    DOCKER_ARGS="-v $(pwd):/workspace"
+else
+    IMAGE="${REGISTRY}/gridvoting-jax-${CUDA_TYPE/cpu/cpu}:${VERSION}"
+    IMAGE="${IMAGE/cuda12/gpu-cuda12}"
+    IMAGE="${IMAGE/cuda13/gpu-cuda13}"
+    echo "Pulling release image: $IMAGE"
+    docker pull "$IMAGE"
+    
+    DOCKER_ARGS=""
+fi
+
+# Add GPU support if needed
+if [ "$CUDA_TYPE" != "cpu" ]; then
+    DOCKER_ARGS="$DOCKER_ARGS --gpus all"
+fi
+
+# Run tests for each grid size
+for g in $GRID_SIZES; do
     echo ""
-    echo "Running Test: $name"
-    echo "-----------------------------------------"
-    
-    # Run Docker using pre-built image
-    docker run $flags \
-        -e PYTHONUNBUFFERED=1 \
-        $env \
-        $image \
-        python3 -u -c "import sys; print(\"Python Started\"); import gridvoting_jax as gv; from gridvoting_jax.benchmarks import run_comparison_report; print(\"Modules Imported\"); $cmd"
-        
-    if [ $? -eq 0 ]; then
-        echo "✓ $name Passed"
-    else
-        echo "✗ $name Failed"
-        exit 1
-    fi
+    echo "Testing g=$g..."
+    docker run --rm $DOCKER_ARGS "$IMAGE" \
+        python3 -m pytest tests/test_osf_validation_g80_g100.py \
+        -k "g${g}" -v --tb=short
 done
 
 echo ""
-echo "========================================="
-echo "All tests completed successfully!"
-echo "========================================="
+echo "✅ All OSF validation tests passed!"

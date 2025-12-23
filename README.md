@@ -92,53 +92,46 @@ GV_FORCE_CPU=1 python your_script.py
 
 ### Docker Usage
 
-The project includes `Dockerfile`s for building CPU and GPU images.
+> **⚠️ EXPERIMENTAL - Docker Images Under Development**  
+> The new Docker infrastructure is still being tested and may not work correctly in all environments. Images should be finalized after a few patches (v0.10.1, v0.10.2, etc.). Please report any issues on GitHub.
 
-**Building Docker Images:**
+The project uses a multi-tier Docker image system hosted on GitHub Container Registry (GHCR):
+- **Base Images**: JAX + CUDA + OSF data (built once)
+- **Release Images**: Versioned releases from PyPI (~30s builds)
+- **Dev Images**: Local development with mounted source code
 
+**Quick Start - Local Development:**
 ```bash
-# Build CPU image
-docker build -f docker/Dockerfile.cpu -t gridvoting-jax-cpu .
+# CPU testing with your local source code
+./test_docker.sh --dev --cpu tests/
 
-# Build GPU image
-docker build -f docker/Dockerfile.gpu -t gridvoting-jax-gpu .
+# GPU testing (auto-detects CUDA 12 or 13)
+./test_docker.sh --dev --gpu tests/
 ```
 
-**Testing Docker Images:**
-
-A `test_docker.sh` script is provided to run a quick test inside the Docker containers.
-To execute:
+**Testing Specific Versions:**
 ```bash
-./test_docker.sh
+# Test a specific release
+./test_docker.sh --version=v0.9.1 --gpu
+
+# Run OSF validation
+./test_docker_osf.sh --dev --gpu --quick
 ```
 
-### Run OSF Benchmarks
-To run the full suite of OSF comparison benchmarks using the pre-built Docker images (GHCR):
+**Detailed Documentation:**  
+See [`docs/docker.md`](docs/docker.md) for comprehensive Docker usage guide including:
+- Image types and GHCR paths
+- Development workflow
+- CI/CD pipeline
+- Troubleshooting
+
+**Building Images Locally:**
 ```bash
-./test_docker_osf.sh
-```
-This script automatically detects GPU availability and runs both Float32 and Float64 benchmarks.
+# Build base images (one-time, slow)
+docker build -f Dockerfiles/base/Dockerfile.jax-cpu -t jax-base-cpu:local .
 
-### Using Pre-built Docker Images
-
-The project provides pre-built Docker images with all dependencies and OSF benchmark data included.
-
-**CPU Image:**
-```bash
-# Run python shell
-docker run --rm -it ghcr.io/[user]/gridvoting-jax-cpu python3
-
-# Run OSF Benchmark
-docker run --rm ghcr.io/[user]/gridvoting-jax-cpu run_osf_benchmark
-```
-
-**GPU Image:**
-```bash
-# Run python shell with GPU access
-docker run --rm --gpus all -it ghcr.io/[user]/gridvoting-jax-all python3
-
-# Run OSF Benchmark
-docker run --rm --gpus all ghcr.io/[user]/gridvoting-jax-all run_osf_benchmark
+# Build dev images (fast)
+docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t gridvoting-jax-dev:local .
 ```
 
 **Float64 Precision**: By default, JAX uses 32-bit floats for better GPU performance. To enable 64-bit precision for higher accuracy:
@@ -290,6 +283,11 @@ model = gv.SpatialVotingModel(
 
 **Additional Methods:**
 - **`plot_stationary_distribution(**kwargs)`**: Visualize results on grid
+- **`analyze_lazy(solver="auto", force_lazy=False, force_dense=False, **kwargs)`** *(New in v0.10.0)*: 
+  - Analyze using lazy matrix construction for large grids (g=80, g=100)
+  - Auto-selects dense or lazy based on memory
+  - Solvers: `"auto"`, `"gmres"`, `"power_method"`
+  - Example: `model.analyze_lazy(force_lazy=True)` for g=80+
 
 #### `class BudgetVotingModel` *(New in v0.9.0)*
 
@@ -378,6 +376,54 @@ mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 - `"gmres_matrix_inversion"`: Iterative GMRES solver
 - `"power_method"`: Power iteration method
 - `"grid_upscaling"`: Spatial upscaling (SpatialVotingModel only)
+
+#### `class LazyMarkovChain` *(New in v0.10.0)*
+
+Memory-efficient Markov chain for large grids (g=80, g=100).
+
+```python
+from gridvoting_jax.dynamics.lazy import LazyMarkovChain, LazyTransitionMatrix
+
+lazy_P = LazyTransitionMatrix(utility_functions, majority, zi, number_of_feasible_alternatives)
+mc = LazyMarkovChain(lazy_P=lazy_P)
+mc.find_unique_stationary_distribution(solver="gmres")
+```
+
+**Solvers:** `"gmres"` (default), `"power_method"`
+
+**Methods:**
+- `find_unique_stationary_distribution(solver, initial_guess, tolerance, max_iterations, timeout)`
+- `stationary_distribution`, `analyzed` (properties)
+
+#### `class LazyTransitionMatrix` *(New in v0.10.0)*
+
+**Methods:**
+- `rmatvec(v)`: P.T @ v (non-batched, for GMRES)
+- `rmatvec_batched(v)`: P.T @ v (batched, for power method)
+- `matvec(v)`: P @ v
+- `todense()`: Materialize full matrix
+
+#### `class FlexMarkovChain` *(New in v0.10.0)*
+
+Auto-selects dense or lazy based on memory.
+
+```python
+from gridvoting_jax.dynamics.lazy import FlexMarkovChain
+
+mc = FlexMarkovChain.from_voting_model(model)
+mc.find_unique_stationary_distribution(solver="auto")
+```
+
+### Large Grid Support *(New in v0.10.0)*
+
+- **g=80**: Validated (L1 ~1e-08)
+- **g=100**: 10,201 alternatives, uses lazy solvers + grid upscaling
+
+```python
+model = gv.bjm_spatial_triangle(g=100, zi=False)
+model.analyze(solver="grid_upscaling")  # Uses lazy GMRES
+```
+
 
 ### Datasets (`gv.datasets`)
 

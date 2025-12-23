@@ -9,6 +9,7 @@ from ..core import (
     assert_zero_diagonal_int_matrix
 )
 from ..dynamics import MarkovChain
+from ..dynamics.lazy import FlexMarkovChain
 
 
 class VotingModel:
@@ -61,6 +62,53 @@ class VotingModel:
                 solver=solver, 
                 **kwargs
             )
+        self.analyzed = True
+
+    def analyze_lazy(self, *, solver="auto", force_lazy=False, force_dense=False, **kwargs):
+        """
+        Analyzes the voting model using lazy matrix construction.
+        
+        This method uses FlexMarkovChain which auto-selects dense/lazy based on memory,
+        or can be forced to use lazy construction for large grids.
+        
+        Args:
+            solver: Strategy to use.
+                - "auto" (Default) - Auto-select gmres for lazy, full_matrix_inversion for dense
+                - "gmres" - Use GMRES solver
+                - "power_method" - Use power method solver
+            force_lazy: Force lazy construction (useful for large grids)
+            force_dense: Force dense construction
+            **kwargs: Passed to find_unique_stationary_distribution (e.g. tolerance, max_iterations).
+        
+        Example:
+            >>> model = gv.bjm_spatial_triangle(g=80, zi=False)
+            >>> model.analyze_lazy(force_lazy=True)  # Avoids GPU OOM on large grids
+        """
+        # Create FlexMarkovChain (auto-selects dense/lazy based on memory)
+        flex_mc = FlexMarkovChain.from_voting_model(
+            self,
+            force_lazy=force_lazy,
+            force_dense=force_dense
+        )
+        
+        # Analyze
+        flex_mc.find_unique_stationary_distribution(solver=solver, **kwargs)
+        
+        # Store results
+        self.MarkovChain = flex_mc.backend
+        
+        # Handle core points (LazyMarkovChain doesn't compute absorbing points)
+        if hasattr(self.MarkovChain, 'absorbing_points'):
+            self.core_points = self.MarkovChain.absorbing_points
+        else:
+            # For lazy chains, we don't compute absorbing points (would require dense P)
+            self.core_points = jnp.zeros(self.number_of_feasible_alternatives, dtype=bool)
+        
+        self.core_exists = jnp.any(self.core_points)
+        
+        if not self.core_exists:
+            self.stationary_distribution = flex_mc.stationary_distribution
+        
         self.analyzed = True
 
     def what_beats(self, *, index):

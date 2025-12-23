@@ -1,0 +1,31 @@
+# Pre-commit hooks for security
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+        
+  - repo: local
+    hooks:
+      - id: check-no-ssh-keys
+        name: Check for SSH key patterns
+        entry: 'grep -rn "BEGIN.*PRIVATE KEY\|ssh-rsa\|ssh-ed25519" --include="*.py" --include="*.sh" --include="*.txt" .'
+        language: system
+        pass_filenames: false
+        
+      - id: check-no-credentials
+        name: Check for credential patterns
+        entry: 'grep -rn "password\s*=\|api_key\s*=\|secret\s*=\|token\s*=" --include="*.py" --include="*.sh" .'
+        language: system
+        pass_filenames: false
