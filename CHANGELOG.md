@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Fixed `Dockerfiles/base/Dockerfile.jax-cuda13`
   - Ubuntu 24.04 uses Python 3.12 by default; python3.11 package does not exist
 
+- **Docker Base Images**: Removed OSF data download from base images
+  - Base images now only contain JAX and system dependencies
+  - OSF data download moved to dev/release images after package installation
+  - Fixes "No module named 'gridvoting_jax'" error during base image builds
+
 - **CI Test Stability**: Marked large grid tests as slow to prevent OOM on GitHub Actions runners
   - `test_lazy_g60()` - Changed from `@pytest.mark.large_grid` to `@pytest.mark.slow`
   - `test_lazy_g80_oom_prevention()` - Changed from `@pytest.mark.large_grid` to `@pytest.mark.slow`
