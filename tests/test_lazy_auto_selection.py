@@ -34,7 +34,7 @@ def test_force_lazy_small_grid():
     assert jnp.abs(jnp.sum(model.stationary_distribution) - 1.0) < 1e-6
 
 
-@pytest.mark.large_grid
+@pytest.mark.slow
 def test_lazy_g60():
     """Test lazy solver on g=60 (N=14641)."""
     model = gv.bjm_spatial_triangle(g=60, zi=False)
@@ -44,7 +44,7 @@ def test_lazy_g60():
     assert jnp.abs(jnp.sum(model.stationary_distribution) - 1.0) < 1e-6
 
 
-@pytest.mark.large_grid
+@pytest.mark.slow
 def test_lazy_g80_oom_prevention():
     """
     Test lazy solver on g=80 (N=25921) - the critical OOM prevention case.
