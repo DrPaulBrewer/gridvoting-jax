@@ -9,6 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.10.2] - 2025-12-23
+
+### Fixed
+
+- **Docker Release Images**: Fixed CI/CD build failures in release Dockerfiles
+  - **Root cause**: `ARG VERSION` declared before `FROM` was not available in subsequent build stages
+  - **Solution**: Re-declared `ARG VERSION` after `FROM` statement in all three release Dockerfiles
+  - Used `sed 's/^v//'` to strip 'v' prefix from version tags (e.g., `v0.10.1` → `0.10.1`)
+  - Fixed `Dockerfiles/release/Dockerfile.cpu`
+  - Fixed `Dockerfiles/release/Dockerfile.cuda12`
+  - Fixed `Dockerfiles/release/Dockerfile.cuda13`
+  - Resolves "Invalid requirement: 'gridvoting-jax=='" error during Docker builds
+
+
 ## [0.10.1] - 2025-12-23
 
 ### Fixed
