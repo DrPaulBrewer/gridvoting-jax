@@ -26,11 +26,6 @@ RUN pip install --no-cache-dir --upgrade pip build wheel setuptools \
 # Install JAX with CUDA 13 support
 RUN pip install --no-cache-dir "jax[cuda13]"
 
-# Download OSF data (baked into base image)
-COPY Dockerfiles/download_data.py /tmp/
-RUN mkdir -p /data/osf_cache && \
-    python3 /tmp/download_data.py && \
-    rm /tmp/download_data.py
 
 WORKDIR /workspace
 CMD ["python3"]
