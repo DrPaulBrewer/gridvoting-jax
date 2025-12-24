@@ -203,3 +203,53 @@ class BudgetVotingModel:
             )
         
         return gini_values, gini_probabilities
+    
+    def get_permutation_symmetry_partition(self, permutation_group=None):
+        """
+        Generate partition from voter permutation symmetries.
+        
+        Useful for lumping when voters are interchangeable. For 3-voter budget model,
+        the default is full S3 symmetry (all voters interchangeable).
+        
+        Args:
+            permutation_group: List of permutations in cycle notation.
+                              Default: S3 generators [((0,1),), ((0,1,2),)]
+                              Example for Z2: [((0,1),)] swaps voters 0 and 1
+        
+        Returns:
+            list[list[int]]: Partition grouping symmetric alternatives
+        
+        Examples:
+            >>> # Full S3 symmetry (default)
+            >>> partition = model.get_permutation_symmetry_partition()
+            
+            >>> # Z2 symmetry: swap voters 0 and 1
+            >>> partition = model.get_permutation_symmetry_partition([((0,1),)])
+        
+        Notes:
+            - State labels are (x, y) coordinates representing allocations
+            - Permutation (0,1) swaps voter 1 ↔ voter 2
+            - Permutation (0,1,2) rotates voter 1 → 2 → 3 → 1
+            - Default S3 means all (x,y,budget-x-y) permutations are equivalent
+        """
+        from ..dynamics import partition_from_permutation_symmetry
+        
+        # Default: Full S3 symmetry (all voters interchangeable)
+        if permutation_group is None:
+            # S3 generators: (0,1) swap and (0,1,2) 3-cycle
+            permutation_group = [((0,1),), ((0,1,2),)]
+        
+        # Build state labels from grid coordinates
+        # Each state is labeled by (x, y) which determines (u1, u2, u3)
+        state_labels = []
+        for i in range(self.number_of_alternatives):
+            x = int(self.u1[i])
+            y = int(self.u2[i])
+            # Label by utilities (u1, u2, u3)
+            state_labels.append((x, y, self.budget - x - y))
+        
+        return partition_from_permutation_symmetry(
+            self.number_of_alternatives,
+            state_labels,
+            permutation_group
+        )

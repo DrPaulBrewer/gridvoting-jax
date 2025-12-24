@@ -222,3 +222,55 @@ def test_partition_permutation_3cycle():
     # All should be in one group (cyclic symmetry)
     assert len(partition) == 1
     assert len(partition[0]) == 3
+
+
+# ============================================================================
+# Model Integration Tests
+# ============================================================================
+
+def test_budget_voting_model_s3_symmetry():
+    """Test BudgetVotingModel.get_permutation_symmetry_partition() with S3."""
+    from gridvoting_jax import bjm_budget_triangle
+    
+    # Small budget for testing
+    model = bjm_budget_triangle(budget=5, zi=False)
+    
+    # Get S3 partition (default)
+    partition = model.get_permutation_symmetry_partition()
+    
+    # Should group symmetric allocations
+    assert len(partition) > 0
+    assert len(partition) < model.number_of_alternatives
+    
+    # Verify partition is valid
+    all_states = [s for group in partition for s in group]
+    assert set(all_states) == set(range(model.number_of_alternatives))
+
+
+def test_spatial_voting_model_symmetry():
+    """Test SpatialVotingModel.get_spatial_symmetry_partition()."""
+    from gridvoting_jax import Grid, SpatialVotingModel
+    import jax.numpy as jnp
+    
+    # Small grid
+    grid = Grid(x0=-2, x1=2, y0=-2, y1=2)
+    voter_ideal_points = jnp.array([[0, 0], [1, 1], [-1, -1]])
+    
+    model = SpatialVotingModel(
+        voter_ideal_points=voter_ideal_points,
+        grid=grid,
+        number_of_voters=3,
+        majority=2,
+        zi=False
+    )
+    
+    # Get reflection partition
+    partition = model.get_spatial_symmetry_partition(['reflect_x'])
+    
+    # Should group symmetric points
+    assert len(partition) > 0
+    assert len(partition) < grid.len
+    
+    # Verify partition is valid
+    all_states = [s for group in partition for s in group]
+    assert set(all_states) == set(range(grid.len))

@@ -230,3 +230,31 @@ class SpatialVotingModel:
             voter_ideal_points=self.voter_ideal_points,
             **kwargs
         )
+    
+    def get_spatial_symmetry_partition(self, symmetries, tolerance=1e-6):
+        """
+        Generate partition from spatial symmetries.
+        
+        Convenience method that delegates to grid.partition_from_symmetry().
+        
+        Args:
+            symmetries: List of symmetry specifications (see Grid.partition_from_symmetry)
+            tolerance: Distance tolerance for matching points (default: 1e-6)
+        
+        Returns:
+            list[list[int]]: Partition grouping symmetric grid points
+        
+        Examples:
+            >>> # Reflection around y-axis
+            >>> partition = model.get_spatial_symmetry_partition(['reflect_x'])
+            
+            >>> # 120° rotation for BJM spatial triangle
+            >>> partition = model.get_spatial_symmetry_partition(
+            ...     [('rotate', 0, 0, 120)], tolerance=0.5
+            ... )
+        
+        Notes:
+            - This is a convenience wrapper around grid.partition_from_symmetry()
+            - See Grid.partition_from_symmetry() for full documentation
+        """
+        return self.grid.partition_from_symmetry(symmetries, tolerance=tolerance)
