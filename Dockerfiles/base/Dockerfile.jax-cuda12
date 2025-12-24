@@ -26,5 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip build wheel setuptools \
 # Install JAX with CUDA 12 support
 RUN pip install --no-cache-dir "jax[cuda12]"
 
+# Install gridvoting-jax dependencies (but not the package itself)
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
 WORKDIR /workspace
 CMD ["python3"]

@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.11.1] - 2025-12-24
+
+### Fixed
+
+- **Base Docker Images**: Added gridvoting-jax dependencies to base images
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cpu` to install `requirements.txt` dependencies (chex, numpy>=2.0, matplotlib)
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cuda12` to install `requirements.txt` dependencies
+  - Fixed `Dockerfiles/base/Dockerfile.jax-cuda13` to install `requirements.txt` dependencies
+  - **Impact**: Dev containers can now import `gridvoting_jax` via PYTHONPATH without errors
+  - **Root cause**: Base images only installed JAX and basic tools, missing package dependencies needed by dev containers
+  - Enables the PYTHONPATH-based development workflow introduced in v0.11.0
+
+- **Release Image Builds**: Fixed GitHub Actions workflow tag substitution
+  - Fixed `docker-publish.yml` to properly strip `v` prefix from version tags
+  - **Root cause**: Shell command substitution `$(echo v0.11.0 | sed 's/^v//')` was not evaluated in tags parameter
+  - **Solution**: Added explicit version stripping step that stores result as step output
+  - Release images now correctly tagged as `cpu:0.11.0` instead of failing with invalid tag format
+
+
+
 ## [0.11.0] - 2025-12-24
 
 ### Changed - BREAKING CHANGES
