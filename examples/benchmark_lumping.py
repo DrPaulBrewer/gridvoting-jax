@@ -85,7 +85,8 @@ def main():
     print("Step 7: Comparing against OSF reference data...")
     try:
         # Load OSF data for g=40
-        osf_data = gv.datasets.osf.load_bjm_spatial_triangle(g=40, zi=False)
+        from gridvoting_jax.datasets import load_bjm_spatial_triangle
+        osf_data = load_bjm_spatial_triangle(g=40, zi=False)
         pi_osf = osf_data['stationary_distribution']
         
         # Compare original vs OSF
