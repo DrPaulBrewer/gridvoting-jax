@@ -256,7 +256,7 @@ docker rmi ghcr.io/drpaulbrewer/gridvoting-jax/cpu:0.9.0
 
 ## Version History
 
-All release versions are preserved on GHCR indefinitely, allowing:
+All release versions are preserved on GHCR indefinitely, beginning with v0.11.0, allowing:
 - Performance comparisons across versions
 - Reproducible research
 - Easy rollback to previous versions
