@@ -379,29 +379,35 @@ class Grid:
                                 break
             
             elif isinstance(sym, tuple) and sym[0] == 'rotate':
-                # Rotation symmetry
+                # Rotation symmetry - VECTORIZED for performance
                 _, cx, cy, degrees = sym
                 theta = np.radians(degrees)
                 cos_theta = np.cos(theta)
                 sin_theta = np.sin(theta)
                 
-                for i in range(n_states):
-                    x, y = self.x[i], self.y[i]
-                    # Translate to origin
-                    x_rel, y_rel = x - cx, y - cy
-                    # Rotate
-                    x_rot = x_rel * cos_theta - y_rel * sin_theta
-                    y_rot = x_rel * sin_theta + y_rel * cos_theta
-                    # Translate back
-                    x_new = x_rot + cx
-                    y_new = y_rot + cy
-                    
-                    # Find closest point within tolerance
-                    for j in range(n_states):
-                        dist = np.sqrt((self.x[j] - x_new)**2 + (self.y[j] - y_new)**2)
-                        if dist < tolerance:
-                            union(i, j)
-                            break
+                # Vectorized rotation of all points
+                x_rel = self.x - cx
+                y_rel = self.y - cy
+                x_rot = x_rel * cos_theta - y_rel * sin_theta
+                y_rot = x_rel * sin_theta + y_rel * cos_theta
+                x_new = x_rot + cx
+                y_new = y_rot + cy
+                
+                # For each point, find nearest neighbor in rotated positions
+                # Use broadcasting to compute all pairwise distances at once
+                # Shape: (n_states, n_states)
+                dx = self.x[:, np.newaxis] - x_new[np.newaxis, :]
+                dy = self.y[:, np.newaxis] - y_new[np.newaxis, :]
+                distances = np.sqrt(dx**2 + dy**2)
+                
+                # Find matches within tolerance
+                # matches[i, j] = True if grid point i matches rotated point j
+                matches = distances < tolerance
+                
+                # Union points that match (only process actual matches)
+                match_indices = np.argwhere(matches)
+                for i, j in match_indices:
+                    union(int(i), int(j))
         
         # Build partition from equivalence classes
         groups = {}
