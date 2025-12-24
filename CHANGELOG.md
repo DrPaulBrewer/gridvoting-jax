@@ -43,6 +43,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - `SpatialVotingModel.get_spatial_symmetry_partition(symmetries, tolerance)`: Spatial symmetries
     - Convenience wrapper for `grid.partition_from_symmetry()`
 
+- **Benchmark Example**: `examples/benchmark_lumping.py`
+  - Demonstrates lumping with 120° rotational symmetry on BJM spatial triangle
+  - Compares original vs lumped chain performance
+  - Validates against OSF reference data
+  - Shows 2.32x state reduction (6,561 → 2,823 states for g=40)
+
+### Performance
+
+- **Scatter-Add Optimization**: Vectorized lumping computation
+  - Replaced dense matrix multiplication `A @ P @ A.T` with scatter-add indexing
+  - **2.7x speedup** in lumping computation (30.9s vs 83.2s for g=40 benchmark)
+  - Eliminates construction of full aggregation matrix A
+  - Uses JAX's `at[].add()` with vectorized column indices
+  - Complexity: O(n²) vectorized vs O(n²k) with dense matrices
+  - Reference: Scatter-add is a fundamental parallel primitive in GPU computing (see CUDA atomicAdd, JAX scatter operations)
+
+- **Vectorized Partition Generation**: Optimized spatial symmetry detection
+  - Rotation symmetries use NumPy broadcasting for distance matrix computation
+  - Processes only actual matches with `np.argwhere`
+  - Significantly faster for large grids
+
 ### Testing
 
 - Added 33 comprehensive tests (all passing):
@@ -57,6 +78,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Mathematical definitions for strong lumpability
 - Notes on Markov property preservation
 - Examples for common symmetries (reflections, rotations, voter swaps)
+- Performance notes on when lumping is beneficial
+
+### Notes
+
+- Lumping is most effective for:
+  - Very large grids where full transition matrix cannot be stored
+  - Strongly lumpable partitions (preserves Markov property exactly)
+  - Sparse matrix implementations
+- For moderate-sized problems, solving the original chain directly may be faster
+- Approximate symmetries (e.g., rotational with tolerance) produce non-lumpable partitions with approximation errors
 
 
 ## [0.11.1] - 2025-12-24
