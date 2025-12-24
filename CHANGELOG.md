@@ -8,6 +8,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.12.0] - 2025-12-24
+
+### Added
+
+- **Markov Chain Lumping**: Complete implementation of state aggregation for Markov chains
+  - `lump(MC, partition)`: Aggregate states with uniform weighting within groups
+  - `unlump(lumped_distribution, partition)`: Map lumped distributions back to original space
+  - `is_lumpable(MC, partition, tolerance)`: Test strong lumpability condition
+  - Strict partition validation (empty groups, valid indices, completeness, duplicates)
+  - Kemeny & Snell citation in docstrings
+  - Preserves tolerance from original chain
+  - **Note**: Permits non-strongly-lumpable partitions (user responsibility to verify)
+
+- **Spatial Symmetry Partition Generation**: Grid-based symmetry detection
+  - `Grid.partition_from_symmetry(symmetries, tolerance)`: Generate partitions from spatial symmetries
+  - Reflection symmetries: `reflect_x`, `reflect_y`, `swap_xy`, custom axes (`reflect_x=c`)
+  - Rotation symmetries with tolerance: `('rotate', cx, cy, degrees)`
+  - Union-find algorithm for equivalence class building
+  - Supports BJM spatial triangle 120° rotation with approximate matching
+  - Multiple symmetry composition
+
+- **Permutation Symmetry Partition Generation**: Voter interchangeability
+  - `partition_from_permutation_symmetry(n_states, state_labels, permutation_group)`: Generate partitions from permutation symmetries
+  - Cycle notation support: `((0,1),)` for swaps, `((0,1,2),)` for 3-cycles
+  - Multiple disjoint cycles: `((0,1), (2,3))`
+  - Handles S3, Z2, and general permutation groups
+  - Union-find algorithm for equivalence classes
+
+- **Model Integration**: Convenience methods for common use cases
+  - `BudgetVotingModel.get_permutation_symmetry_partition(permutation_group)`: Voter interchangeability
+    - Default S3 symmetry (all voters interchangeable)
+    - Custom permutation groups supported
+  - `SpatialVotingModel.get_spatial_symmetry_partition(symmetries, tolerance)`: Spatial symmetries
+    - Convenience wrapper for `grid.partition_from_symmetry()`
+
+### Testing
+
+- Added 33 comprehensive tests (all passing):
+  - 18 core lumping tests (valid/invalid lumpings, swap partition, CondorcetCycle symmetry)
+  - 8 spatial symmetry tests (reflections, rotations, multiple symmetries)
+  - 5 permutation symmetry tests (identity, Z2, S3, cycles)
+  - 2 model integration tests (BudgetVotingModel, SpatialVotingModel)
+
+### Documentation
+
+- Comprehensive docstrings with examples for all new functions
+- Mathematical definitions for strong lumpability
+- Notes on Markov property preservation
+- Examples for common symmetries (reflections, rotations, voter swaps)
+
+
 ## [0.11.1] - 2025-12-24
 
 ### Fixed
