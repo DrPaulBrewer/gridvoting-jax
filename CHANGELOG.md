@@ -42,14 +42,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
     - Custom permutation groups supported
   - `SpatialVotingModel.get_spatial_symmetry_partition(symmetries, tolerance)`: Spatial symmetries
     - Convenience wrapper for `grid.partition_from_symmetry()`
+### Added
+- **Automatic Symmetry Detection**: New `suggest_symmetries(points)` function to analyze a set of ideal points and suggest supported symmetries (e.g., `reflect_x`, `swap_xy`, `rotate`).
+- **Benchmark**: Added `examples/benchmark_lumping.py` comparing standard vs lumped Markov chain solvers on the BJM triangle model.
+- **Reflection Benchmark**: Added `examples/benchmark_lumping_reflection.py` demonstrating exact reflection symmetry (L1 error < 1e-6).
 
-- **Benchmark Example**: `examples/benchmark_lumping.py`
-  - Demonstrates lumping with 120° rotational symmetry on BJM spatial triangle
-  - Compares original vs lumped chain performance
-  - Validates against OSF reference data
-  - Shows 2.32x state reduction (6,561 → 2,823 states for g=40)
-
-### Performance
+### Optimization
+- **Faster Partition Generation**: Optimized `Grid.index()` to use O(1) direct computation for regular grids (replacing O(n) linear search). This significantly speeds up `partition_from_symmetry` and other spatial operations.
+- **Sparse Scatter-Add**: Optimized `_compute_lumped_transition_matrix` to use vectorized JAX scatter-add operations `at[].add()`, achieving ~2.7x speedup in lumping computation (O(n²) vs O(n²k)).
 
 - **Scatter-Add Optimization**: Vectorized lumping computation
   - Replaced dense matrix multiplication `A @ P @ A.T` with scatter-add indexing

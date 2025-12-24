@@ -3,25 +3,26 @@
 Benchmark: Markov Chain Lumping with Reflection Symmetry
 
 Demonstrates lumping speedup for BJM Spatial Voting Model using exact
-reflection symmetry around y=0. Unlike rotational symmetry, this is an
-EXACT symmetry of the ideal points, so the partition should be strongly
-lumpable (preserves Markov property exactly).
+reflection symmetry around x=0. This is an EXACT symmetry of the voter
+ideal points, so the partition should be strongly lumpable (preserves
+Markov property exactly).
 
 Compares:
 1. Original chain vs lumped chain performance
 2. Both against OSF reference data
-3. Tests strong lumpability (should be TRUE for exact symmetry)
+3. Tests strong lumpability (in parallel thread to avoid blocking)
 
 This shows the difference between exact and approximate symmetries.
 """
 
 import time
+import threading
 import jax.numpy as jnp
 import gridvoting_jax as gv
 
 def main():
     print("=" * 70)
-    print("Markov Chain Lumping: Exact Reflection Symmetry (y=0)")
+    print("Markov Chain Lumping: Exact Reflection Symmetry (x=0)")
     print("BJM Spatial Triangle (g=40, MI mode)")
     print("=" * 70)
     print()
@@ -33,11 +34,11 @@ def main():
     print(f"  ✓ Original grid size: {n_original:,} states")
     print()
     
-    # 2. Generate partition using reflection around y=0
-    print("Step 2: Generating partition with reflection around y=0...")
-    print("  Symmetry: reflect_y (exact symmetry of ideal points)")
+    # 2. Generate partition using reflection around x=0
+    print("Step 2: Generating partition with reflection around x=0...")
+    print("  Symmetry: reflect_x (exact symmetry of ideal points)")
     print("  Expected: Strongly lumpable (preserves Markov property)")
-    partition = model.get_spatial_symmetry_partition(['reflect_y'])
+    partition = model.get_spatial_symmetry_partition(['reflect_x'])
     n_lumped = len(partition)
     reduction_factor = n_original / n_lumped
     print(f"  ✓ Lumped chain size: {n_lumped:,} aggregate states")
@@ -54,30 +55,20 @@ def main():
     print(f"  ✓ Stationary distribution sum: {float(jnp.sum(pi_original)):.10f}")
     print()
     
-    # 4. Check strong lumpability AFTER analyzing
-    print("Step 11: Checking strong lumpability...")
-    is_valid = gv.is_lumpable(model.MarkovChain, partition, tolerance=1e-6)
-    if is_valid:
-        print("  ✅ Partition IS strongly lumpable!")
-        print("     Markov property preserved exactly.")
-        print("     Unlumped solution will match original exactly.")
-    else:
-        print("  ⚠️  Partition is NOT strongly lumpable")
-        print("     (Unexpected for exact symmetry!)")
-    print()
+    # 4. Start lumpability check in background thread
+    print("Step 4: Starting lumpability check (in background thread)...")
+    is_valid_result = [None]  # Use list to allow modification in thread
     
-    # 4. Solve original chain
-    print("Step 11: Solving original chain (full_matrix_inversion)...")
-    start = time.time()
-    model.analyze(solver="full_matrix_inversion")
-    time_original = time.time() - start
-    pi_original = model.stationary_distribution
-    print(f"  ✓ Solved in {time_original:.2f} seconds")
-    print(f"  ✓ Stationary distribution sum: {float(jnp.sum(pi_original)):.10f}")
+    def check_lumpability():
+        is_valid_result[0] = gv.is_lumpable(model.MarkovChain, partition, tolerance=1e-6)
+    
+    lumpability_thread = threading.Thread(target=check_lumpability, daemon=True)
+    lumpability_thread.start()
+    print("  ✓ Lumpability check running in background...")
     print()
     
     # 5. Create and solve lumped chain
-    print("Step 11: Creating and solving lumped chain...")
+    print("Step 5: Creating and solving lumped chain...")
     start = time.time()
     lumped_mc = gv.lump(model.MarkovChain, partition)
     lumped_mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
@@ -90,31 +81,23 @@ def main():
     print()
     
     # 6. Unlump the solution
-    print("Step 11: Unlumping solution back to original space...")
+    print("Step 6: Unlumping solution back to original space...")
     pi_unlumped = gv.unlump(pi_lumped, partition)
     print(f"  ✓ Unlumped distribution sum: {float(jnp.sum(pi_unlumped)):.10f}")
     print()
     
     # 7. Compare original vs unlumped
-    print("Step 11: Comparing original vs unlumped distributions...")
+    print("Step 7: Comparing original vs unlumped distributions...")
     diff_l1 = float(jnp.sum(jnp.abs(pi_original - pi_unlumped)))
     diff_l2 = float(jnp.sqrt(jnp.sum((pi_original - pi_unlumped)**2)))
     diff_max = float(jnp.max(jnp.abs(pi_original - pi_unlumped)))
     print(f"  L1 norm (sum of absolute differences): {diff_l1:.10f}")
     print(f"  L2 norm (Euclidean distance): {diff_l2:.10f}")
     print(f"  Max absolute difference: {diff_max:.10f}")
-    
-    if is_valid:
-        print()
-        if diff_l1 < 1e-6:
-            print("  ✅ Excellent! Differences are negligible (< 1e-6)")
-            print("     Strong lumpability confirmed numerically.")
-        else:
-            print(f"  ⚠️  Unexpected error for strongly lumpable partition")
     print()
     
     # 8. Compare against OSF reference data
-    print("Step 11: Comparing against OSF reference data...")
+    print("Step 8: Comparing against OSF reference data...")
     try:
         # Load OSF data for g=40, MI mode (auto-downloads if needed)
         from gridvoting_jax.benchmarks import load_osf_distribution
@@ -141,22 +124,34 @@ def main():
         print("  Unlumped vs OSF:")
         print(f"    L1 norm: {diff_unlumped_osf_l1:.10f}")
         print(f"    Max difference: {diff_unlumped_osf_max:.10f}")
-        
-        if is_valid and diff_unlumped_osf_l1 < diff_orig_osf_l1 * 1.01:
-            print()
-            print("  ✅ Unlumped matches OSF as well as original!")
-            print("     Confirms exact symmetry preservation.")
         print()
         
     except Exception as e:
         print(f"  ⚠ Could not load OSF data: {e}")
         print()
     
-    # 9. Summary
+    # 9. Wait for lumpability check to complete
+    print("Step 9: Waiting for lumpability check to complete...")
+    lumpability_thread.join()
+    is_valid = is_valid_result[0]
+    
+    if is_valid:
+        print("  ✅ Partition IS strongly lumpable!")
+        print("     Markov property preserved exactly.")
+        if diff_l1 < 1e-6:
+            print("     Numerical accuracy confirmed (L1 < 1e-6).")
+        else:
+            print(f"     ⚠️ Unexpected error: L1 = {diff_l1:.2e}")
+    else:
+        print("  ❌ Partition is NOT strongly lumpable")
+        print("     (Unexpected for exact symmetry!)")
+    print()
+    
+    # 10. Summary
     print("=" * 70)
     print("Summary:")
     print("=" * 70)
-    print(f"Symmetry:        Reflection around y=0 (EXACT)")
+    print(f"Symmetry:        Reflection around x=0 (EXACT)")
     print(f"Original chain:  {n_original:,} states, solved in {time_original:.2f}s")
     print(f"Lumped chain:    {n_lumped:,} states, solved in {time_lumped:.2f}s")
     print(f"Reduction:       {reduction_factor:.2f}x fewer states")
@@ -165,24 +160,27 @@ def main():
     print(f"Accuracy (L1):   {diff_l1:.2e} (original vs unlumped)")
     print()
     
-    # 10. Comparison with rotational symmetry
+    # 11. Comparison with rotational symmetry
     print("=" * 70)
     print("Comparison: Exact vs Approximate Symmetry")
     print("=" * 70)
     print()
-    print("Reflection (y=0) - EXACT symmetry:")
+    print("Reflection (x=0) - EXACT symmetry:")
     print(f"  • Strongly lumpable: {'✅ YES' if is_valid else '❌ NO'}")
     print(f"  • Error (L1): {diff_l1:.2e}")
     print(f"  • Reduction: {reduction_factor:.2f}x")
     print()
     print("Rotation (120°) - APPROXIMATE symmetry:")
     print("  • Strongly lumpable: ❌ NO")
-    print("  • Error (L1): ~2.3e-02 (100x larger!)")
+    print("  • Error (L1): ~2.3e-02")
     print("  • Reduction: 2.32x")
     print()
     print("Key Insight:")
-    print("  Exact symmetries → strongly lumpable → no approximation error")
-    print("  Approximate symmetries → not lumpable → approximation errors")
+    if is_valid and diff_l1 < 1e-3:
+        print("  ✅ Exact symmetries → strongly lumpable → minimal error")
+    else:
+        print("  ⚠️ Even exact spatial symmetry may not preserve Markov property")
+        print("     if voting dynamics break the symmetry")
     print()
     print("=" * 70)
 
