@@ -3,6 +3,7 @@ import jax
 import jax.lax
 import jax.numpy as jnp
 from warnings import warn
+from collections import Counter
 
 # Import from core
 from ..core import (
@@ -19,6 +20,7 @@ class MarkovChain:
         if tolerance is None:
             tolerance = TOLERANCE
         self.P = jnp.asarray(P)  # copy transition matrix to JAX array
+        self.tolerance = tolerance  # Store tolerance for later use
         assert_valid_transition_matrix(P)
         diagP = jnp.diagonal(self.P)
         self.absorbing_points = jnp.equal(diagP, 1.0)
@@ -328,3 +330,231 @@ class MarkovChain:
                           )
         }
         return metrics
+
+
+# ============================================================================
+# Markov Chain Lumping Functions
+# ============================================================================
+
+def _validate_partition(partition: list[list[int]], n_states: int) -> None:
+    """
+    Validate partition is a proper partition of states.
+    
+    Checks (in order, fails on first violation):
+    1. All groups are non-empty
+    2. All state indices are valid (0 to n-1)
+    3. All states are included
+    4. No state appears more than once
+    
+    Raises:
+        ValueError: On first violation with descriptive error message
+    """
+    # Check 1: No empty groups
+    for i, group in enumerate(partition):
+        if len(group) == 0:
+            raise ValueError(f"Partition group {i} is empty")
+    
+    # Flatten partition
+    all_states = [s for group in partition for s in group]
+    
+    # Check 2: Valid indices
+    for s in all_states:
+        if not (0 <= s < n_states):
+            raise ValueError(f"Invalid state index {s} (must be 0-{n_states-1})")
+    
+    # Check 3: All states present
+    if set(all_states) != set(range(n_states)):
+        missing = set(range(n_states)) - set(all_states)
+        raise ValueError(f"Partition missing states: {sorted(missing)}")
+    
+    # Check 4: No duplicates
+    if len(all_states) != len(set(all_states)):
+        counts = Counter(all_states)
+        duplicates = [s for s, count in counts.items() if count > 1]
+        raise ValueError(f"Partition contains duplicate states: {duplicates}")
+
+
+def _compute_lumped_transition_matrix(P: jnp.ndarray, partition: list[list[int]]) -> jnp.ndarray:
+    """
+    Compute lumped transition matrix using uniform weighting within aggregates.
+    
+    P'[i,j] = (1/|Si|) * sum_{s in Si, t in Sj} P[s,t]
+    
+    Args:
+        P: Original transition matrix (n×n)
+        partition: Partition specification
+    
+    Returns:
+        jnp.ndarray: Lumped transition matrix (k×k) where k = len(partition)
+    """
+    k = len(partition)
+    n = P.shape[0]
+    
+    # Build aggregation matrix A (k×n) where A[i,s] = 1/|Si| if s in Si
+    A = jnp.zeros((k, n))
+    for i, group in enumerate(partition):
+        weight = 1.0 / len(group)
+        for s in group:
+            A = A.at[i, s].set(weight)
+    
+    # Compute lumped matrix: P' = A @ P @ A.T
+    # This gives: P'[i,j] = sum_{s in Si, t in Sj} (1/|Si|) * P[s,t]
+    P_lumped = A @ P @ A.T
+    
+    # Renormalize rows to ensure they sum to 1 (handles numerical precision)
+    row_sums = jnp.sum(P_lumped, axis=1, keepdims=True)
+    P_lumped = P_lumped / row_sums
+    
+    return P_lumped
+
+
+def lump(MC: MarkovChain, partition: list[list[int]]) -> MarkovChain:
+    """
+    Create a lumped (aggregated) Markov chain by combining states.
+    
+    States within each aggregate are assumed to have equal probability.
+    The partition must be a proper partition (covering all states exactly once),
+    but need not preserve the Markov property. Invalid lumpings that violate
+    strong lumpability conditions are permitted but will not yield accurate
+    stationary distributions when unlumped.
+    
+    Args:
+        MC: Original MarkovChain instance
+        partition: List of lists, where each inner list contains indices 
+                   of states to be combined into a single aggregate state.
+                   Example: [[0,1], [2,3], [4,5]] combines states 0&1 into 
+                   aggregate state 0, states 2&3 into aggregate state 1, etc.
+    
+    Returns:
+        MarkovChain: New chain with k states where k = len(partition)
+    
+    Raises:
+        ValueError: If partition is invalid (missing states, duplicates, 
+                    empty groups, etc.)
+    
+    References:
+        Kemeny, J. G., & Snell, J. L. (1976). Finite Markov Chains. 
+        Springer-Verlag. (Chapter on lumpability)
+    
+    Examples:
+        >>> # Reflection symmetry: (x,y) -> (y,x)
+        >>> partition = [[0, 2], [1, 3]]
+        >>> lumped = lump(mc, partition)
+        
+        >>> # Swap states
+        >>> partition = [[1], [0]]  # Swaps states 0 and 1
+        >>> lumped = lump(mc, partition)
+    
+    Notes:
+        - Partition must include all states exactly once
+        - Each group in partition must be non-empty
+        - States within each aggregate are weighted equally
+        - Lumping may not preserve the Markov property (strong lumpability)
+    """
+    n_states = MC.P.shape[0]
+    
+    # Validate partition (strict checking, fails on first violation)
+    _validate_partition(partition, n_states)
+    
+    # Compute lumped transition matrix
+    P_lumped = _compute_lumped_transition_matrix(MC.P, partition)
+    
+    # Create new MarkovChain instance
+    # Preserve tolerance if available
+    tolerance = getattr(MC, 'tolerance', None)
+    return MarkovChain(P=P_lumped, tolerance=tolerance)
+
+
+def unlump(lumped_distribution: jnp.ndarray, partition: list[list[int]]) -> jnp.ndarray:
+    """
+    Map a probability distribution from lumped space back to original space.
+    
+    Distributes probability uniformly within each aggregate state.
+    
+    Args:
+        lumped_distribution: Probability distribution over k aggregate states
+        partition: Same partition used to create the lumped chain
+    
+    Returns:
+        jnp.ndarray: Probability distribution over n original states
+    
+    Example:
+        >>> partition = [[0,1], [2,3,4]]
+        >>> lumped_pi = jnp.array([0.4, 0.6])
+        >>> pi = unlump(lumped_pi, partition)
+        >>> # pi = [0.2, 0.2, 0.2, 0.2, 0.2]  (uniform within aggregates)
+    
+    Notes:
+        - If the original lumping violated strong lumpability, the unlumped
+          distribution will not match the original chain's stationary distribution
+    """
+    k = len(partition)
+    
+    # Validate input
+    if lumped_distribution.shape[0] != k:
+        raise ValueError(
+            f"Distribution size {lumped_distribution.shape[0]} doesn't match "
+            f"partition size {k}"
+        )
+    
+    # Determine original state space size
+    n_states = sum(len(group) for group in partition)
+    
+    # Distribute probability uniformly within each aggregate
+    original_distribution = jnp.zeros(n_states)
+    
+    for i, group in enumerate(partition):
+        # Distribute lumped probability equally among states in this aggregate
+        prob_per_state = lumped_distribution[i] / len(group)
+        for s in group:
+            original_distribution = original_distribution.at[s].set(prob_per_state)
+    
+    return original_distribution
+
+
+def is_lumpable(MC: MarkovChain, partition: list[list[int]], tolerance: float = 1e-6) -> bool:
+    """
+    Test whether a partition preserves the Markov property (strong lumpability).
+    
+    A partition is strongly lumpable if for each aggregate state i and j,
+    all states k within aggregate i have the same total transition probability
+    to aggregate j:
+        Σ_{l∈Lⱼ} p_{kl} = constant for all k∈Lᵢ
+    
+    Args:
+        MC: MarkovChain instance
+        partition: Partition to test
+        tolerance: Numerical tolerance for equality check (default: 1e-6)
+    
+    Returns:
+        bool: True if partition is strongly lumpable, False otherwise
+    
+    Examples:
+        >>> # Test if partition preserves Markov property
+        >>> P = jnp.array([[0.5, 0.5, 0.0], [0.5, 0.5, 0.0], [0.1, 0.1, 0.8]])
+        >>> mc = MarkovChain(P=P)
+        >>> is_lumpable(mc, [[0, 1], [2]])  # True
+        >>> is_lumpable(mc, [[0, 2], [1]])  # False
+    
+    Notes:
+        - This is a dense matrix operation: O(n²k) where n=states, k=aggregates
+        - For large chains, this may be expensive
+    """
+    _validate_partition(partition, MC.P.shape[0])
+    
+    # For each pair of aggregates (i, j)
+    for i, group_i in enumerate(partition):
+        for j, group_j in enumerate(partition):
+            # Compute total transition probability from each state in group_i to group_j
+            probs_to_j = []
+            for k in group_i:
+                # Sum transition probabilities from state k to all states in group_j
+                prob_k_to_j = jnp.sum(MC.P[k, group_j])
+                probs_to_j.append(prob_k_to_j)
+            
+            # Check if all states in group_i have same transition probability to group_j
+            probs_to_j = jnp.array(probs_to_j)
+            if not jnp.allclose(probs_to_j, probs_to_j[0], atol=tolerance):
+                return False
+    
+    return True
