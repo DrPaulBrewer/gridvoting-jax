@@ -6,7 +6,7 @@ __version__ = "0.11.1"
 from .core import TOLERANCE, enable_float64, device_type, use_accelerator
 
 # Core components
-from .dynamics import MarkovChain, LazyMarkovChain, FlexMarkovChain, LazyTransitionMatrix, lump, unlump, is_lumpable
+from .dynamics import MarkovChain, LazyMarkovChain, FlexMarkovChain, LazyTransitionMatrix, lump, unlump, is_lumpable, partition_from_permutation_symmetry
 from .spatial import Grid, dist_sqeuclidean, dist_manhattan
 
 # Models
@@ -34,7 +34,7 @@ __all__ = [
     'TOLERANCE', 'enable_float64', 'device_type', 'use_accelerator',
     # Core components
     'MarkovChain', 'LazyMarkovChain', 'FlexMarkovChain', 'LazyTransitionMatrix',
-    'lump', 'unlump', 'is_lumpable',
+    'lump', 'unlump', 'is_lumpable', 'partition_from_permutation_symmetry',
     'Grid', 'dist_sqeuclidean', 'dist_manhattan',
     # Models
     'VotingModel', 'SpatialVotingModel', 'BudgetVotingModel',

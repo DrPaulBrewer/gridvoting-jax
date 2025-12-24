@@ -129,3 +129,96 @@ def test_partition_spatial_rotation_90():
     # Verify partition is valid
     all_states = [s for group in partition for s in group]
     assert set(all_states) == set(range(grid.len))
+
+
+# ============================================================================
+# Permutation Symmetry Tests
+# ============================================================================
+
+def test_partition_permutation_identity():
+    """Test identity permutation (no grouping)."""
+    from gridvoting_jax import partition_from_permutation_symmetry
+    
+    # 3 states with distinct labels
+    state_labels = [(0,), (1,), (2,)]
+    # Empty permutation group (identity only)
+    partition = partition_from_permutation_symmetry(3, state_labels, [])
+    
+    # Should have one state per group
+    assert len(partition) == 3
+    for group in partition:
+        assert len(group) == 1
+
+
+def test_partition_permutation_z2():
+    """Test Z2 symmetry (swap two elements)."""
+    from gridvoting_jax import partition_from_permutation_symmetry
+    
+    # 6 states representing permutations of 3 voters
+    state_labels = [(0,1,2), (0,2,1), (1,0,2), (1,2,0), (2,0,1), (2,1,0)]
+    
+    # Z2: swap voters 0 and 1
+    z2_group = [((0,1),)]
+    partition = partition_from_permutation_symmetry(6, state_labels, z2_group)
+    
+    # Should have 3 groups of 2
+    assert len(partition) == 3
+    for group in partition:
+        assert len(group) == 2
+    
+    # Verify partition is valid
+    all_states = [s for group in partition for s in group]
+    assert set(all_states) == set(range(6))
+
+
+def test_partition_permutation_s3():
+    """Test S3 symmetry (all voters interchangeable)."""
+    from gridvoting_jax import partition_from_permutation_symmetry
+    
+    # 6 states representing permutations of 3 voters
+    state_labels = [(0,1,2), (0,2,1), (1,0,2), (1,2,0), (2,0,1), (2,1,0)]
+    
+    # S3 generators: (0,1) swap and (0,1,2) 3-cycle
+    s3_group = [((0,1),), ((0,1,2),)]
+    partition = partition_from_permutation_symmetry(6, state_labels, s3_group)
+    
+    # All states should be in one group (full symmetry)
+    assert len(partition) == 1
+    assert len(partition[0]) == 6
+    
+    # Verify partition is valid
+    all_states = [s for group in partition for s in group]
+    assert set(all_states) == set(range(6))
+
+
+def test_partition_permutation_multiple_cycles():
+    """Test permutation with multiple disjoint cycles."""
+    from gridvoting_jax import partition_from_permutation_symmetry
+    
+    # 4 voters
+    state_labels = [(0,1,2,3), (1,0,3,2), (2,3,0,1), (3,2,1,0)]
+    
+    # Swap (0,1) and (2,3) simultaneously
+    perm_group = [((0,1), (2,3))]
+    partition = partition_from_permutation_symmetry(4, state_labels, perm_group)
+    
+    # Should group states that are swapped
+    assert len(partition) == 2
+    for group in partition:
+        assert len(group) == 2
+
+
+def test_partition_permutation_3cycle():
+    """Test 3-cycle permutation."""
+    from gridvoting_jax import partition_from_permutation_symmetry
+    
+    # 3 states with cyclic labels
+    state_labels = [(0,1,2), (1,2,0), (2,0,1)]
+    
+    # 3-cycle: 0→1→2→0
+    perm_group = [((0,1,2),)]
+    partition = partition_from_permutation_symmetry(3, state_labels, perm_group)
+    
+    # All should be in one group (cyclic symmetry)
+    assert len(partition) == 1
+    assert len(partition[0]) == 3

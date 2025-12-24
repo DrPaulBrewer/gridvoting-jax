@@ -558,3 +558,101 @@ def is_lumpable(MC: MarkovChain, partition: list[list[int]], tolerance: float = 
                 return False
     
     return True
+
+
+def partition_from_permutation_symmetry(
+    n_states: int,
+    state_labels: list[tuple],
+    permutation_group: list[tuple]
+) -> list[list[int]]:
+    """
+    Generate partition from permutation symmetries.
+    
+    Groups states that are equivalent under permutations of state labels.
+    Useful for voter interchangeability in voting models.
+    
+    Args:
+        n_states: Total number of states
+        state_labels: List of tuples labeling each state
+                     Example: [(0,1,2), (0,2,1), (1,0,2), ...] for 3-voter model
+        permutation_group: List of permutations in cycle notation
+                          Example: [((0,1),), ((1,2),), ((0,1,2),)] for S3
+                          Empty tuple () represents identity
+    
+    Returns:
+        list[list[int]]: Partition grouping symmetric states
+    
+    Examples:
+        >>> # 3-voter model with full S3 symmetry (all voters interchangeable)
+        >>> state_labels = [(0,1,2), (0,2,1), (1,0,2), (1,2,0), (2,0,1), (2,1,0)]
+        >>> # S3 generators: (0,1) swap and (0,1,2) rotation
+        >>> s3_group = [((0,1),), ((0,1,2),)]
+        >>> partition = partition_from_permutation_symmetry(6, state_labels, s3_group)
+        >>> # Result: [[0,1,2,3,4,5]] - all states equivalent
+        
+        >>> # Z2 symmetry: swap voters 0 and 1
+        >>> z2_group = [((0,1),)]
+        >>> partition = partition_from_permutation_symmetry(6, state_labels, z2_group)
+        >>> # Result: [[0,1], [2,3], [4,5]] - pairs of swapped states
+    
+    Notes:
+        - Permutations use cycle notation: ((0,1),) swaps 0↔1
+        - ((0,1,2),) means 0→1→2→0
+        - Multiple cycles: ((0,1), (2,3)) swaps 0↔1 and 2↔3
+        - Identity is represented by empty tuple ()
+        - Function generates closure of permutation group
+    """
+    # Build equivalence classes using union-find
+    parent = list(range(n_states))
+    
+    def find(x):
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+    
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+    
+    # Helper: Apply a single cycle to a tuple
+    def apply_cycle(label: tuple, cycle: tuple) -> tuple:
+        if len(cycle) == 0:
+            return label
+        # Create mapping: cycle[i] -> cycle[i+1]
+        mapping = {}
+        for i in range(len(cycle)):
+            next_i = (i + 1) % len(cycle)
+            mapping[cycle[i]] = cycle[next_i]
+        # Apply mapping to label
+        return tuple(mapping.get(x, x) for x in label)
+    
+    # Helper: Apply a permutation (list of cycles) to a label
+    def apply_permutation(label: tuple, perm: tuple) -> tuple:
+        result = label
+        for cycle in perm:
+            result = apply_cycle(result, cycle)
+        return result
+    
+    # For each permutation in the group
+    for perm in permutation_group:
+        # Apply permutation to each state
+        for i in range(n_states):
+            original_label = state_labels[i]
+            permuted_label = apply_permutation(original_label, perm)
+            
+            # Find state with permuted label
+            for j in range(n_states):
+                if state_labels[j] == permuted_label:
+                    union(i, j)
+                    break
+    
+    # Build partition from equivalence classes
+    groups = {}
+    for i in range(n_states):
+        root = find(i)
+        if root not in groups:
+            groups[root] = []
+        groups[root].append(i)
+    
+    return list(groups.values())
