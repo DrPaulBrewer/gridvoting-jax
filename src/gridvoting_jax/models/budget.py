@@ -104,6 +104,11 @@ class BudgetVotingModel:
     def core_exists(self):
         """Whether a core exists."""
         return self.model.core_exists
+
+    @property
+    def Pareto(self):
+        """Pareto optimal set (delegate to model)."""
+        return self.model.Pareto
     
     @property
     def core_points(self):

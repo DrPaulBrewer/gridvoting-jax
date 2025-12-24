@@ -199,6 +199,11 @@ class SpatialVotingModel:
     @property
     def core_exists(self):
         return self.model.core_exists
+
+    @property
+    def Pareto(self):
+        """Delegate to model.Pareto."""
+        return self.model.Pareto
     
     def summarize_in_context(self, grid=None, **kwargs):
         """Delegate to model, using self.grid if not provided."""
