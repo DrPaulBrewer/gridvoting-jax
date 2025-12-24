@@ -84,19 +84,15 @@ def main():
     # 7. Compare against OSF reference data
     print("Step 7: Comparing against OSF reference data...")
     try:
-        # Load OSF data for g=40, MI mode
-        import pandas as pd
-        from gridvoting_jax.datasets import fetch_osf_spatial_voting_2022_a100
+        # Load OSF data for g=40, MI mode (auto-downloads if needed)
+        from gridvoting_jax.benchmarks import load_osf_distribution
         
-        cache_dir = fetch_osf_spatial_voting_2022_a100()
-        osf_file = cache_dir / '40_MI_stationary_distribution.csv'
+        osf_df = load_osf_distribution(g=40, zi=False)
+        if osf_df is None:
+            raise ValueError("Could not load OSF data")
         
-        if not osf_file.exists():
-            raise FileNotFoundError(f"OSF data file not found: {osf_file}")
-        
-        # Load stationary distribution from CSV
-        df = pd.read_csv(osf_file)
-        pi_osf = jnp.array(df['stationary_distribution'].values)
+        # Extract stationary distribution (stored as log10prob)
+        pi_osf = jnp.array(10 ** osf_df['log10prob'].values)
         
         # Compare original vs OSF
         diff_orig_osf_l1 = float(jnp.sum(jnp.abs(pi_original - pi_osf)))
