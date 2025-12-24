@@ -158,11 +158,39 @@ class Grid:
         
         return mask
 
-    def index(self, *, x, y):
-        """returns the unique 1D array index for grid point (x,y)"""
-        isSelectedPoint = (self.x == x) & (self.y == y)
-        indexes = jnp.flatnonzero(isSelectedPoint)
-        return int(indexes[0])
+    def index(self, *, x, y, tolerance=1e-9):
+        """
+        Returns the unique 1D array index for grid point (x,y).
+        
+        Uses direct computation for O(1) lookup instead of linear search.
+        For regular grid: index = row * n_cols + col
+        where row = (y1 - y) / ystep, col = (x - x0) / xstep
+        
+        Args:
+            x: x-coordinate
+            y: y-coordinate
+            tolerance: tolerance for coordinate matching (default: 1e-9)
+        
+        Returns:
+            int: Grid index, or raises ValueError if point not on grid
+        """
+        # Compute row and column indices
+        col = round((x - self.x0) / self.xstep)
+        row = round((self.y1 - y) / self.ystep)
+        
+        # Check if within bounds
+        n_rows, n_cols = self.gshape
+        if not (0 <= row < n_rows and 0 <= col < n_cols):
+            raise ValueError(f"Point ({x}, {y}) is outside grid bounds")
+        
+        # Compute index
+        idx = row * n_cols + col
+        
+        # Verify the point matches (within tolerance)
+        if abs(self.x[idx] - x) > tolerance or abs(self.y[idx] - y) > tolerance:
+            raise ValueError(f"Point ({x}, {y}) does not match grid point at computed index")
+        
+        return int(idx)
 
     def embedding(self, *, valid):
         """
@@ -318,6 +346,7 @@ class Grid:
             - Does not validate that the Markov chain respects these symmetries
             - Rotation tolerance allows approximate symmetries
             - User is responsible for ensuring symmetries are appropriate
+            - Optimized for regular grids using direct index computation
         """
         n_states = self.len
         
@@ -342,11 +371,12 @@ class Grid:
                     # Swap x and y coordinates
                     for i in range(n_states):
                         x, y = self.x[i], self.y[i]
-                        # Find point with (y, x)
-                        for j in range(n_states):
-                            if abs(self.x[j] - y) < tolerance and abs(self.y[j] - x) < tolerance:
-                                union(i, j)
-                                break
+                        # Find point with (y, x) using direct index computation
+                        try:
+                            j = self.index(x=y, y=x, tolerance=tolerance)
+                            union(i, j)
+                        except ValueError:
+                            pass  # Point not on grid
                 
                 elif sym.startswith('reflect_x'):
                     # Reflection around vertical line x=c
@@ -358,10 +388,11 @@ class Grid:
                         x, y = self.x[i], self.y[i]
                         # Reflected point: (2c - x, y)
                         x_reflected = 2 * c - x
-                        for j in range(n_states):
-                            if abs(self.x[j] - x_reflected) < tolerance and abs(self.y[j] - y) < tolerance:
-                                union(i, j)
-                                break
+                        try:
+                            j = self.index(x=x_reflected, y=y, tolerance=tolerance)
+                            union(i, j)
+                        except ValueError:
+                            pass  # Point not on grid
                 
                 elif sym.startswith('reflect_y'):
                     # Reflection around horizontal line y=c
@@ -373,41 +404,34 @@ class Grid:
                         x, y = self.x[i], self.y[i]
                         # Reflected point: (x, 2c - y)
                         y_reflected = 2 * c - y
-                        for j in range(n_states):
-                            if abs(self.x[j] - x) < tolerance and abs(self.y[j] - y_reflected) < tolerance:
-                                union(i, j)
-                                break
+                        try:
+                            j = self.index(x=x, y=y_reflected, tolerance=tolerance)
+                            union(i, j)
+                        except ValueError:
+                            pass  # Point not on grid
             
             elif isinstance(sym, tuple) and sym[0] == 'rotate':
-                # Rotation symmetry - VECTORIZED for performance
+                # Rotation symmetry - use direct index lookup
                 _, cx, cy, degrees = sym
                 theta = np.radians(degrees)
                 cos_theta = np.cos(theta)
                 sin_theta = np.sin(theta)
                 
-                # Vectorized rotation of all points
-                x_rel = self.x - cx
-                y_rel = self.y - cy
-                x_rot = x_rel * cos_theta - y_rel * sin_theta
-                y_rot = x_rel * sin_theta + y_rel * cos_theta
-                x_new = x_rot + cx
-                y_new = y_rot + cy
-                
-                # For each point, find nearest neighbor in rotated positions
-                # Use broadcasting to compute all pairwise distances at once
-                # Shape: (n_states, n_states)
-                dx = self.x[:, np.newaxis] - x_new[np.newaxis, :]
-                dy = self.y[:, np.newaxis] - y_new[np.newaxis, :]
-                distances = np.sqrt(dx**2 + dy**2)
-                
-                # Find matches within tolerance
-                # matches[i, j] = True if grid point i matches rotated point j
-                matches = distances < tolerance
-                
-                # Union points that match (only process actual matches)
-                match_indices = np.argwhere(matches)
-                for i, j in match_indices:
-                    union(int(i), int(j))
+                for i in range(n_states):
+                    x, y = self.x[i], self.y[i]
+                    # Rotate point around (cx, cy)
+                    x_rel, y_rel = x - cx, y - cy
+                    x_rot = x_rel * cos_theta - y_rel * sin_theta
+                    y_rot = x_rel * sin_theta + y_rel * cos_theta
+                    x_new = x_rot + cx
+                    y_new = y_rot + cy
+                    
+                    # Find closest grid point to rotated position
+                    try:
+                        j = self.index(x=x_new, y=y_new, tolerance=tolerance)
+                        union(i, j)
+                    except ValueError:
+                        pass  # Point not on grid or outside tolerance
         
         # Build partition from equivalence classes
         groups = {}
