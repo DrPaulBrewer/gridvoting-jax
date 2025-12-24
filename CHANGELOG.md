@@ -8,6 +8,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.11.0] - 2025-12-24
+
+### Changed - BREAKING CHANGES
+
+- **Docker Image Naming**: Simplified Docker image naming scheme across all image types
+  - **Base images**: `jax-base-cpu` → `base/cpu`, `jax-base-cuda12` → `base/cuda12`, `jax-base-cuda13` → `base/cuda13`
+  - **Dev images**: `gridvoting-jax-dev-cpu` → `dev/cpu`, `gridvoting-jax-dev-cuda12` → `dev/cuda12`, `gridvoting-jax-dev-cuda13` → `dev/cuda13`
+  - **Release images**: `gridvoting-jax-cpu` → `cpu`, `gridvoting-jax-gpu-cuda12` → `cuda12`, `gridvoting-jax-gpu-cuda13` → `cuda13`
+  - **Version tags**: Stripped `v` prefix from version tags (e.g., `cpu:0.10.3` instead of `gridvoting-jax-cpu:v0.10.3`)
+  - **Migration**: Update all Docker commands and scripts to use new image names
+  - Old image names will no longer be published; existing images remain available but won't receive updates
+
+- **Dev Container Workspace Validation**: Dev containers now require `/workspace` to be mounted
+  - Containers will exit with error and display usage message if workspace is not mounted
+  - Ensures test runners and CI systems catch configuration errors immediately
+  - **Migration**: Always use `-v $(pwd):/workspace` when running dev containers
+
+### Added
+
+- **Dev Container PYTHONPATH**: Dev containers pre-configured with `PYTHONPATH=/workspace/src`
+  - `gridvoting_jax` module is immediately importable without `pip install -e .`
+  - Zero setup time for development
+  - Live code changes reflected immediately
+  - To test with pip install in pristine environment: `docker run -e PYTHONPATH="" ...`
+
+- **Dev Container Entrypoint**: Added workspace validation entrypoint script
+  - Displays helpful usage message with examples if workspace not mounted
+  - Includes PYTHONPATH override instructions
+  - Prevents silent failures in automated testing
+
+### Changed
+
+- Updated all shell scripts to use new image naming:
+  - `test_docker.sh`: Simplified image path construction
+  - `test_docker_osf.sh`: Updated dev and release image paths
+  - `test_docker_lazy.sh`: Updated local tag naming
+
+- Updated GitHub Actions workflows:
+  - `docker-base-images.yml`: New tags for base and dev images
+  - `docker-publish.yml`: New tags for release images with `v` prefix stripping
+
+- Updated documentation:
+  - `docs/docker.md`: Comprehensive updates with new naming, added PYTHONPATH and workspace validation sections
+  - `README.md`: Updated Docker build examples
+  - All examples and references updated to new naming scheme
+
 
 ## [0.10.2] - 2025-12-23
 

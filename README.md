@@ -128,10 +128,10 @@ See [`docs/docker.md`](docs/docker.md) for comprehensive Docker usage guide incl
 **Building Images Locally:**
 ```bash
 # Build base images (one-time, slow)
-docker build -f Dockerfiles/base/Dockerfile.jax-cpu -t jax-base-cpu:local .
+docker build -f Dockerfiles/base/Dockerfile.jax-cpu -t base/cpu:local .
 
 # Build dev images (fast)
-docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t gridvoting-jax-dev:local .
+docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t dev/cpu:local .
 ```
 
 **Float64 Precision**: By default, JAX uses 32-bit floats for better GPU performance. To enable 64-bit precision for higher accuracy:

@@ -1,9 +1,19 @@
-FROM ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cpu:latest
+FROM ghcr.io/drpaulbrewer/gridvoting-jax/base/cpu:latest
 
 # Install dev dependencies
 RUN pip install --no-cache-dir pytest-cov black ruff mypy
 
+# Set PYTHONPATH for instant module imports
+# Note: gridvoting_jax will be importable from /workspace/src without pip install
+# To use pip install -e . instead, override with: docker run -e PYTHONPATH="" ...
+ENV PYTHONPATH=/workspace/src:${PYTHONPATH}
+
+# Add entrypoint script for workspace validation
+COPY Dockerfiles/dev/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Workspace will have source code mounted
 WORKDIR /workspace
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3"]

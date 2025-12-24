@@ -1,5 +1,5 @@
 ARG VERSION
-FROM ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cuda12:latest
+FROM ghcr.io/drpaulbrewer/gridvoting-jax/base/cuda12:latest
 
 # Re-declare ARG after FROM to make it available in this build stage
 ARG VERSION

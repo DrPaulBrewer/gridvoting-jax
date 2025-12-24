@@ -74,15 +74,13 @@ echo ""
 REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
 
 if [ "$MODE" == "dev" ]; then
-    IMAGE="${REGISTRY}/gridvoting-jax-dev-${CUDA_TYPE}:latest"
+    IMAGE="${REGISTRY}/dev/${CUDA_TYPE}:latest"
     echo "Pulling dev image: $IMAGE"
     docker pull "$IMAGE"
     
     DOCKER_ARGS="-v $(pwd):/workspace"
 else
-    IMAGE="${REGISTRY}/gridvoting-jax-${CUDA_TYPE/cpu/cpu}:${VERSION}"
-    IMAGE="${IMAGE/cuda12/gpu-cuda12}"
-    IMAGE="${IMAGE/cuda13/gpu-cuda13}"
+    IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
     echo "Pulling release image: $IMAGE"
     docker pull "$IMAGE"
     

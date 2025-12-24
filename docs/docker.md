@@ -14,21 +14,21 @@ All images are hosted on GitHub Container Registry (GHCR).
 
 ### Base Images (Internal Use)
 Built when dependencies change, not typically used directly:
-- `ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cpu:latest`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cuda12:latest`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/jax-base-cuda13:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/base/cpu:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/base/cuda12:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/base/cuda13:latest`
 
 ### Development Images
 For local development with source code mounted:
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cpu:latest`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cuda12:latest`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cuda13:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/dev/cuda12:latest`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/dev/cuda13:latest`
 
 ### Release Images
 Versioned releases from PyPI:
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-cpu:VERSION`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-gpu-cuda12:VERSION`
-- `ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-gpu-cuda13:VERSION`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/cpu:VERSION`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/cuda12:VERSION`
+- `ghcr.io/drpaulbrewer/gridvoting-jax/cuda13:VERSION`
 
 ## Quick Start
 
@@ -64,6 +64,46 @@ Versioned releases from PyPI:
 # With float64 precision
 ./test_docker_osf.sh --dev --gpu --float64
 ```
+
+## Development Container Features
+
+### PYTHONPATH Configuration
+
+Dev containers are pre-configured with `PYTHONPATH=/workspace/src` for instant module imports:
+
+```bash
+# Module is immediately importable - no pip install needed
+docker run -v $(pwd):/workspace ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu \
+  python3 -c "import gridvoting_jax; print('works!')"
+```
+
+**Benefits:**
+- Zero setup time - module is instantly available
+- Live code changes reflected immediately
+- No need to run `pip install -e .`
+
+**Testing with pip install:**
+If you need to test the package installation process in a pristine environment, unset PYTHONPATH:
+```bash
+docker run -e PYTHONPATH="" -v $(pwd):/workspace ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu bash
+# Inside container:
+pip install -e .
+python3 -m pytest tests/
+```
+
+### Workspace Validation
+
+Dev containers require `/workspace` to be mounted with the source code. If not mounted, the container will exit with a helpful usage message:
+
+```bash
+# This will fail with usage instructions
+docker run ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu python3
+
+# This works - workspace is mounted
+docker run -v $(pwd):/workspace ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu python3
+```
+
+This validation ensures test runners and CI systems catch configuration errors immediately.
 
 ## Test Script Options
 
@@ -124,7 +164,7 @@ Edit source files locally as usual.
 
 # Or run interactively
 docker run --rm -it -v $(pwd):/workspace --gpus all \
-  ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cuda12:latest \
+  ghcr.io/drpaulbrewer/gridvoting-jax/dev/cuda12:latest \
   bash
 ```
 
@@ -139,21 +179,21 @@ docker run --rm -it -v $(pwd):/workspace --gpus all \
 ```bash
 # CPU
 docker build -f Dockerfiles/base/Dockerfile.jax-cpu \
-  -t jax-base-cpu:local .
+  -t base/cpu:local .
 
 # CUDA 12
 docker build -f Dockerfiles/base/Dockerfile.jax-cuda12 \
-  -t jax-base-cuda12:local .
+  -t base/cuda12:local .
 
 # CUDA 13
 docker build -f Dockerfiles/base/Dockerfile.jax-cuda13 \
-  -t jax-base-cuda13:local .
+  -t base/cuda13:local .
 ```
 
 ### Build Dev Images
 ```bash
 docker build -f Dockerfiles/dev/Dockerfile.dev-cpu \
-  -t gridvoting-jax-dev:local .
+  -t dev/cpu:local .
 ```
 
 ## CI/CD Pipeline
@@ -195,7 +235,7 @@ docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
 echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 
 # Pull manually
-docker pull ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cpu:latest
+docker pull ghcr.io/drpaulbrewer/gridvoting-jax/dev/cpu:latest
 ```
 
 ### Old Images Taking Space
@@ -204,7 +244,7 @@ docker pull ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-dev-cpu:latest
 docker image prune -a
 
 # Remove specific version
-docker rmi ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-cpu:v0.9.0
+docker rmi ghcr.io/drpaulbrewer/gridvoting-jax/cpu:0.9.0
 ```
 
 ## Image Sizes
@@ -224,8 +264,8 @@ All release versions are preserved on GHCR indefinitely, allowing:
 List available versions:
 ```bash
 # Via GitHub Packages web UI
-https://github.com/DrPaulBrewer/gridvoting-jax/pkgs/container/gridvoting-jax%2Fgridvoting-jax-cpu
+https://github.com/DrPaulBrewer/gridvoting-jax/pkgs/container/gridvoting-jax%2Fcpu
 
 # Or use Docker CLI
-docker pull ghcr.io/drpaulbrewer/gridvoting-jax/gridvoting-jax-cpu:v0.9.1
+docker pull ghcr.io/drpaulbrewer/gridvoting-jax/cpu:0.11.0
 ```

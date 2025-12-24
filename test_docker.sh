@@ -60,7 +60,7 @@ done
 REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
 
 if [ "$MODE" == "dev" ]; then
-    IMAGE="${REGISTRY}/gridvoting-jax-dev-${CUDA_TYPE}:latest"
+    IMAGE="${REGISTRY}/dev/${CUDA_TYPE}:latest"
     echo "Using dev image: $IMAGE"
     
     # Pull latest dev image
@@ -74,9 +74,7 @@ if [ "$MODE" == "dev" ]; then
         python3 -m pytest $PYTEST_ARGS
 else
     # Release mode
-    IMAGE="${REGISTRY}/gridvoting-jax-${CUDA_TYPE/cpu/cpu}:${VERSION}"
-    IMAGE="${IMAGE/cuda12/gpu-cuda12}"
-    IMAGE="${IMAGE/cuda13/gpu-cuda13}"
+    IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
     echo "Using release image: $IMAGE"
     
     # Pull release image

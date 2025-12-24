@@ -69,8 +69,8 @@ jobs:
             VERSION=${{ needs.get-version.outputs.version }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-cpu:${{ needs.get-version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-cpu:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cpu:$(echo ${{ needs.get-version.outputs.version }} | sed 's/^v//')
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cpu:latest
 
   build-release-cuda12:
     needs: get-version
@@ -106,8 +106,8 @@ jobs:
             VERSION=${{ needs.get-version.outputs.version }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-gpu-cuda12:${{ needs.get-version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-gpu-cuda12:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cuda12:$(echo ${{ needs.get-version.outputs.version }} | sed 's/^v//')
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cuda12:latest
 
   build-release-cuda13:
     needs: get-version
@@ -143,5 +143,5 @@ jobs:
             VERSION=${{ needs.get-version.outputs.version }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-gpu-cuda13:${{ needs.get-version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/gridvoting-jax-gpu-cuda13:latest
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cuda13:$(echo ${{ needs.get-version.outputs.version }} | sed 's/^v//')
+            ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/cuda13:latest
