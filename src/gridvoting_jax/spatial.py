@@ -271,3 +271,147 @@ class Grid:
             plt.show()
         else:
             plt.savefig(fname)
+
+    def partition_from_symmetry(
+        self,
+        symmetries: list,
+        tolerance: float = 1e-6
+    ) -> list[list[int]]:
+        """
+        Generate partition from spatial symmetries.
+        
+        Builds partition by grouping grid points that are equivalent under
+        the specified spatial symmetries. Does not verify symmetry in the
+        transition matrix - assumes user-specified symmetries are correct.
+        
+        Args:
+            symmetries: List of symmetry specifications:
+                - 'reflect_x' or 'reflect_x=0': Reflection around x=0
+                - 'reflect_x=c': Reflection around x=c
+                - 'reflect_y' or 'reflect_y=0': Reflection around y=0
+                - 'reflect_y=c': Reflection around y=c
+                - 'reflect_xy': Reflection around line y=x
+                - 'swap_xy': Swap x and y coordinates (equivalent to reflect_xy)
+                - ('rotate', center_x, center_y, degrees): Rotation around (cx, cy)
+                  Example: ('rotate', 0, 0, 120) for 120° rotation around origin
+            tolerance: Distance tolerance for matching rotated points (default: 1e-6)
+                       Useful for approximate symmetries like 120° rotation on grid
+        
+        Returns:
+            list[list[int]]: Partition grouping symmetric points
+        
+        Examples:
+            >>> # Reflection symmetry around y-axis
+            >>> partition = grid.partition_from_symmetry(['reflect_x'])
+            
+            >>> # (x,y) <-> (y,x) symmetry
+            >>> partition = grid.partition_from_symmetry(['swap_xy'])
+            
+            >>> # 120° rotation (BJM spatial triangle example)
+            >>> # Grid points near 120° rotations are grouped
+            >>> partition = grid.partition_from_symmetry(
+            ...     [('rotate', 0, 0, 120)], tolerance=0.5
+            ... )
+        
+        Notes:
+            - Symmetries are applied iteratively to build equivalence classes
+            - Does not validate that the Markov chain respects these symmetries
+            - Rotation tolerance allows approximate symmetries
+            - User is responsible for ensuring symmetries are appropriate
+        """
+        n_states = self.len
+        
+        # Build equivalence classes using union-find
+        parent = list(range(n_states))
+        
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+        
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+        
+        # Apply each symmetry
+        for sym in symmetries:
+            if isinstance(sym, str):
+                # String-based symmetries
+                if sym == 'swap_xy' or sym == 'reflect_xy':
+                    # Swap x and y coordinates
+                    for i in range(n_states):
+                        x, y = self.x[i], self.y[i]
+                        # Find point with (y, x)
+                        for j in range(n_states):
+                            if abs(self.x[j] - y) < tolerance and abs(self.y[j] - x) < tolerance:
+                                union(i, j)
+                                break
+                
+                elif sym.startswith('reflect_x'):
+                    # Reflection around vertical line x=c
+                    if '=' in sym:
+                        c = float(sym.split('=')[1])
+                    else:
+                        c = 0.0
+                    for i in range(n_states):
+                        x, y = self.x[i], self.y[i]
+                        # Reflected point: (2c - x, y)
+                        x_reflected = 2 * c - x
+                        for j in range(n_states):
+                            if abs(self.x[j] - x_reflected) < tolerance and abs(self.y[j] - y) < tolerance:
+                                union(i, j)
+                                break
+                
+                elif sym.startswith('reflect_y'):
+                    # Reflection around horizontal line y=c
+                    if '=' in sym:
+                        c = float(sym.split('=')[1])
+                    else:
+                        c = 0.0
+                    for i in range(n_states):
+                        x, y = self.x[i], self.y[i]
+                        # Reflected point: (x, 2c - y)
+                        y_reflected = 2 * c - y
+                        for j in range(n_states):
+                            if abs(self.x[j] - x) < tolerance and abs(self.y[j] - y_reflected) < tolerance:
+                                union(i, j)
+                                break
+            
+            elif isinstance(sym, tuple) and sym[0] == 'rotate':
+                # Rotation symmetry
+                _, cx, cy, degrees = sym
+                theta = np.radians(degrees)
+                cos_theta = np.cos(theta)
+                sin_theta = np.sin(theta)
+                
+                for i in range(n_states):
+                    x, y = self.x[i], self.y[i]
+                    # Translate to origin
+                    x_rel, y_rel = x - cx, y - cy
+                    # Rotate
+                    x_rot = x_rel * cos_theta - y_rel * sin_theta
+                    y_rot = x_rel * sin_theta + y_rel * cos_theta
+                    # Translate back
+                    x_new = x_rot + cx
+                    y_new = y_rot + cy
+                    
+                    # Find closest point within tolerance
+                    for j in range(n_states):
+                        dist = np.sqrt((self.x[j] - x_new)**2 + (self.y[j] - y_new)**2)
+                        if dist < tolerance:
+                            union(i, j)
+                            break
+        
+        # Build partition from equivalence classes
+        groups = {}
+        for i in range(n_states):
+            root = find(i)
+            if root not in groups:
+                groups[root] = []
+            groups[root].append(i)
+        
+        # Convert to list of lists
+        partition = list(groups.values())
+        
+        return partition
