@@ -8,6 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.13.0] - 2025-12-25
+
+### Added
+- **Symmetry Detection & Partitioning**:
+    - `Grid.partition_from_symmetry()`: Create partitions based on spatial symmetries (Reflection, Rotation, Swap).
+    - `Grid.index()`: Efficient O(1) coordinate-to-index lookup for regular grids.
+    - `symmetry.suggest_symmetries()`: Automatically detect valid spatial symmetries for a given transition matrix.
+- **Markov Chain Lumping**:
+    - `lump()`: Create a reduced-order Markov chain from a partition.
+    - `unlump()`: Map distributions back to the original state space.
+    - `is_lumpable()`: Check if a partition satisfies strong lumpability.
+- **Pareto Efficiency** (from #1):
+    - `VotingModel.Pareto`: Property returning the Pareto Optimal set (core under unanimity).
+    - `VotingModel.unanimize()`: Create a derived model with unanimity rule.
+
+### Performance
+- **Vectorized Partitioning**: `Grid.partition_from_symmetry` now uses JAX vectorization and `scipy.sparse.csgraph`, achieving >100x speedup for large grids (e.g., g=100 generation < 1s).
+- **Optimization**: Replaced iterative Python loops with vectorized JAX operations for coordinate mapping.
+
 ## [0.12.0] - 2025-12-24
 
 ### Added
