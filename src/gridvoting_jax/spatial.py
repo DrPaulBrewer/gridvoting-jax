@@ -3,7 +3,12 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
+import scipy.sparse
+
 
 # Import from core
 from .core import TOLERANCE, GEOMETRY_EPSILON, PLOT_LOG_BIAS
@@ -158,11 +163,39 @@ class Grid:
         
         return mask
 
-    def index(self, *, x, y):
-        """returns the unique 1D array index for grid point (x,y)"""
-        isSelectedPoint = (self.x == x) & (self.y == y)
-        indexes = jnp.flatnonzero(isSelectedPoint)
-        return int(indexes[0])
+    def index(self, *, x, y, tolerance=1e-9):
+        """
+        Returns the unique 1D array index for grid point (x,y).
+        
+        Uses direct computation for O(1) lookup instead of linear search.
+        For regular grid: index = row * n_cols + col
+        where row = (y1 - y) / ystep, col = (x - x0) / xstep
+        
+        Args:
+            x: x-coordinate
+            y: y-coordinate
+            tolerance: tolerance for coordinate matching (default: 1e-9)
+        
+        Returns:
+            int: Grid index, or raises ValueError if point not on grid
+        """
+        # Compute row and column indices
+        col = round((x - self.x0) / self.xstep)
+        row = round((self.y1 - y) / self.ystep)
+        
+        # Check if within bounds
+        n_rows, n_cols = self.gshape
+        if not (0 <= row < n_rows and 0 <= col < n_cols):
+            raise ValueError(f"Point ({x}, {y}) is outside grid bounds")
+        
+        # Compute index
+        idx = row * n_cols + col
+        
+        # Verify the point matches (within tolerance)
+        if abs(self.x[idx] - x) > tolerance or abs(self.y[idx] - y) > tolerance:
+            raise ValueError(f"Point ({x}, {y}) does not match grid point at computed index")
+        
+        return int(idx)
 
     def embedding(self, *, valid):
         """
@@ -318,106 +351,166 @@ class Grid:
             - Does not validate that the Markov chain respects these symmetries
             - Rotation tolerance allows approximate symmetries
             - User is responsible for ensuring symmetries are appropriate
+            - Optimized for regular grids using direct index computation
         """
         n_states = self.len
         
-        # Build equivalence classes using union-find
-        parent = list(range(n_states))
+        # We will build a list of edges (u, v) representing symmetric equivalence
+        # source_indices = []
+        # target_indices = []
         
-        def find(x):
-            if parent[x] != x:
-                parent[x] = find(parent[x])
-            return parent[x]
+        # Use JAX/NumPy for vectorized coordinate transformation
+        # x, y are standard numpy arrays (or JAX arrays)
+        X = self.x
+        Y = self.y
         
-        def union(x, y):
-            px, py = find(x), find(y)
-            if px != py:
-                parent[px] = py
+        # Accumulate edges in efficient list of arrays
+        edges_src = []
+        edges_dst = []
         
-        # Apply each symmetry
+        # Always include self-loops to ensure every node is in the graph
+        # (though connected_components handles isolated nodes, explicitly adding identity is safe)
+        edges_src.append(jnp.arange(n_states))
+        edges_dst.append(jnp.arange(n_states))
+
         for sym in symmetries:
+            # 1. Vectorized Transformation
+            # ----------------------------------------------------------------
             if isinstance(sym, str):
-                # String-based symmetries
                 if sym == 'swap_xy' or sym == 'reflect_xy':
-                    # Swap x and y coordinates
-                    for i in range(n_states):
-                        x, y = self.x[i], self.y[i]
-                        # Find point with (y, x)
-                        for j in range(n_states):
-                            if abs(self.x[j] - y) < tolerance and abs(self.y[j] - x) < tolerance:
-                                union(i, j)
-                                break
+                    # Swap: (x, y) -> (y, x)
+                    X_new, Y_new = Y, X
                 
                 elif sym.startswith('reflect_x'):
-                    # Reflection around vertical line x=c
-                    if '=' in sym:
-                        c = float(sym.split('=')[1])
-                    else:
-                        c = 0.0
-                    for i in range(n_states):
-                        x, y = self.x[i], self.y[i]
-                        # Reflected point: (2c - x, y)
-                        x_reflected = 2 * c - x
-                        for j in range(n_states):
-                            if abs(self.x[j] - x_reflected) < tolerance and abs(self.y[j] - y) < tolerance:
-                                union(i, j)
-                                break
+                    # Reflect x around c: x' = 2c - x
+                    c = float(sym.split('=')[1]) if '=' in sym else 0.0
+                    X_new = 2 * c - X
+                    Y_new = Y
                 
                 elif sym.startswith('reflect_y'):
-                    # Reflection around horizontal line y=c
-                    if '=' in sym:
-                        c = float(sym.split('=')[1])
-                    else:
-                        c = 0.0
-                    for i in range(n_states):
-                        x, y = self.x[i], self.y[i]
-                        # Reflected point: (x, 2c - y)
-                        y_reflected = 2 * c - y
-                        for j in range(n_states):
-                            if abs(self.x[j] - x) < tolerance and abs(self.y[j] - y_reflected) < tolerance:
-                                union(i, j)
-                                break
+                    # Reflect y around c: y' = 2c - y
+                    c = float(sym.split('=')[1]) if '=' in sym else 0.0
+                    X_new = X
+                    Y_new = 2 * c - Y
+                else:
+                    raise ValueError(f"Unknown symmetry string: {sym}")
             
             elif isinstance(sym, tuple) and sym[0] == 'rotate':
-                # Rotation symmetry - VECTORIZED for performance
+                # Rotate around (cx, cy) by degrees
                 _, cx, cy, degrees = sym
                 theta = np.radians(degrees)
-                cos_theta = np.cos(theta)
-                sin_theta = np.sin(theta)
+                cos_t = np.cos(theta)
+                sin_t = np.sin(theta)
                 
-                # Vectorized rotation of all points
-                x_rel = self.x - cx
-                y_rel = self.y - cy
-                x_rot = x_rel * cos_theta - y_rel * sin_theta
-                y_rot = x_rel * sin_theta + y_rel * cos_theta
-                x_new = x_rot + cx
-                y_new = y_rot + cy
-                
-                # For each point, find nearest neighbor in rotated positions
-                # Use broadcasting to compute all pairwise distances at once
-                # Shape: (n_states, n_states)
-                dx = self.x[:, np.newaxis] - x_new[np.newaxis, :]
-                dy = self.y[:, np.newaxis] - y_new[np.newaxis, :]
-                distances = np.sqrt(dx**2 + dy**2)
-                
-                # Find matches within tolerance
-                # matches[i, j] = True if grid point i matches rotated point j
-                matches = distances < tolerance
-                
-                # Union points that match (only process actual matches)
-                match_indices = np.argwhere(matches)
-                for i, j in match_indices:
-                    union(int(i), int(j))
+                # Apply rotation matrix
+                dx = X - cx
+                dy = Y - cy
+                X_new = cx + (dx * cos_t - dy * sin_t)
+                Y_new = cy + (dx * sin_t + dy * cos_t)
+            else:
+                 raise ValueError(f"Unknown symmetry spec: {sym}")
+
+            # 2. Vectorized Index Lookup (Regular Grid)
+            # ----------------------------------------------------------------
+            # Expected indices (nearest integer grid point)
+            # col = (x - x0) / xstep
+            # row = (y1 - y) / ystep  (note y1 is top)
+            
+            # Use jnp.rint (round to nearest integer)
+            col_new = jnp.rint((X_new - self.x0) / self.xstep).astype(jnp.int32)
+            row_new = jnp.rint((self.y1 - Y_new) / self.ystep).astype(jnp.int32)
+            
+            # 3. Filtering
+            # ----------------------------------------------------------------
+            n_rows, n_cols = self.gshape
+            
+            # Check bounds
+            mask_bounds = (col_new >= 0) & (col_new < n_cols) & \
+                          (row_new >= 0) & (row_new < n_rows)
+            
+            # Calculate 1D index for potentially valid points
+            # We must be careful not to access invalid indices, so we apply mask immediately
+            # But JAX supports careful masking.
+            # Let's compute hypothetical indices, then filter.
+            idx_new = row_new * n_cols + col_new
+            
+            # Check coordinate match (tolerance)
+            # Only check where bounds are valid to avoid OOB indexing
+            # For OOB, we set error distance to infinity or just mask them out first
+            
+            # Strategy: Filter indices first
+            valid_indices = jnp.where(mask_bounds)[0]
+            target_indices = idx_new[valid_indices]
+            
+            # Check distance on valid candidates
+            # X_target = self.x[target_indices]
+            # Y_target = self.y[target_indices]
+            dist_x = jnp.abs(self.x[target_indices] - X_new[valid_indices])
+            dist_y = jnp.abs(self.y[target_indices] - Y_new[valid_indices])
+            
+            mask_match = (dist_x <= tolerance) & (dist_y <= tolerance)
+            
+            # Final valid edges
+            # Source: valid_indices[mask_match]
+            # Target: target_indices[mask_match]
+            
+            final_src = valid_indices[mask_match]
+            final_dst = target_indices[mask_match]
+            
+            edges_src.append(final_src)
+            edges_dst.append(final_dst)
+            
+        # 4. Graph Construction & Partitioning (CPU/SciPy)
+        # ----------------------------------------------------------------
+        # Concatenate all edges
+        all_src = jnp.concatenate(edges_src)
+        all_dst = jnp.concatenate(edges_dst)
         
-        # Build partition from equivalence classes
-        groups = {}
-        for i in range(n_states):
-            root = find(i)
-            if root not in groups:
-                groups[root] = []
-            groups[root].append(i)
+        # Convert to numpy for SciPy
+        all_src_np = np.array(all_src)
+        all_dst_np = np.array(all_dst)
         
-        # Convert to list of lists
-        partition = list(groups.values())
+        # Build Sparse Matrix (Adjacency)
+        # We need a symmetric graph for connected components, but csgraph handles directed/undirected
+        # connection_type='weak' treats directed edges as undirected for components
+        # Weights don't matter, just connectivity. Use 1s.
+        data = np.ones(len(all_src_np), dtype=bool)
+        
+        adj = scipy.sparse.coo_matrix(
+            (data, (all_src_np, all_dst_np)),
+            shape=(n_states, n_states)
+        )
+        
+        # Find Connected Components
+        # connection='weak' means if u->v or v->u, they are connected.
+        # This is correct because symmetry implies equivalence A~B.
+        n_components, labels = scipy.sparse.csgraph.connected_components(
+            adj, 
+            directed=True, 
+            connection='weak',
+            return_labels=True
+        )
+        
+        # 5. Group into Partition List
+        # ----------------------------------------------------------------
+        # labels is array of shape (n_states,) with component ID
+        # We need list of lists.
+        
+        # Sort by label to group
+        order = np.argsort(labels)
+        sorted_labels = labels[order]
+        sorted_indices = order
+        
+        # Find split points where label changes
+        # diff gives non-zero where value changes
+        # np.where returns indices
+        split_indices = np.where(np.diff(sorted_labels))[0] + 1
+        
+        # Split sorted_indices into groups
+        # np.split returns a list of arrays
+        groups_arrays = np.split(sorted_indices, split_indices)
+        
+        # Convert to list of lists (Python ints)
+        partition = [arr.tolist() for arr in groups_arrays]
         
         return partition
