@@ -241,6 +241,45 @@ Constructs a 2D grid for spatial voting models.
 - **`embedding(valid)`**: Create embedding function for plotting subsets
 - **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib
 
+### 6. Symmetry & Dimension Reduction
+Reduce computational cost by exploiting spatial symmetries.
+
+```python
+import gridvoting_jax as gv
+from gridvoting_jax.symmetry import suggest_symmetries
+
+# 1. Detect Symmetries
+# Suggest valid spatial symmetries for the mode
+symmetries = suggest_symmetries(model)
+print(f"Detected: {symmetries}") 
+
+# 2. Partition Grid
+# Create equivalence classes (e.g. reflection across y-axis)
+partition = model.grid.partition_from_symmetry(['reflect_x'])
+
+# 3. Lump Markov Chain
+# Solve on reduced state space (e.g., 50% fewer states)
+lumped_mc = gv.lump(model.MarkovChain, partition)
+lumped_pi = lumped_mc.find_unique_stationary_distribution()
+
+# 4. Unlump
+# Map results back to full grid
+stationary_distribution = gv.unlump(lumped_pi, partition)
+```
+
+### 7. Pareto Efficiency
+Analyze the Pareto Optimal set (points where no other point is unanimously preferred).
+
+```python
+# Get boolean mask of Pareto set
+pareto_mask = model.Pareto
+
+# Visualize
+model.grid.plot(pareto_mask, title="Pareto Set")
+
+# Create Unanimous Model
+unanimous_model = model.unanimize()
+```
 ### Voting Models
 
 #### `class VotingModel`

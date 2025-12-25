@@ -1,6 +1,6 @@
-
 import jax
 import jax.numpy as jnp
+import copy
 from warnings import warn
 
 # Import from core and dynamics
@@ -37,6 +37,52 @@ class VotingModel:
         self.majority = majority
         self.zi = zi
         self.analyzed = False
+        self._pareto_core = None
+
+    def unanimize(self):
+        """
+        Returns a shallow copy of the model with majority set to unanimity.
+        
+        The new model requires all voters to agree to move from the status quo.
+        Used for identifying Pareto optimal sets.
+        """
+        # Create shallow copy
+        new_model = copy.copy(self)
+        
+        # Set new parameters
+        new_model.majority = new_model.number_of_voters
+        
+        # Reset analysis state
+        new_model.analyzed = False
+        new_model.MarkovChain = None
+        new_model.stationary_distribution = None
+        new_model.core_points = None
+        new_model.core_exists = None
+        new_model._pareto_core = None
+        
+        return new_model
+
+    @property
+    def Pareto(self):
+        """
+        Returns the Pareto Optimal set (Core under unanimity).
+        
+        Returns:
+            JAX boolean array indicating points in the Pareto set.
+        """
+        if self._pareto_core is not None:
+            return self._pareto_core
+            
+        # Create unanimized model
+        unanimous_model = self.unanimize()
+        
+        # Analyze to find core
+        # Use full matrix inversion as default for robustness on small-medium grids
+        unanimous_model.analyze(solver="full_matrix_inversion")
+        
+        # Cache and return core points
+        self._pareto_core = unanimous_model.core_points
+        return self._pareto_core
 
     def E_𝝿(self,z):
         """returns mean, i.e., expected value of z under the stationary distribution"""

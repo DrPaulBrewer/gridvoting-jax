@@ -41,7 +41,7 @@ jobs:
         with:
           context: .
           file: Dockerfiles/base/Dockerfile.jax-cpu
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cpu:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cpu:latest
           cache-to: type=inline
@@ -75,7 +75,7 @@ jobs:
         with:
           context: .
           file: Dockerfiles/base/Dockerfile.jax-cuda12
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda12:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cuda12:latest
           cache-to: type=inline
@@ -109,7 +109,7 @@ jobs:
         with:
           context: .
           file: Dockerfiles/base/Dockerfile.jax-cuda13
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda13:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cuda13:latest
           cache-to: type=inline
@@ -144,7 +144,7 @@ jobs:
         with:
           context: .
           file: Dockerfiles/dev/Dockerfile.dev-cpu
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/dev/cpu:latest
 
   build-dev-cuda12:
@@ -177,7 +177,7 @@ jobs:
         with:
           context: .
           file: Dockerfiles/dev/Dockerfile.dev-cuda12
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/dev/cuda12:latest
 
   build-dev-cuda13:
@@ -210,5 +210,5 @@ jobs:
         with:
           context: .
           file: Dockerfiles/dev/Dockerfile.dev-cuda13
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/dev/cuda13:latest
