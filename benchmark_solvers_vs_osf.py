@@ -4,8 +4,7 @@ import time
 import jax.numpy as jnp
 import pandas as pd
 from gridvoting_jax.core import enable_float64
-from gridvoting_jax.spatial import Grid
-from gridvoting_jax.dynamics import VotingModel
+from gridvoting_jax import SpatialVotingModel, Grid
 from gridvoting_jax.benchmarks.osf_comparison import load_osf_distribution
 
 # Enable float64 for precision comparison
@@ -54,10 +53,10 @@ def benchmark_solvers_vs_osf(g=20):
     utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
     
     # 3. Create Model
-    model = VotingModel(
-        utility_functions=utils,
+    model = SpatialVotingModel(
+        grid=grid,
+        voter_ideal_points=voter_ideal_points,
         number_of_voters=3,
-        number_of_feasible_alternatives=N,
         majority=2,
         zi=False
     )
@@ -72,8 +71,6 @@ def benchmark_solvers_vs_osf(g=20):
         try:
             model.analyze(
                 solver=solver, 
-                grid=grid, 
-                voter_ideal_points=voter_ideal_points,
                 tolerance=1e-6,
                 max_iterations=5000
             )

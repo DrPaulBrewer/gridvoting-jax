@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.13.1] - 2025-12-26
+
+### Removed
+- **Cleanup**: Deleted unused analysis scripts and generated files from root directory:
+    - `calculate_expected_outside_prob.py`
+    - `analyze_outside_probability.py`
+    - `exponential_decay_analysis.png`
+    - `expected_prob_output.txt`
+
+### Changed
+- **Git Configuration**: Added `*.png` to `.gitignore` to prevent generated plots from being tracked.
+
 ## [0.13.0] - 2025-12-25
 
 ### Added
