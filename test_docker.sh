@@ -1,11 +1,12 @@
 #!/bin/bash
 # Docker test script with support for dev and versioned images from GHCR
 # Usage:
-#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [pytest args...]
+#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--command="..."] [pytest args...]
 #   
 # Examples:
 #   ./test_docker.sh --dev --gpu tests/
 #   ./test_docker.sh --version=v0.9.1 --cpu
+#   ./test_docker.sh --command="pip list"
 #   ./test_docker.sh --dev  # defaults to CPU
 
 set -e
@@ -14,6 +15,7 @@ MODE="dev"  # dev or release
 VERSION="latest"
 CUDA_TYPE="cpu"
 PYTEST_ARGS="tests/"
+COMMAND=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
+        --command=*)
+            COMMAND="${1#*=}"
+            shift
+            ;;
         *)
             PYTEST_ARGS="$@"
             break
@@ -66,12 +72,7 @@ if [ "$MODE" == "dev" ]; then
     # Pull latest dev image
     docker pull "$IMAGE"
     
-    # Run with mounted source code
-    docker run --rm \
-        -v "$(pwd):/workspace" \
-        ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
-        "$IMAGE" \
-        python3 -m pytest $PYTEST_ARGS
+    DOCKER_ARGS="-v $(pwd):/workspace"
 else
     # Release mode
     IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
@@ -80,9 +81,13 @@ else
     # Pull release image
     docker pull "$IMAGE"
     
-    # Run tests
-    docker run --rm \
-        ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
-        "$IMAGE" \
-        python3 -m pytest $PYTEST_ARGS
+    DOCKER_ARGS=""
 fi
+
+# Run container
+# Note: We use arrays for command arguments to properly handle quoting
+docker run --rm \
+    $DOCKER_ARGS \
+    ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
+    "$IMAGE" \
+    /bin/bash -c "${COMMAND:-python3 -m pytest $PYTEST_ARGS}"

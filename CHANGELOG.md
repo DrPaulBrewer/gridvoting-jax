@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 
+## [0.13.2] - 2025-12-26
+
+### Added
+- **Docker Support**: Added `--command` flag to `test_docker.sh` to allow running arbitrary commands inside the container (e.g., `./test_docker.sh --command="pip list"`).
+
+
+
 ## [0.13.1] - 2025-12-26
 
 ### Removed
