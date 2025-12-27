@@ -9,7 +9,8 @@ The class automatically selects the appropriate implementation.
 
 import jax
 import jax.numpy as jnp
-from .operators import _compute_transition_rows_jit
+from ...core.winner_determination import compute_winner_matrix_jit
+from ...core.zimi_succession_logic import finalize_transition_matrix
 
 # Fixed batch size for memory-efficient computation
 BATCH_SIZE = 128
@@ -64,9 +65,10 @@ class LazyTransitionMatrix:
         
         # Non-batched: works with GMRES
         all_indices = jnp.arange(self.N)
-        P = _compute_transition_rows_jit(
-            self.utility_functions, self.majority, self.zi, all_indices
+        cV = compute_winner_matrix_jit(
+            self.utility_functions, self.majority, all_indices
         )
+        P = finalize_transition_matrix(cV, self.zi, self.N, all_indices)
         
         return jnp.sum(P * v[:, jnp.newaxis], axis=0)
     
@@ -95,10 +97,11 @@ class LazyTransitionMatrix:
             valid_mask = batch_inds < self.N
             
             # Compute rows for this batch
-            # batch_rows[i] is row batch_inds[i] of P
-            batch_rows = _compute_transition_rows_jit(
-                self.utility_functions, self.majority, self.zi, batch_inds
+            # Compute transition rows for this batch
+            cV_batch = compute_winner_matrix_jit(
+                self.utility_functions, self.majority, batch_inds
             )
+            batch_rows = finalize_transition_matrix(cV_batch, self.zi, self.N, batch_inds)
             
             # For P.T @ v, weight each row i by v[batch_inds[i]]
             # batch_rows has shape (BATCH_SIZE, N)
@@ -125,11 +128,13 @@ class LazyTransitionMatrix:
         """
         v = jnp.asarray(v)
         
-        # Non-batched: works with GMRES
+        # Non-batched:
+        # Compute all rows
         all_indices = jnp.arange(self.N)
-        P = _compute_transition_rows_jit(
-            self.utility_functions, self.majority, self.zi, all_indices
+        cV = compute_winner_matrix_jit(
+            self.utility_functions, self.majority, all_indices
         )
+        P = finalize_transition_matrix(cV, self.zi, self.N, all_indices)
         
         return jnp.sum(P * v[jnp.newaxis, :], axis=1)
     
@@ -141,6 +146,7 @@ class LazyTransitionMatrix:
             (N, N) dense transition matrix
         """
         all_indices = jnp.arange(self.N)
-        return _compute_transition_rows_jit(
-            self.utility_functions, self.majority, self.zi, all_indices
+        cV = compute_winner_matrix_jit(
+            self.utility_functions, self.majority, all_indices
         )
+        return finalize_transition_matrix(cV, self.zi, self.N, all_indices)

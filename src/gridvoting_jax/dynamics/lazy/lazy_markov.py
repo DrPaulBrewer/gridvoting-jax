@@ -276,7 +276,7 @@ class FlexMarkovChain:
             FlexMarkovChain instance with auto-selected backend
         """
         from ...core import get_available_memory_bytes
-        from .operators import should_use_lazy
+        from .utils import should_use_lazy
         
         N = model.number_of_feasible_alternatives
         dtype = model.utility_functions.dtype

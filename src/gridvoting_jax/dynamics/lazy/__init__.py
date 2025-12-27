@@ -2,7 +2,7 @@
 
 from .base import LazyTransitionMatrix
 from .lazy_markov import LazyMarkovChain, FlexMarkovChain
-from .operators import should_use_lazy, estimate_memory_for_dense_matrix
+from .utils import should_use_lazy, estimate_memory_for_dense_matrix
 
 __all__ = [
     'LazyTransitionMatrix', 
