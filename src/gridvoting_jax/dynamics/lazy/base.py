@@ -95,10 +95,9 @@ class LazyTransitionMatrix:
             
             # Create mask for valid indices (not padding)
             valid_mask = batch_inds < self.N
-            num_valid = valid_mask.sum()
             
             # Only process valid indices to avoid duplicate diagonal additions
-            valid_inds = batch_inds[:num_valid]
+            valid_inds = batch_inds[valid_mask]
             
             # Compute rows for valid indices only
             cV_batch = compute_winner_matrix_jit(
