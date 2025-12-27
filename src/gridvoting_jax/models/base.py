@@ -422,4 +422,3 @@ class VotingModel:
         
         assert_valid_transition_matrix(cP)
         return cP
-```
