@@ -95,21 +95,21 @@ class LazyTransitionMatrix:
             
             # Create mask for valid indices (not padding)
             valid_mask = batch_inds < self.N
+            num_valid = valid_mask.sum()
             
-            # Compute rows for this batch
-            # Compute transition rows for this batch
+            # Only process valid indices to avoid duplicate diagonal additions
+            valid_inds = batch_inds[:num_valid]
+            
+            # Compute rows for valid indices only
             cV_batch = compute_winner_matrix_jit(
-                self.utility_functions, self.majority, batch_inds
+                self.utility_functions, self.majority, valid_inds
             )
-            batch_rows = finalize_transition_matrix(cV_batch, self.zi, self.N, batch_inds)
+            batch_rows = finalize_transition_matrix(cV_batch, self.zi, self.N, valid_inds)
             
-            # For P.T @ v, weight each row i by v[batch_inds[i]]
-            # batch_rows has shape (BATCH_SIZE, N)
+            # For P.T @ v, weight each row i by v[valid_inds[i]]
+            # batch_rows has shape (num_valid, N)
             # We want: sum over i of (v[i] * P[i, :])
-            v_weights = v[batch_inds]  # Get v values for this batch
-            
-            # Mask out padded entries to avoid double-counting
-            v_weights = jnp.where(valid_mask, v_weights, 0.0)
+            v_weights = v[valid_inds]  # Get v values for valid indices
             
             weighted = batch_rows * v_weights[:, jnp.newaxis]
             result = result + jnp.sum(weighted, axis=0)
