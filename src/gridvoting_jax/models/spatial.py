@@ -118,7 +118,10 @@ class SpatialVotingModel:
         x1_sub = max_xy[0] + border_units * self.grid.xstep
         y1_sub = max_xy[1] + border_units * self.grid.ystep
 
-        # check that subgrid fits inside main grid
+        # Check that subgrid fits inside main grid
+        # Note: This will fail for small grids (e.g. g=20) where the 5-unit border
+        # extends beyond the grid bounds. This is expected behavior - grid upscaling
+        # is designed for larger grids where voters don't occupy the entire grid.
         if x0_sub < self.grid.x0 or y0_sub < self.grid.y0 or x1_sub > self.grid.x1 or y1_sub > self.grid.y1:
             raise ValueError("Subgrid extends beyond main grid bounds.")
 
