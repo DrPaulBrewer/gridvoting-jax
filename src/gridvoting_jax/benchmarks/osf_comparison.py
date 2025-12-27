@@ -261,6 +261,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
         "power_method",
         "bifurcated_power_method",
         "power_method (lazy)",
+        "bifurcated_power_method (lazy)",
         "grid_upscaling",
         "grid_upscaling_lazy_gmres",
         "grid_upscaling_lazy_power",

@@ -40,7 +40,7 @@ class LazyMarkovChain:
         Find stationary distribution using lazy solvers.
         
         Args:
-            solver: "gmres" (default) or "power_method"
+            solver: "gmres" (default), "power_method", or "bifurcated_power_method"
             initial_guess: Optional initial guess for iterative solver
             tolerance: Convergence tolerance (default: self.tolerance)
             max_iterations: Maximum iterations
@@ -66,8 +66,14 @@ class LazyMarkovChain:
                 initial_guess=initial_guess,
                 timeout=timeout
             )
+        elif solver == "bifurcated_power_method":
+            self._stationary_distribution = self._solve_bifurcated_power_method_lazy(
+                tolerance=tolerance, 
+                max_iterations=max_iterations,
+                timeout=timeout
+            )
         else:
-            raise ValueError(f"LazyMarkovChain only supports 'gmres' or 'power_method', got '{solver}'")
+            raise ValueError(f"LazyMarkovChain only supports 'gmres', 'power_method', or 'bifurcated_power_method', got '{solver}'")
         
         self._analyzed = True
         return self
@@ -236,6 +242,93 @@ class LazyMarkovChain:
             warn(f"Power method did not converge in {total_iterations} iterations (best check norm={best_check_norm:.2e})")
         
         return x
+    
+    def _solve_bifurcated_power_method_lazy(self, tolerance, max_iterations, timeout=30.0):
+        """
+        Bifurcated (dual-start) power method using lazy rmatvec operations.
+        
+        Starts from two different initial guesses based on row entropy and
+        evolves both until they converge to each other. More robust for detecting
+        issues but more expensive than single-path power method.
+        
+        This matches the dense bifurcated_power_method behavior.
+        
+        Args:
+            tolerance: Convergence tolerance
+            max_iterations: Maximum iterations
+            timeout: Maximum execution time (seconds)
+        
+        Returns:
+            (N,) stationary distribution vector (average of two converged paths)
+        """
+        import time
+        
+        n = self.lazy_P.N
+        start_time = time.time()
+        
+        # Calculate entropy of each row to find diverse starting points
+        # We need to materialize one row at a time to compute entropy
+        # This is expensive but only done once at startup
+        row_entropies = []
+        for i in range(n):
+            # Get row i of P
+            row_i = self.lazy_P.compute_rows(jnp.array([i]))[0]
+            # Compute entropy: H = -sum(p * log2(p)) for p > 0
+            p_safe = jnp.where(row_i > 0, row_i, 1.0)
+            entropy = -jnp.sum(row_i * jnp.log2(p_safe))
+            row_entropies.append(float(entropy))
+        
+        row_entropies = jnp.array(row_entropies)
+        
+        # Start 1: Max entropy (most uncertain transition)
+        idx_max = int(jnp.argmax(row_entropies))
+        v1 = jnp.zeros(n, dtype=self.lazy_P.dtype).at[idx_max].set(1.0)
+        
+        # Start 2: Min entropy (most deterministic transition)
+        idx_min = int(jnp.argmin(row_entropies))
+        v2 = jnp.zeros(n, dtype=self.lazy_P.dtype).at[idx_min].set(1.0)
+        
+        # Adaptive batching
+        check_interval = 10
+        next_check = check_interval
+        
+        # Evolve both paths
+        i = 0
+        while i < max_iterations:
+            # Evolve both vectors in batch
+            batch_end = min(next_check, max_iterations)
+            batch_size = batch_end - i
+            
+            # Evolve both paths for batch_size iterations
+            for _ in range(batch_size):
+                v1 = self.lazy_P.rmatvec_batched(v1)
+                v2 = self.lazy_P.rmatvec_batched(v2)
+            
+            i = batch_end
+            
+            # Normalize
+            v1 = v1 / jnp.sum(v1)
+            v2 = v2 / jnp.sum(v2)
+            
+            # Check convergence (paths converge to each other)
+            diff = float(jnp.linalg.norm(v1 - v2, ord=1))
+            if diff < tolerance:
+                return (v1 + v2) / 2.0
+            
+            # Check timeout
+            if (time.time() - start_time) > timeout:
+                warn(f"Bifurcated power method (lazy) timed out after {timeout}s (iter {i}). Diff between paths: {diff}")
+                return (v1 + v2) / 2.0
+            
+            # Adaptive: Increase interval
+            if check_interval < 1000:
+                check_interval *= 2
+            next_check = i + check_interval
+        
+        # Final convergence check
+        diff = float(jnp.linalg.norm(v1 - v2, ord=1))
+        warn(f"Bifurcated power method (lazy) did not converge in {max_iterations} iterations. Final diff between paths: {diff}")
+        return (v1 + v2) / 2.0
     
     @property
     def stationary_distribution(self):
