@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.14.1] - 2025-12-26
+
+### Fixed
+- **CI Workflow Trigger**: Fixed `docker-base-images.yml` to strictly run only on `branches: ['main']`.
+    - **Issue**: GitHub Actions ignored `paths` filters when tags were pushed, causing unnecessary base image builds on every release.
+    - **Fix**: Added explicit branch filtering to prevent tag-based triggers.
+
 ## [0.14.0] - 2025-12-26
 ### Added
 - Restored "OSF Comparison Report" functionality in `test_docker_osf.sh` (replaces pytest).

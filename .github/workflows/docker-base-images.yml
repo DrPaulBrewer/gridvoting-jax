@@ -2,6 +2,8 @@ name: Build Base Docker Images
 
 on:
   push:
+    branches:
+      - 'main'
     paths:
       - 'Dockerfiles/base/**'
       - 'Dockerfiles/download_data.py'
