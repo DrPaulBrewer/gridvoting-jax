@@ -343,6 +343,13 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
                         tolerance=1e-6,
                         max_iterations=5000
                     )
+                elif solver == "bifurcated_power_method (lazy)":
+                    vm.analyze_lazy(
+                        solver="bifurcated_power_method",
+                        force_lazy=True,
+                        tolerance=1e-6,
+                        max_iterations=5000
+                    )
                 elif solver in ["grid_upscaling", "grid_upscaling_lazy_gmres", "grid_upscaling_lazy_power"]:
                     # Grid upscaling variants handled by analyze()
                     vm.analyze(
