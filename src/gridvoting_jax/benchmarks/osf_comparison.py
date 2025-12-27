@@ -427,12 +427,25 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
 # Example usage
 if __name__ == '__main__':
-    # Check for CLI args or Env vars?
-    # For now, just run full suite if executed directly
+    import argparse
+    import sys
+    
+    parser = argparse.ArgumentParser(description='Run OSF validation benchmarks.')
+    parser.add_argument('--max_g', type=int, default=None,
+                      help='Maximum grid size to test (e.g. 40 for quick tests)')
+    
+    args = parser.parse_args()
+    
+    # Filter configs based on max_g
+    configs_to_run = None
+    if args.max_g:
+        configs_to_run = [(g, zi) for g, zi in ALL_CONFIGS if g <= args.max_g]
+        print(f"Filtering benchmarks: g <= {args.max_g}")
+    
     print("Available OSF distributions:")
     for (g, zi), filename in get_available_distributions().items():
         mode = 'ZI' if zi else 'MI'
         print(f"  g={g}, {mode}: {filename}")
     
-    print("\nRunning full comparison report...")
-    run_comparison_report()
+    print("\nRunning comparison report...")
+    run_comparison_report(configs=configs_to_run)

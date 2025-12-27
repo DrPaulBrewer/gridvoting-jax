@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [0.14.0] - 2025-12-26
+### Added
+- Restored "OSF Comparison Report" functionality in `test_docker_osf.sh` (replaces pytest).
+- Added CLI argument support to `src/gridvoting_jax/benchmarks/osf_comparison.py`.
+- Added `--max_g` argument to filtering benchmarks by grid size.
+- Ensure `GV_ENABLE_FLOAT64=1` is set when running `test_docker_osf.sh --float64`.
 
+### Fixed
+- Fixed `test_docker_osf.sh` failure for small grid sizes (g=20, 40, 60) by removing dependency on `test_osf_validation_g80_g100.py`.
 
 ## [0.13.2] - 2025-12-26
 

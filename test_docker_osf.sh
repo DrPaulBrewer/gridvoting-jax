@@ -8,8 +8,9 @@ set -e
 MODE="dev"
 VERSION="latest"
 CUDA_TYPE="cpu"
-GRID_SIZES="20 40 60 80"
 PRECISION="float32"
+QUICK="false"
+EXTENDED="false"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -44,11 +45,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --quick)
-            GRID_SIZES="20 40"
+            QUICK="true"
             shift
             ;;
         --extended)
-            GRID_SIZES="20 40 60 80 100"
+            EXTENDED="true"
             shift
             ;;
         --float64)
@@ -66,7 +67,6 @@ echo "OSF Validation - Docker"
 echo "========================================="
 echo "Mode: $MODE"
 echo "CUDA: $CUDA_TYPE"
-echo "Grid sizes: $GRID_SIZES"
 echo "Precision: $PRECISION"
 echo ""
 
@@ -92,14 +92,39 @@ if [ "$CUDA_TYPE" != "cpu" ]; then
     DOCKER_ARGS="$DOCKER_ARGS --gpus all"
 fi
 
-# Run tests for each grid size
-for g in $GRID_SIZES; do
-    echo ""
-    echo "Testing g=$g..."
-    docker run --rm $DOCKER_ARGS "$IMAGE" \
-        python3 -m pytest tests/test_osf_validation_g80_g100.py \
-        -k "g${g}" -v --tb=short
-done
+# Run tests
+echo "Running OSF Comparison Report..."
 
-echo ""
-echo "✅ All OSF validation tests passed!"
+# Construct Arguments
+PY_ARGS=""
+if [ "$QUICK" == "true" ]; then
+    PY_ARGS="--max_g 40"
+fi
+
+if [ "$EXTENDED" == "true" ]; then
+    # No max_g means run all
+    PY_ARGS="" 
+fi
+
+# Construct Environment Variables
+ENV_VARS="-e PYTHONUNBUFFERED=1"
+if [ "$PRECISION" == "float64" ]; then
+    ENV_VARS="$ENV_VARS -e GV_ENABLE_FLOAT64=1"
+fi
+
+# Run Docker
+docker run --rm \
+    $DOCKER_ARGS \
+    $ENV_VARS \
+    ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
+    "$IMAGE" \
+    python3 -m gridvoting_jax.benchmarks.osf_comparison $PY_ARGS
+
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "✅ OSF validation completed successfully!"
+else
+    echo ""
+    echo "❌ OSF validation failed!"
+    exit 1
+fi
