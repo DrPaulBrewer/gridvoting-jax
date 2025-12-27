@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed - Critical Lazy Dynamics Bugs
 
-- **Zero Intelligence (ZI) Transition Matrix Bug** (CRITICAL):
+- **Zero Intelligence (ZI) Lazy Transition Matrix Bug** (CRITICAL):
   - **Issue**: `_compute_transition_rows_jit()` in `dynamics/lazy/operators.py` was returning a uniform transition matrix for ZI mode, completely ignoring the winner matrix `cV_batch`.
   - **Impact**: All lazy solvers (`power_method (lazy)`, `grid_upscaling_lazy_gmres`, `grid_upscaling_lazy_power`) failed in ZI mode:
     - Lazy power method converged to uniform distribution (incorrect)
