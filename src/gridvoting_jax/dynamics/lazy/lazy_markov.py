@@ -172,7 +172,7 @@ class LazyMarkovChain:
         
         x_calib = x
         for _ in range(calibration_iters):
-            x_calib = self.lazy_P.rmatvec_batched(x_calib)
+            x_calib = self.lazy_P.matvec(x_calib)
         
         calibration_time_ns = time.perf_counter_ns() - calibration_start
         time_per_iter_s = (calibration_time_ns / 1e9) / calibration_iters
@@ -201,7 +201,7 @@ class LazyMarkovChain:
             # Run batch of iterations
             x_batch = x
             for i in range(iters_for_half_time):
-                x_new = self.lazy_P.rmatvec_batched(x_batch)
+                x_new = self.lazy_P.matvec(x_batch)
                 
                 # Check convergence every 10 iterations (not every iteration for efficiency)
                 if i % 10 == 0 and i > 0:
@@ -225,10 +225,10 @@ class LazyMarkovChain:
             total_iterations += iters_for_half_time
             
             
-            # Calculate check norm: ||P^T @ x - x||_1
+            # Calculate check norm: ||P @ x - x||_1
             # This measures convergence to stationary distribution
             # Do NOT normalize Px - we want to measure evolution effect, not renormalization effect
-            Px = self.lazy_P.rmatvec_batched(x)
+            Px = self.lazy_P.matvec(x)
             check_norm = float(jnp.sum(jnp.abs(Px - x)))
             
             # Update best result if this is better
