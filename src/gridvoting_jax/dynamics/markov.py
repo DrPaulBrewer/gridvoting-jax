@@ -85,12 +85,13 @@ class MarkovChain:
             solver: Strategy to use. Options:
                 - "full_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
                 - "gmres_matrix_inversion": Iterative linear solver (GMRES). Low memory (O(N^2) or O(N)).
-                - "power_method": Iterative power method (O(N^2)). 
-                  If initial_guess is None, uses Dual-Start Entropy strategy.
-                  If initial_guess is provided, uses Single-Start Refinement.
+                - "power_method": Single-path power method with uniform initial guess (O(N^2)).
+                  Matches lazy power method behavior.
+                - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
+                  More robust but more expensive than power_method.
             initial_guess: Optional starting distribution for "power_method".
             max_iterations: Maximum iterations for iterative solvers.
-            timeout: Maximum time in seconds for iterative solvers (default: 10.0).
+            timeout: Maximum time in seconds for iterative solvers (default: 30.0).
         """
         if tolerance is None:
             tolerance = TOLERANCE
@@ -139,6 +140,8 @@ class MarkovChain:
             self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations)
         elif solver == "power_method":
             self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess, timeout)
+        elif solver == "bifurcated_power_method":
+            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance, max_iterations, timeout)
         else:
             raise ValueError(f"Unknown solver: {solver}")
 
@@ -210,115 +213,145 @@ class MarkovChain:
 
     def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, timeout=30.0):
         """
-        Power method for finding stationary distribution.
+        Single-path power method with uniform initial guess.
         
-        Modes:
-        1. Single-Start Refinement: Uses initial_guess.
-        2. Dual-Start Entropy: Uses Max/Min entropy rows as starts.
+        This is the standard power method implementation that matches lazy power method behavior.
+        Starts from uniform distribution and iterates until convergence.
         
         Args:
-            timeout: Max execution time in seconds.
+            tolerance: Convergence tolerance
+            max_iterations: Maximum iterations
+            initial_guess: Optional initial distribution (if None, uses uniform)
+            timeout: Max execution time in seconds
+        
+        Returns:
+            Stationary distribution vector
         """
         import time
         n = self.P.shape[0]
         start_time = time.time()
         
+        # Use uniform initial guess if not provided (matches lazy behavior)
+        if initial_guess is None:
+            v = jnp.ones(n) / n
+        else:
+            v = initial_guess / jnp.sum(initial_guess)  # Normalize
+        
         # Adaptive batching for time checks
         check_interval = 10
         next_check = check_interval
         
-        if initial_guess is not None:
-            # Mode 1: Refine existing guess
-            v = initial_guess
-            i = 0
-            while i < max_iterations:
-                # Evolve until next check using JAX compiled loop
-                batch_end = min(next_check, max_iterations)
-                batch_size = batch_end - i
-                
-                # Use lax.fori_loop for compiled batched evolution
-                # Pass P as part of carry to avoid closure capture
-                def evolve_step(_, carry):
-                    vec, P = carry
-                    return (jnp.dot(vec, P), P)
-                v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
-                i = batch_end
-                
-                # Check convergence and timeout
-                diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
-                if diff < tolerance:
-                    return v
-                
-                if (time.time() - start_time) > timeout:
-                    warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
-                    return v
-                
-                # Adaptive: Increase interval
-                if check_interval < 1000:
-                    check_interval *= 2
-                next_check = i + check_interval
-                
-            # Final check
+        i = 0
+        while i < max_iterations:
+            # Evolve until next check using JAX compiled loop
+            batch_end = min(next_check, max_iterations)
+            batch_size = batch_end - i
+            
+            # Use lax.fori_loop for compiled batched evolution
+            def evolve_step(_, carry):
+                vec, P = carry
+                return (jnp.dot(vec, P), P)
+            v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
+            i = batch_end
+            
+            # Check convergence
             diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
-            warn(f"Power method (Single-Start) did not converge in {max_iterations} iterations. Final diff: {diff}")
-            return v
+            if diff < tolerance:
+                return v
             
-        else:
-            # Mode 2: Dual-Start Entropy
-            # Calculate entropy of each row of P to find diverse starting points
-            # Entropy of a row P[i]: H(i) = - sum(P[i,j] * log2(P[i,j]))
-            # Avoid log(0) with mask or adding epsilon
-            P_safe = jnp.where(self.P > 0, self.P, 1.0) # log(1)=0, so 0 contributions are 0
-            row_entropy = -jnp.sum(self.P * jnp.log2(P_safe), axis=1)
+            # Check timeout
+            if (time.time() - start_time) > timeout:
+                warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
+                return v
             
-            # Start 1: Max entropy (most uncertain transition)
-            idx_max = jnp.argmax(row_entropy).item()
-            v1 = jnp.zeros(n).at[idx_max].set(1.0)
+            # Adaptive: Increase interval
+            if check_interval < 1000:
+                check_interval *= 2
+            next_check = i + check_interval
+        
+        # Final check
+        diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
+        warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
+        return v
+
+    def _solve_bifurcated_power_method(self, tolerance, max_iterations, timeout=30.0):
+        """
+        Bifurcated (dual-start) power method using entropy-based starting points.
+        
+        Starts from two different initial guesses (max and min entropy rows) and
+        evolves both until they converge to each other. More robust for detecting
+        issues but more expensive than single-path power method.
+        
+        This was the previous default power method implementation.
+        
+        Args:
+            tolerance: Convergence tolerance
+            max_iterations: Maximum iterations
+            timeout: Max execution time in seconds
+        
+        Returns:
+            Stationary distribution vector (average of two converged paths)
+        """
+        import time
+        n = self.P.shape[0]
+        start_time = time.time()
+        
+        # Calculate entropy of each row of P to find diverse starting points
+        # Entropy of a row P[i]: H(i) = - sum(P[i,j] * log2(P[i,j]))
+        P_safe = jnp.where(self.P > 0, self.P, 1.0)  # Avoid log(0)
+        row_entropy = -jnp.sum(self.P * jnp.log2(P_safe), axis=1)
+        
+        # Start 1: Max entropy (most uncertain transition)
+        idx_max = jnp.argmax(row_entropy).item()
+        v1 = jnp.zeros(n).at[idx_max].set(1.0)
+        
+        # Start 2: Min entropy (most deterministic transition)
+        idx_min = jnp.argmin(row_entropy).item()
+        v2 = jnp.zeros(n).at[idx_min].set(1.0)
+        
+        # Adaptive batching for time checks
+        check_interval = 10
+        next_check = check_interval
+        
+        # Evolve both paths
+        i = 0
+        while i < max_iterations:
+            # Stack both vectors for batched evolution
+            V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
             
-            # Start 2: Min entropy (most deterministic transition)
-            idx_min = jnp.argmin(row_entropy).item()
-            v2 = jnp.zeros(n).at[idx_min].set(1.0)
+            # Evolve batch until next check
+            batch_end = min(next_check, max_iterations)
+            batch_size = batch_end - i
             
-            # Evolve both (batched with deferred checks)
-            i = 0
-            while i < max_iterations:
-                # Stack once per batch
-                V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
-                
-                # Evolve batch until next check using JAX compiled loop
-                batch_end = min(next_check, max_iterations)
-                batch_size = batch_end - i
-                
-                # Use lax.fori_loop for compiled batched evolution
-                # Pass P as part of carry to avoid closure capture
-                def evolve_batch_step(_, carry):
-                    V_state, P = carry
-                    return (jnp.dot(V_state, P), P)
-                V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
-                i = batch_end
-                
-                # Unpack once per batch
-                v1, v2 = V[0], V[1]
-                
-                # Check convergence
-                diff = jnp.linalg.norm(v1 - v2, ord=1)
-                if diff < tolerance:
-                    return (v1 + v2) / 2.0
-                
-                # Check timeout
-                if (time.time() - start_time) > timeout:
-                    warn(f"Power method timed out after {timeout}s (iter {i}). Diff between starts: {diff}")
-                    return (v1 + v2) / 2.0
-                
-                # Adaptive: Increase interval
-                if check_interval < 1000:
-                    check_interval *= 2
-                next_check = i + check_interval
+            # Use lax.fori_loop for compiled batched evolution
+            def evolve_batch_step(_, carry):
+                V_state, P = carry
+                return (jnp.dot(V_state, P), P)
+            V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
+            i = batch_end
             
-            # Final convergence check
+            # Unpack
+            v1, v2 = V[0], V[1]
+            
+            # Check convergence (paths converge to each other)
             diff = jnp.linalg.norm(v1 - v2, ord=1)
-            warn(f"Power method (Dual-Start) did not converge by {max_iterations}. Final diff between chains: {diff}")
-            return (v1 + v2) / 2.0
+            if diff < tolerance:
+                return (v1 + v2) / 2.0
+            
+            # Check timeout
+            if (time.time() - start_time) > timeout:
+                warn(f"Bifurcated power method timed out after {timeout}s (iter {i}). Diff between paths: {diff}")
+                return (v1 + v2) / 2.0
+            
+            # Adaptive: Increase interval
+            if check_interval < 1000:
+                check_interval *= 2
+            next_check = i + check_interval
+        
+        # Final convergence check
+        diff = jnp.linalg.norm(v1 - v2, ord=1)
+        warn(f"Bifurcated power method did not converge in {max_iterations} iterations. Final diff between paths: {diff}")
+        return (v1 + v2) / 2.0
 
     def diagnostic_metrics(self):
         """ return Markov chain approximation metrics in mathematician-friendly format """

@@ -259,6 +259,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
     # AI 2025.12.26 Added lazy solver variants with consistent naming
     solvers = kwargs.get('solvers', [
         "power_method",
+        "bifurcated_power_method",
         "power_method (lazy)",
         "grid_upscaling",
         "grid_upscaling_lazy_gmres",
