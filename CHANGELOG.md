@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.16.0] - 2025-12-27
+
+### Fixed
+- **Precision Regression**: Removed explicit `float32` casts in ZI/MI succession logic that were preventing the solver from achieving high precision in Float64 mode. Dense solver accuracy restored from ~1e-6 to ~1e-15.
+- **Missing Solver Implementation**: Implemented `compute_rows()` method in `LazyTransitionMatrix`, resolving `AttributeError` when using `bifurcated_power_method` with lazy backend.
+- **Lazy Solver Warnings**: Fixed `FutureWarning` about scatter input types by ensuring cleaner type promotion in succession logic.
+
 ## [0.15.1] - 2025-12-27
 
 ### Fixed

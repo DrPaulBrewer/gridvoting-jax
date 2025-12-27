@@ -150,3 +150,22 @@ class LazyTransitionMatrix:
             self.utility_functions, self.majority, all_indices
         )
         return finalize_transition_matrix(cV, self.zi, self.N, all_indices)
+
+    def compute_rows(self, indices):
+        """
+        Compute specific rows of P matrix.
+        
+        Required for bifurcated power method entropy initialization.
+        
+        Args:
+            indices: (k,) array of row indices to compute
+            
+        Returns:
+            (k, N) array of transition probabilities
+        """
+        indices = jnp.asarray(indices)
+        cV = compute_winner_matrix_jit(
+            self.utility_functions, self.majority, indices
+        )
+        return finalize_transition_matrix(cV, self.zi, self.N, indices)
+

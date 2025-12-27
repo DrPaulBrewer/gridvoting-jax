@@ -36,15 +36,16 @@ def finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_m
     
     if eligibility_mask is not None:
         cV = cV * eligibility_mask
-        eligible_count = eligibility_mask.sum(axis=1)
+        eligible_count = eligibility_mask.sum(axis=1).astype(float)
     else:
-        eligible_count = jnp.full(batch_size, nfa, dtype=jnp.float32)
+        eligible_count = jnp.full(batch_size, nfa, dtype=float)
     
     # Count winning alternatives for each status quo
     row_sums = cV.sum(axis=1)
     
     # Start with cV (winners get 1, losers get 0)
-    cP = cV.astype(jnp.float32)
+    # Use same float precision as eligible_count
+    cP = cV.astype(eligible_count.dtype)
     
     # Add diagonal: status quo gets (eligible_count - row_sum)
     diag_values = eligible_count - row_sums
@@ -90,7 +91,7 @@ def finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_m
     set_sizes = row_sums + 1
     
     # Probability for winners
-    cP = cV.astype(jnp.float32) / set_sizes[:, jnp.newaxis]
+    cP = cV.astype(float) / set_sizes[:, jnp.newaxis]
     
     # Add status quo probability
     sq_probs = 1.0 / set_sizes
