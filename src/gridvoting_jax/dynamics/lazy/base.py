@@ -47,8 +47,9 @@ class LazyTransitionMatrix:
         total_size = self.num_batches * BATCH_SIZE
         
         # Create padded indices array
+        # Use self.N as padding value (not 0) so mask comparison works correctly
         indices = jnp.arange(total_size)
-        indices = jnp.where(indices < self.N, indices, 0)
+        indices = jnp.where(indices < self.N, indices, self.N)
         self.batch_indices = indices.reshape(self.num_batches, BATCH_SIZE)
     
     def rmatvec(self, v):
