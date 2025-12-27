@@ -91,6 +91,9 @@ class LazyTransitionMatrix:
         for batch_idx in range(self.num_batches):
             batch_inds = self.batch_indices[batch_idx]
             
+            # Create mask for valid indices (not padding)
+            valid_mask = batch_inds < self.N
+            
             # Compute rows for this batch
             # batch_rows[i] is row batch_inds[i] of P
             batch_rows = _compute_transition_rows_jit(
@@ -101,6 +104,10 @@ class LazyTransitionMatrix:
             # batch_rows has shape (BATCH_SIZE, N)
             # We want: sum over i of (v[i] * P[i, :])
             v_weights = v[batch_inds]  # Get v values for this batch
+            
+            # Mask out padded entries to avoid double-counting
+            v_weights = jnp.where(valid_mask, v_weights, 0.0)
+            
             weighted = batch_rows * v_weights[:, jnp.newaxis]
             result = result + jnp.sum(weighted, axis=0)
         

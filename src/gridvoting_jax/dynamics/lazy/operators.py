@@ -48,8 +48,30 @@ def _compute_transition_rows_jit(utility_functions, majority, zi, status_quo_ind
     # Convert winner matrix to transition matrix
     # Use jax.lax.cond instead of if/else for JIT compatibility
     def zi_true_fn():
-        # Fully random: uniform over all alternatives
-        return jnp.ones((batch_size, N), dtype=cU.dtype) / N
+        # ZI: Uniform random over ALL alternatives
+        # If ch beats sq: move to ch (prob 1/N)
+        # If ch loses to sq: stay at sq
+        # Plus picked sq itself: stay at sq
+        # So prob(move i->j) = 1/N if j beats i
+        # prob(stay i) = (1/N) * (count(j that lose to i) + 1)
+        #              = (1/N) * ((N - count(win) - 1) + 1)
+        #              = (N - row_sum)/N
+        
+        # Count winning alternatives for each status quo
+        row_sums = cV_batch.sum(axis=1)  # (B,)
+        
+        # Start with cV_batch (winners get 1, losers get 0)
+        cP = cV_batch.astype(cU.dtype)
+        
+        # Add diagonal: status quo gets (N - row_sum)
+        # For each batch element b, add (N - row_sum[b]) to position status_quo_indices[b]
+        diag_values = N - row_sums  # (B,)
+        cP = cP.at[jnp.arange(batch_size), status_quo_indices].add(diag_values.astype(cU.dtype))
+        
+        # Divide everything by N
+        cP = cP / N
+        
+        return cP
     
     def zi_false_fn():
         # Intelligent challengers: random over {j : j beats i} ∪ {i}

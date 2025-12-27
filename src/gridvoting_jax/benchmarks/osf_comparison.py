@@ -256,9 +256,13 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
     # Determine solvers
     # PB 2025.12.21 One solver per line for future editing convenience
+    # AI 2025.12.26 Added lazy solver variants with consistent naming
     solvers = kwargs.get('solvers', [
-        "power_method", 
+        "power_method",
+        "power_method (lazy)",
         "grid_upscaling",
+        "grid_upscaling_lazy_gmres",
+        "grid_upscaling_lazy_power",
         "gmres_matrix_inversion",
         "full_matrix_inversion"
     ])
@@ -329,12 +333,28 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
             try:
                 start_time = time.time()
                 
-                # Analyze with solver (v0.8.0 API - no grid/voter_ideal_points needed)
-                vm.analyze(
-                    solver=solver,
-                    tolerance=1e-6,
-                    max_iterations=5000
-                )
+                # Dispatch to appropriate method based on solver type
+                if solver == "power_method (lazy)":
+                    vm.analyze_lazy(
+                        solver="power_method",
+                        force_lazy=True,
+                        tolerance=1e-6,
+                        max_iterations=5000
+                    )
+                elif solver in ["grid_upscaling", "grid_upscaling_lazy_gmres", "grid_upscaling_lazy_power"]:
+                    # Grid upscaling variants handled by analyze()
+                    vm.analyze(
+                        solver=solver,
+                        tolerance=1e-6,
+                        max_iterations=5000
+                    )
+                else:
+                    # Standard solvers (power_method, gmres_matrix_inversion, full_matrix_inversion)
+                    vm.analyze(
+                        solver=solver,
+                        tolerance=1e-6,
+                        max_iterations=5000
+                    )
                 runtime = time.time() - start_time
                 
                 print(f"    ✓ Completed in {runtime:.2f} seconds")

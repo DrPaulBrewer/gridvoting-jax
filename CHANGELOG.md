@@ -6,6 +6,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed - Critical Lazy Dynamics Bugs
+
+- **Zero Intelligence (ZI) Transition Matrix Bug** (CRITICAL):
+  - **Issue**: `_compute_transition_rows_jit()` in `dynamics/lazy/operators.py` was returning a uniform transition matrix for ZI mode, completely ignoring the winner matrix `cV_batch`.
+  - **Impact**: All lazy solvers (`power_method (lazy)`, `grid_upscaling_lazy_gmres`, `grid_upscaling_lazy_power`) failed in ZI mode:
+    - Lazy power method converged to uniform distribution (incorrect)
+    - Grid upscaling lazy variants produced NaN or poor results
+  - **Root Cause**: ZI implementation returned `jnp.ones((batch_size, N)) / N` instead of using winner matrix
+  - **Fix**: Implemented correct ZI logic: `cP = (cV + diag(N - row_sum)) / N`
+  - **Verification**: P matrix rows now non-uniform, lazy power method produces correct distribution with 6290 unique values (was 1)
+
+- **Lazy Power Method Padding Bug**:
+  - **Issue**: `rmatvec_batched()` in `dynamics/lazy/base.py` was reusing `v[0]` multiple times for padded batch indices
+  - **Impact**: Incorrect matrix-vector products for grids where N is not a multiple of batch size (128)
+  - **Fix**: Added masking to zero out padded entries: `v_weights = jnp.where(valid_mask, v_weights, 0.0)`
+
+### Fixed - Solver Dispatch Issues
+
+- **Power Method (Lazy) Not Using Lazy Backend**:
+  - **Issue**: `power_method (lazy)` in OSF benchmark was auto-selecting dense backend for small grids
+  - **Fix**: Added `force_lazy=True` parameter to `analyze_lazy()` call in `benchmarks/osf_comparison.py`
+
+### Added - Grid Upscaling Improvements
+
+- **Refactored Grid Upscaling Logic**:
+  - Extracted common subgrid logic into `SpatialVotingModel._analyze_subgrid()` method
+  - Eliminates code duplication between `_analyze_grid_upscaling()` and `_analyze_lazy_grid_upscaling()`
+  - Both methods now use consistent 5-unit border (was 1-unit in lazy variant)
+
+- **Improved Initial Guess for Lazy Solvers**:
+  - Grid upscaling now creates initial guess with 99% mass on subgrid, 1% distributed evenly on non-subgrid points
+  - Prevents sparse initial guesses that could cause numerical issues
+  - Uses `fill` parameter in embedding for efficiency
+
+### Changed - Grid Upscaling Validation
+
+- **Stricter Validation**:
+  - Added assertions to validate subgrid stationary distribution (no NaN/Inf, non-negative)
+  - Added assertion to validate initial guess sums to 1.0
+  - Changed core-exists handling from warning to `AssertionError` (grid upscaling not supported for core cases)
+  - Added bounds checking to prevent subgrid from extending beyond main grid
+
+### Technical Details
+
+**Files Modified**:
+- `dynamics/lazy/operators.py` - Fixed ZI transition matrix logic
+- `dynamics/lazy/base.py` - Fixed rmatvec_batched padding bug
+- `models/spatial.py` - Refactored grid upscaling, improved initial guess
+- `benchmarks/osf_comparison.py` - Fixed power_method (lazy) dispatch
+
+**Testing**:
+- Verified P matrix correctness for ZI mode (g=40)
+- Verified lazy power method convergence (g=40, ZI)
+- All lazy solvers now work correctly for ZI mode
+
+**Known Issues**:
+- `grid_upscaling_lazy_gmres` may still produce NaN for some ZI cases (separate investigation needed)
+- Code duplication still exists between dense and lazy transition matrix finalization (planned refactoring)
+
+
+
 ## [0.14.1] - 2025-12-26
 
 ### Fixed
