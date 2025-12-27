@@ -403,38 +403,23 @@ class VotingModel:
         return self._finalize_transition_matrix(cV)
 
     def _finalize_transition_matrix(self, cV):
-        """Shared logic to convert winner matrix cV to transition matrix cP"""
-        nfa = self.number_of_feasible_alternatives
-        zi = self.zi
+        """Convert winner matrix to transition matrix using ZI/MI succession logic."""
+        from ..core.zimi_succession_logic import finalize_transition_matrix
         
         assert_zero_diagonal_int_matrix(cV)
-        cV_sum_of_row = cV.sum(axis=1)  # number of winning alternatives for each SQ
         
-        # set up the ZI and MI transition matrices
-        if zi:
-            # ZI: Uniform random over ALL alternatives.
-            # If ch beats sq: move to ch (prob 1/N)
-            # If ch loses to sq: stay at sq
-            # Plus picked sq itself: stay at sq
-            # So prob(move i->j) = 1/N if j beats i
-            # prob(stay i) = (1/N) * (count(j that lose to i) + 1)
-            #              = (1/N) * ((N - count(win) - 1) + 1)
-            #              = (N - row_sum)/N
-            # logic in code: cV + diag(N - row_sum) / N
-            cP = jnp.divide(
-                jnp.add(cV, jnp.diag(jnp.subtract(nfa, cV_sum_of_row))), 
-                nfa
-            )
-        else:
-            # MI: Uniform random over Winning Set(i) U {i}
-            # Size of set = row_sum + 1
-            # Prob(move i->j) = 1/(row_sum+1) if j beats i
-            # Prob(stay i) = 1/(row_sum+1)
-            # logic in code: (cV + I) / (1 + row_sum)
-            cP = jnp.divide(
-                jnp.add(cV, jnp.eye(nfa)), 
-                (1 + cV_sum_of_row)[:, jnp.newaxis]
-            )
+        # Create status_quo_indices for full matrix (all states)
+        status_quo_indices = jnp.arange(self.number_of_feasible_alternatives)
+        
+        # Use shared ZI/MI succession logic
+        cP = finalize_transition_matrix(
+            cV,
+            self.zi,
+            self.number_of_feasible_alternatives,
+            status_quo_indices,
+            eligibility_mask=None  # Future: self._get_eligibility_mask()
+        )
         
         assert_valid_transition_matrix(cP)
         return cP
+```
