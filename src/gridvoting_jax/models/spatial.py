@@ -93,7 +93,7 @@ class SpatialVotingModel:
         """
         return self.model.analyze_lazy(solver=solver, force_lazy=force_lazy, force_dense=force_dense, **kwargs)
     
-    def _analyze_subgrid(self, border_units=5, **kwargs):
+    def _analyze_subgrid(self, border_units=1, **kwargs):
         """
         Solve on subgrid (bounding box of voter ideal points + border).
         
@@ -185,7 +185,7 @@ class SpatialVotingModel:
     def _analyze_grid_upscaling(self, **kwargs):
         """Grid upscaling implementation (moved from VotingModel.analyze)."""
         # Solve on subgrid and get upscaled initial guess
-        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=5, **kwargs)
+        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=1, **kwargs)
         
         # Solve on full grid with GMRES using upscaled solution as initial guess
         # This should converge much faster than power_method or starting from uniform
@@ -200,7 +200,7 @@ class SpatialVotingModel:
             **kwargs: Passed to solver
         """
         # Solve on subgrid and get upscaled initial guess
-        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=5, **kwargs)
+        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=1, **kwargs)
         
         # Solve on full grid with lazy solver
         # Use upscaled solution as initial guess

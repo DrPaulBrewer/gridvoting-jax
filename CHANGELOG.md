@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.15.1] - 2025-12-27
+
+### Fixed
+
+- **Grid Upscaling Border Size**: Reduced `border_units` from 5 to 1 in grid upscaling solvers
+  - **Issue**: CI tests failing with `ValueError: Subgrid extends beyond main grid bounds` for small grids (g=20)
+  - **Root Cause**: 5-unit border (5 grid steps) was too large for small test grids, causing subgrid to exceed main grid bounds
+  - **Fix**: Changed `border_units=5` to `border_units=1` in `_analyze_grid_upscaling()` and `_analyze_lazy_grid_upscaling()`
+  - **Impact**: Grid upscaling now works correctly on smaller grids while maintaining accuracy on larger grids
+  - **Files Modified**: `src/gridvoting_jax/models/spatial.py` (lines 188, 203)
+
+### Changed
+
+- **Test Suite Improvements**: Updated `test_solvers_consistency` to use canonical BJM spatial triangle example
+  - Replaced floating-point grid (step=0.1) with integer-coordinate grid (step=1.0)
+  - Now uses BJM Triangle 1 configuration: `[[-15, -9], [0, 17], [15, -9]]` on g=20 grid
+  - **Rationale**: Canonical examples with integer coordinates avoid floating-point precision issues
+  - **Files Modified**: `tests/test_solvers.py`
+
 ## [0.15.0] - 2025-12-27
 
 ### Fixed - Critical Lazy Dynamics Bugs

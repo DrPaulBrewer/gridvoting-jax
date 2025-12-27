@@ -9,14 +9,14 @@ from gridvoting_jax import VotingModel, SpatialVotingModel
 def test_solvers_consistency():
     """Verify all solvers produce consistent results on a small grid."""
     
-    # Setup g=20 problem (small enough for all solvers)
-    grid = Grid(x0=-1.0, x1=1.0, xstep=0.1, y0=-1.0, y1=1.0, ystep=0.1) # 21x21 = 441 points
+    # Use canonical BJM spatial triangle example (g=20, step=1.0)
+    grid = Grid(x0=-20, x1=20, y0=-20, y1=20)  # 41x41 = 1681 points
     
-    # 3 Voters in near equilateral triangle
+    # BJM Triangle 1 configuration
     voter_ideal_points = jnp.array([
-        [0.0, 0.8],
-        [-0.7, -0.4],
-        [0.7, -0.4]
+        [-15, -9],
+        [0, 17],
+        [15, -9]
     ])
     
     utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
