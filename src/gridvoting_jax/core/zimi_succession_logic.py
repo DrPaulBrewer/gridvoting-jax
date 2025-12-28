@@ -11,8 +11,10 @@ import jax
 import jax.numpy as jnp
 
 
+from . import DTYPE_FLOAT
+
 @jax.jit
-def finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_mask=None):
+def finalize_transition_matrix_zi_jit(cV, status_quo_indices, eligibility_mask=None):
     """
     Zero Intelligence (ZI) succession logic.
     
@@ -34,18 +36,24 @@ def finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_m
     """
     batch_size = cV.shape[0]
     
+# Future:  the issue with this implementation is that it assumes a fixed eligibility mask
+# but we need to be able to update the eligibility mask in place
+# so we need to do it in a different way.  One of the more likely candidates for eligibility mask
+# is nearest neighbors, which is a kind of convolution, a boolean version of jax.scipy.signal.convolve2d ?
+
     if eligibility_mask is not None:
         cV = cV * eligibility_mask
-        eligible_count = eligibility_mask.sum(axis=1).astype(float)
+        eligible_count = eligibility_mask.sum(axis=1).astype(DTYPE_FLOAT)
     else:
-        eligible_count = jnp.full(batch_size, nfa, dtype=float)
+        nfa = cV.shape[1]
+        eligible_count = jnp.full(batch_size, nfa, dtype=DTYPE_FLOAT)
     
     # Count winning alternatives for each status quo
     row_sums = cV.sum(axis=1)
     
     # Start with cV (winners get 1, losers get 0)
     # Use same float precision as eligible_count
-    cP = cV.astype(eligible_count.dtype)
+    cP = cV.astype(DTYPE_FLOAT)
     
     # Add diagonal: status quo gets (eligible_count - row_sum)
     diag_values = eligible_count - row_sums
@@ -58,7 +66,7 @@ def finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_m
 
 
 @jax.jit
-def finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_mask=None):
+def finalize_transition_matrix_mi_jit(cV, status_quo_indices, eligibility_mask=None):
     """
     Majority Intelligence (MI) succession logic.
     
@@ -79,6 +87,7 @@ def finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_m
     Returns:
         cP: (B, N) transition probability matrix
     """
+
     batch_size = cV.shape[0]
     
     if eligibility_mask is not None:
@@ -91,7 +100,7 @@ def finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_m
     set_sizes = row_sums + 1
     
     # Probability for winners
-    cP = cV.astype(float) / set_sizes[:, jnp.newaxis]
+    cP = cV.astype(DTYPE_FLOAT) / set_sizes[:, jnp.newaxis]
     
     # Add status quo probability
     sq_probs = 1.0 / set_sizes
@@ -100,7 +109,7 @@ def finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_m
     return cP
 
 
-def finalize_transition_matrix(cV, zi, nfa, status_quo_indices, eligibility_mask=None):
+def finalize_transition_matrix(cV, zi, status_quo_indices, eligibility_mask=None):
     """
     Dispatch to ZI or MI succession logic.
     
@@ -109,7 +118,6 @@ def finalize_transition_matrix(cV, zi, nfa, status_quo_indices, eligibility_mask
     Args:
         cV: (B, N) winner matrix where cV[b, j] = 1 if j beats status_quo_indices[b]
         zi: bool, True for Zero Intelligence, False for Majority Intelligence
-        nfa: int, number of feasible alternatives
         status_quo_indices: (B,) array of status quo state indices
         eligibility_mask: Optional (B, N) boolean mask for eligible challengers
     
@@ -118,6 +126,6 @@ def finalize_transition_matrix(cV, zi, nfa, status_quo_indices, eligibility_mask
     """
 
     if zi:
-        return finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_mask)
+        return finalize_transition_matrix_zi_jit(cV, status_quo_indices, eligibility_mask)
     else:
-        return finalize_transition_matrix_mi_jit(cV, nfa, status_quo_indices, eligibility_mask)
+        return finalize_transition_matrix_mi_jit(cV, status_quo_indices, eligibility_mask)

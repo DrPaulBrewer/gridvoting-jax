@@ -9,6 +9,9 @@ sys.path.insert(0, '/home/paul/gridvoting-jax/gridvoting-jax/src')
 
 import gridvoting_jax as gv
 import jax.numpy as jnp
+import chex
+
+pytestmark = pytest.mark.lazy
 
 
 def test_lazy_gmres_vs_dense_g10():

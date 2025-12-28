@@ -2,7 +2,10 @@
 
 import pytest
 import jax.numpy as jnp
+import gridvoting_jax as gv
 from gridvoting_jax.models.budget import BudgetVotingModel
+
+pytestmark = pytest.mark.budget
 
 
 def test_budget_voting_basic():

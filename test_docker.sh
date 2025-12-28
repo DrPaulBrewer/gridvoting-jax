@@ -59,6 +59,15 @@ while [[ $# -gt 0 ]]; do
             COMMAND="${1#*=}"
             shift
             ;;
+        --parallel)
+            PYTEST_ARGS="$PYTEST_ARGS -n 2"
+            shift
+            ;;
+        --jobs=*)
+            JOBS="${1#*=}"
+            PYTEST_ARGS="$PYTEST_ARGS -n $JOBS"
+            shift
+            ;;
         *)
             PYTEST_ARGS="$@"
             break

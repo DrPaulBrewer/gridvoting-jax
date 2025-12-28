@@ -1,6 +1,8 @@
 import pytest
 import jax.numpy as jnp
+import gridvoting_jax as gv
 import numpy as np
+pytestmark = pytest.mark.essential
 import matplotlib.pyplot as plt
 from gridvoting_jax.core import TOLERANCE
 from gridvoting_jax.spatial import Grid

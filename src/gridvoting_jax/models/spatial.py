@@ -224,6 +224,10 @@ class SpatialVotingModel:
         return self.model.core_points
     
     @property
+    def number_of_feasible_alternatives(self):
+        return self.model.number_of_feasible_alternatives
+
+    @property
     def core_exists(self):
         return self.model.core_exists
 

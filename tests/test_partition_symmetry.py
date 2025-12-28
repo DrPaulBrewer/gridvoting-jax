@@ -250,7 +250,10 @@ def test_budget_voting_model_s3_symmetry():
 def test_spatial_voting_model_symmetry():
     """Test SpatialVotingModel.get_spatial_symmetry_partition()."""
     from gridvoting_jax import Grid, SpatialVotingModel
+    import pytest
     import jax.numpy as jnp
+
+    pytestmark = pytest.mark.lumping
     
     # Small grid
     grid = Grid(x0=-2, x1=2, y0=-2, y1=2)

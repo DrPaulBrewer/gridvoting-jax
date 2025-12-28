@@ -42,6 +42,7 @@ import jax
 import jax.numpy as jnp
 import chex
 
+
 # ============================================================================
 # Default tolerances
 # ============================================================================
@@ -51,9 +52,11 @@ import chex
 if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64") in ["1", "True", "true"]:
     jax.config.update("jax_enable_x64", True)
     TOLERANCE = 1e-10
+    DTYPE_FLOAT = jnp.float64
     warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, TOLERANCE set to 1e-10")
 else:
     TOLERANCE = 5e-5
+    DTYPE_FLOAT = jnp.float32
 
 # Epsilon for geometric tests (e.g. point in triangle) to handle numerical noise
 # Previously hardcoded as 1e-10 in _is_in_triangle_single, Grid.extremes
@@ -139,7 +142,7 @@ def assert_zero_diagonal_matrix(M):
     rows, cols = M.shape
     chex.assert_shape(M, (rows, rows))  # Ensure square matrix
     diagonal = jnp.diag(M)
-    expected = jnp.zeros(rows)
+    expected = jnp.zeros(rows, dtype=M.dtype)
     chex.assert_trees_all_equal(diagonal, expected)
 
 @jax.jit

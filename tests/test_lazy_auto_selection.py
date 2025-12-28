@@ -10,6 +10,9 @@ sys.path.insert(0, '/home/paul/gridvoting-jax/gridvoting-jax/src')
 
 import gridvoting_jax as gv
 import jax.numpy as jnp
+from unittest.mock import MagicMock, patch
+
+pytestmark = pytest.mark.lazy
 
 
 def test_auto_selection_mechanism():

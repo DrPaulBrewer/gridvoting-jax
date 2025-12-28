@@ -11,6 +11,7 @@ import jax
 import jax.numpy as jnp
 from ...core.winner_determination import compute_winner_matrix_jit
 from ...core.zimi_succession_logic import finalize_transition_matrix
+from ...core import DTYPE_FLOAT
 
 # Fixed batch size for memory-efficient computation
 BATCH_SIZE = 128
@@ -35,12 +36,11 @@ class LazyTransitionMatrix:
             zi: bool, True for fully random agenda, False for intelligent challengers
             number_of_feasible_alternatives: int, number of states N
         """
-        self.utility_functions = jnp.asarray(utility_functions)
+        self.utility_functions = jnp.asarray(utility_functions,dtype=DTYPE_FLOAT)
         self.majority = majority
         self.zi = zi
         self.N = number_of_feasible_alternatives
         self.shape = (self.N, self.N)
-        self.dtype = self.utility_functions.dtype
         
         # Pre-compute batch structure for batched operations
         self.num_batches = (self.N + BATCH_SIZE - 1) // BATCH_SIZE
@@ -69,9 +69,14 @@ class LazyTransitionMatrix:
         cV = compute_winner_matrix_jit(
             self.utility_functions, self.majority, all_indices
         )
-        P = finalize_transition_matrix(cV, self.zi, self.N, all_indices)
-        
+        # this recreates the transition matrix on every call to rmatvec
+        # so it is computationally expensive but slightly more memory efficient because P can be deallocated
+        # also compatible with GMRES
+
+        P = finalize_transition_matrix(cV, self.zi, all_indices)
+
         return jnp.sum(P * v[:, jnp.newaxis], axis=0)
+
     
     def rmatvec_batched(self, v):
         """
@@ -88,7 +93,7 @@ class LazyTransitionMatrix:
         """
         v = jnp.asarray(v)
         
-        result = jnp.zeros(self.N, dtype=self.dtype)
+        result = jnp.zeros(self.N, dtype=DTYPE_FLOAT)
         
         # Process batches with Python loop (not JIT, so no nested issues)
         for batch_idx in range(self.num_batches):
@@ -104,7 +109,7 @@ class LazyTransitionMatrix:
             cV_batch = compute_winner_matrix_jit(
                 self.utility_functions, self.majority, valid_inds
             )
-            batch_rows = finalize_transition_matrix(cV_batch, self.zi, self.N, valid_inds)
+            batch_rows = finalize_transition_matrix(cV_batch, self.zi, valid_inds)
             
             # For P.T @ v, weight each row i by v[valid_inds[i]]
             # batch_rows has shape (num_valid, N)
@@ -149,7 +154,7 @@ class LazyTransitionMatrix:
         cV = compute_winner_matrix_jit(
             self.utility_functions, self.majority, all_indices
         )
-        return finalize_transition_matrix(cV, self.zi, self.N, all_indices)
+        return finalize_transition_matrix(cV, self.zi, all_indices)
 
     def compute_rows(self, indices):
         """
@@ -167,5 +172,5 @@ class LazyTransitionMatrix:
         cV = compute_winner_matrix_jit(
             self.utility_functions, self.majority, indices
         )
-        return finalize_transition_matrix(cV, self.zi, self.N, indices)
+        return finalize_transition_matrix(cV, self.zi, indices)
 

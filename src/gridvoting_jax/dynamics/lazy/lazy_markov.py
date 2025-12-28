@@ -10,7 +10,7 @@ from warnings import warn
 
 from ..markov import MarkovChain
 from .base import LazyTransitionMatrix
-from ...core import TOLERANCE
+from ...core import TOLERANCE, _move_neg_prob_to_max, DTYPE_FLOAT
 
 
 class LazyMarkovChain:
@@ -120,14 +120,15 @@ class LazyMarkovChain:
             b, 
             x0=x0, 
             tol=tolerance, 
-            maxiter=max_iterations
+            maxiter=max_iterations,
+            solve_method='batched'
         )
         
         if info > 0:
             warn(f"GMRES did not converge in {max_iterations} iterations.")
         
         # Post-process: ensure non-negativity and renormalization
-        v = jnp.abs(v)
+        v = _move_neg_prob_to_max(v)
         v = v / jnp.sum(v)
         
         return v
@@ -162,7 +163,7 @@ class LazyMarkovChain:
             x = x / jnp.sum(x)  # Normalize
         else:
             # Start with uniform distribution
-            x = jnp.ones(n, dtype=self.lazy_P.dtype) / n
+            x = jnp.ones(n, dtype=DTYPE_FLOAT) / n
         
         start_time = time.time()
         
@@ -282,11 +283,11 @@ class LazyMarkovChain:
         
         # Start 1: Max entropy (most uncertain transition)
         idx_max = int(jnp.argmax(row_entropies))
-        v1 = jnp.zeros(n, dtype=self.lazy_P.dtype).at[idx_max].set(1.0)
+        v1 = jnp.zeros(n, dtype=DTYPE_FLOAT).at[idx_max].set(1.0)
         
         # Start 2: Min entropy (most deterministic transition)
         idx_min = int(jnp.argmin(row_entropies))
-        v2 = jnp.zeros(n, dtype=self.lazy_P.dtype).at[idx_min].set(1.0)
+        v2 = jnp.zeros(n, dtype=DTYPE_FLOAT).at[idx_min].set(1.0)
         
         # Adaptive batching
         check_interval = 10

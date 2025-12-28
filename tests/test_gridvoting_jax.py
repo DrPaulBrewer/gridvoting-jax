@@ -1,4 +1,8 @@
+```python
 import pytest
+import jax.numpy as jnp
+
+pytestmark = pytest.mark.essential
 
 def test_module():
     import gridvoting_jax as gv

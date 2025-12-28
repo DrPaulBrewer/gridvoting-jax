@@ -1,7 +1,8 @@
 FROM ghcr.io/drpaulbrewer/gridvoting-jax/base/cpu:latest
 
 # Install dev dependencies
-RUN pip install --no-cache-dir pytest-cov black ruff mypy
+COPY requirements-dev.txt /tmp/requirements-dev.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt && rm /tmp/requirements-dev.txt
 
 # Set PYTHONPATH for instant module imports
 # Note: gridvoting_jax will be importable from /workspace/src without pip install

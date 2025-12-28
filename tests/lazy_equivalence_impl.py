@@ -90,6 +90,10 @@ def test_condorcet_equivalence():
     # Test all 3 solvers on this small model
     solvers = [
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60}),
+        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([1.0,0.0,0.0])}),
+        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,1.0,0.0])}),
+        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.0,1.0])}),
+        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.5,0.5])}),
         ("bifurcated_power_method", "bifurcated_power_method", {"max_iterations": 20, "timeout": 60}),
         ("gmres_matrix_inversion", "gmres", {"max_iterations": 20})
     ]

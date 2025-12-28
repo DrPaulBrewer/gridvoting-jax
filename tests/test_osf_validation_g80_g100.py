@@ -11,6 +11,9 @@ import os
 import sys
 import numpy as np
 import jax.numpy as jnp
+import chex
+
+pytestmark = pytest.mark.benchmarks
 
 # Force CPU for float64 tests to avoid GPU memory issues
 # This is set before importing gridvoting_jax

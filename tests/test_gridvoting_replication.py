@@ -2,6 +2,8 @@ import pytest
 import chex
 import jax.numpy as jnp
 
+pytestmark = pytest.mark.benchmarks
+
 # attempt to replicate grid boundary probability and entropy (H) from 
 # Brewer, Juybari, Moberly (2023), J. Econ Interact Coord, Tab.4-5
 # https://link.springer.com/article/10.1007/s11403-023-00387-8/tables/4

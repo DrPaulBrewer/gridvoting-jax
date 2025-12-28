@@ -2,6 +2,8 @@
 
 import pytest
 import jax.numpy as jnp
+import gridvoting_jax as gv
+pytestmark = pytest.mark.budget
 from gridvoting_jax.models.examples import bjm_budget_triangle
 
 

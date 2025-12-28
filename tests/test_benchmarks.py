@@ -3,6 +3,8 @@
 import pytest
 import gridvoting_jax as gv
 
+pytestmark = pytest.mark.benchmarks
+
 
 @pytest.mark.slow
 def test_benchmarks_performance():

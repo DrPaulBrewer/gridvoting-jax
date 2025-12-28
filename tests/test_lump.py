@@ -1,5 +1,10 @@
+```python
 import jax.numpy as jnp
 import pytest
+import chex
+
+pytestmark = pytest.mark.lumping
+
 from gridvoting_jax import MarkovChain, lump, unlump, is_lumpable, condorcet_cycle
 
 

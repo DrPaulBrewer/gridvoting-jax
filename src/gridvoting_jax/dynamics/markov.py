@@ -199,14 +199,15 @@ class MarkovChain:
             b,
             x0=x0,
             tol=tolerance, 
-            maxiter=max_iterations
+            maxiter=max_iterations,
+            solve_method='batched'
         )
         
         if info > 0:
             warn(f"GMRES did not converge in {max_iterations} iterations based on internal criteria.")
         
         # Enforce non-negativity and renormalization (numerical artifacts)
-        v = jnp.abs(v)
+        v = _move_neg_prob_to_max(v)
         v = v / jnp.sum(v)
         
         return v

@@ -383,7 +383,6 @@ class VotingModel:
         cP = finalize_transition_matrix(
             cV,
             self.zi,
-            self.number_of_feasible_alternatives,
             status_quo_indices,
             eligibility_mask=None  # Future: self._get_eligibility_mask()
         )

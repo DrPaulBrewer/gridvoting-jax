@@ -1,8 +1,9 @@
-
 import pytest
 import subprocess
 import os
 import sys
+
+pytestmark = pytest.mark.lazy
 
 # Define path to the implementation file
 IMPL_FILE = "tests/lazy_equivalence_impl.py"
