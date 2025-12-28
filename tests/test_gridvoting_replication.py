@@ -35,7 +35,7 @@ def test_replicate_spatial_voting_analysis(params, correct):
     assert diagnostic_metrics['||F||'] == vm.number_of_feasible_alternatives
     assert diagnostic_metrics['(𝝨𝝿)-1'] == pytest.approx(0.0,abs=5e-5)
     assert diagnostic_metrics['||𝝿P-𝝿||_L1_norm'] < 5e-5
-    summary = vm.summarize_in_context(grid=grid)
+    summary = vm.summarize_in_context(grid=vm.grid)
     assert summary['entropy_bits'] == pytest.approx(correct['entropy'],abs=0.01)
     chex.assert_trees_all_close(
         summary['point_mean'],
