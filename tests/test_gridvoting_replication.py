@@ -21,8 +21,8 @@ def test_replicate_spatial_voting_analysis(params, correct):
     g = params['g']
     zi = params['zi']
     vm = gv.models.examples.bjm_spatial.bjm_spatial_triangle(g=g, zi=zi)
-    assert len(vm.grid.x) == vm.number_of_feasible_alternatives
-    assert len(vm.grid.y) == vm.number_of_feasible_alternatives
+    assert len(vm.grid.x) == vm.model.number_of_feasible_alternatives
+    assert len(vm.grid.y) == vm.model.number_of_feasible_alternatives
     vm.analyze()
     p_boundary = vm.stationary_distribution[vm.grid.boundary].sum()
     assert p_boundary == pytest.approx(correct['p_boundary'], rel=0.05)
