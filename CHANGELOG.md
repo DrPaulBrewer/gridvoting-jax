@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.17.0] - 2025-12-27
+
+### Added - Lazy Solver Equivalence & Precision Testing
+
+- **Lazy vs Dense Equivalence Tests**: Added comprehensive test suite (`tests/test_lazy_equivalence.py`) verifying that lazy (matrix-free) solvers produce identical results to dense solvers across multiple models (BJM spatial, Condorcet).
+  - **Tolerances**: Tuned per solver to account for floating-point accumulation (Power: 350*eps, Bifurcated: 50*eps, GMRES: 500*eps).
+  - **Exactness**: Condorcet model verified to match exactly (10*eps).
+  - **Dual Precision**: Tests run automatically in both **Float32** (default) and **Float64** modes via subprocess wrapper.
+
+- **Automated Precision Testing strategy**: Implemented dual-precision verification pattern where tests spawn subprocesses with `GV_ENABLE_FLOAT64=1` to ensure numerical stability across dtypes.
+
+### Changed - Code Cleanups & Refactoring
+
+- **Winner Determination SSOT** (Refactor): Centralized winner determination logic.
+  - Removed duplicate manual logic in `models/base.py` (`_get_transition_matrix_vectorized`, `_get_transition_matrix_batched`).
+  - All voting models now use `core.winner_determination.compute_winner_matrix_jit` as the Single Source of Truth.
+  - Verified by probe testing (ensuring method calls correct core function).
+
+- **BJM Spatial Triangle SSOT**: Refactored `bjm_spatial_triangle` coordinates to `src/gridvoting_jax/models/examples/bjm_spatial.py` as `BJM_TRIANGLE_VOTER_IDEAL_POINTS`.
+
+- **Removed Explicit Casting**: Eliminated unnecessary `.astype("int32")` casts in `models/base.py` to allow cleaner JAX type promotion and float64 support.
+
+- **Calculation Consistency**: Established strict calculation consistency between dense and lazy solvers (validated by new test suite).
+
+### Fixed
+
+- **Finfo Bug**: Fixed `AttributeError: type object 'finfo' has no attribute 'eps'` in `core/__init__.py`.
+
 ## [0.16.0] - 2025-12-27
 
 ### Fixed

@@ -6,8 +6,9 @@ from warnings import warn
 # Import from core and dynamics
 from ..core import (
     assert_valid_transition_matrix, 
-    assert_zero_diagonal_int_matrix
+    assert_zero_diagonal_matrix
 )
+from ..core.winner_determination import compute_winner_matrix_jit
 from ..dynamics import MarkovChain
 from ..dynamics.lazy import FlexMarkovChain
 
@@ -161,7 +162,7 @@ class VotingModel:
         """returns array of size number_of_feasible_alternatives
         with value 1 where alternative beats current index by some majority"""
         assert self.analyzed
-        points = (self.MarkovChain.P[index, :] > 0).astype("int32")
+        points = (self.MarkovChain.P[index, :] > 0)
         points = points.at[index].set(0)
         return points
 
@@ -169,7 +170,7 @@ class VotingModel:
         """returns array of size number_of_feasible_alternatives
         with value 1 where current index beats alternative by some majority"""
         assert self.analyzed
-        points = (self.MarkovChain.P[:, index] > 0).astype("int32")
+        points = (self.MarkovChain.P[:, index] > 0)
         points = points.at[index].set(0)
         return points
         
@@ -307,34 +308,12 @@ class VotingModel:
         nfa = self.number_of_feasible_alternatives
         cU = jnp.asarray(utility_functions)
         
-        # Vectorized computation: compare all alternatives at once
-        # cU shape: (n_voters, nfa)
-        # cU[:, :, jnp.newaxis] shape: (n_voters, nfa, 1) to broadcast vs challengers (rows)
-        # cU[:, jnp.newaxis, :] shape: (n_voters, 1, nfa) to broadcast vs status quo (cols) 
-        # Note: Previous implementation comment had axes swapped in explanation but logic was correct for outcome.
-        # Let's align with the standard logic:
-        # P[i, j] is prob of moving i -> j.
-        # i is Status Quo (SQ), j is Challenger (CH).
-        # We need votes for CH against SQ.
-        # Utility for SQ: cU[:, i] (column i)
-        # Utility for CH: cU[:, j] (column j)
-        # pref = u(CH) > u(SQ)
+        # Create indices for all alternatives as status quo
+        status_quo_indices = jnp.arange(nfa)
         
-        # In the original code:
-        # preferences = jnp.greater(cU[:, jnp.newaxis, :], cU[:, :, jnp.newaxis])
-        # LHS: cU[:, 1, N] -> varying last dim is COLUMNS (CH)
-        # RHS: cU[:, N, 1] -> varying middle dim is ROWS (SQ)
-        # Result: (V, SQ, CH).  [v, i, j] is "does v prefer j over i?"
-        # Correct.
-        
-        preferences = jnp.greater(cU[:, jnp.newaxis, :], cU[:, :, jnp.newaxis])
-        
-        # Sum votes across voters: shape (nfa, nfa) -> (SQ, CH)
-        total_votes = preferences.astype("int32").sum(axis=0)
-        
-        # Determine winners: 1 if challenger gets majority, 0 otherwise
-        # cV[i, j] = 1 if j beats i
-        cV = jnp.greater_equal(total_votes, majority).astype("int32")
+        # Use core JIT function for winner determination
+        # cV[i, j] = 1 if j beats i (where i is status quo)
+        cV = compute_winner_matrix_jit(utility_functions, majority, status_quo_indices)
         
         return self._finalize_transition_matrix(cV)
 
@@ -365,23 +344,11 @@ class VotingModel:
         def process_batch(batch_idx):
             # batch_idx shape: (batch_size,) containing SQ indices
             
-            # Get utilities for Status Quo alternatives in this batch
-            # U_sq shape: (V, batch_size)
-            U_sq = cU[:, batch_idx]
+            # batch_idx shape: (batch_size,) containing SQ indices
             
-            # Generate preferences: CH (all N) vs SQ (batch)
-            # LHS: cU -> (V, N) -> reshape to (V, 1, N) for broadcasting
-            # RHS: U_sq -> (V, B) -> reshape to (V, B, 1)
-            # Result: (V, B, N)
-            
-            # "Does voter prefer CH (last dim) over SQ (middle dim)?"
-            prefs = jnp.greater(cU[:, jnp.newaxis, :], U_sq[:, :, jnp.newaxis])
-            
-            # Sum votes -> (B, N)
-            votes = prefs.astype("int32").sum(axis=0)
-            
-            # Threshold -> (B, N)
-            cV_batch = jnp.greater_equal(votes, majority).astype("int32")
+            # Use core JIT function for winner determination
+            # Returns (batch_size, N) matrix
+            cV_batch = compute_winner_matrix_jit(cU, majority, batch_idx)
             
             return cV_batch
 
@@ -405,8 +372,9 @@ class VotingModel:
     def _finalize_transition_matrix(self, cV):
         """Convert winner matrix to transition matrix using ZI/MI succession logic."""
         from ..core.zimi_succession_logic import finalize_transition_matrix
-        
-        assert_zero_diagonal_int_matrix(cV)
+
+        # By convention in cV matrix, the diagonal from state j -> same state j should have 0 votes
+        assert_zero_diagonal_matrix(cV)
         
         # Create status_quo_indices for full matrix (all states)
         status_quo_indices = jnp.arange(self.number_of_feasible_alternatives)

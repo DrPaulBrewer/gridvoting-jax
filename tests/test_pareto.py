@@ -26,17 +26,13 @@ def test_unanimize_logic():
 def test_pareto_triangle():
     """
     Test that the Pareto set of a spatial triangle matches the geometry.
-    For 3 voters with convex preferences (euclidean), the Pareto set 
+    This test uses a random triangle. For 3 voters with convex preferences (euclidean), the Pareto set 
     is the convex hull of ideal points (the triangle itself).
     """
     g = 40
     # Create triangle model: voters at corners
     model = triangle(g=g)
-    
-    # Get ideal points from the model factory logic
-    # In triangle(g=20), points are roughly (-17, -10), (0, 20), (17, -10)
-    # We can use the within_triangle method to check
-    
+        
     # Calculate Pareto set
     pareto_mask = model.Pareto
     

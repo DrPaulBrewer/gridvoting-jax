@@ -51,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             fi
             shift
             ;;
+        --command)
+            COMMAND="$2"
+            shift 2
+            ;;
         --command=*)
             COMMAND="${1#*=}"
             shift

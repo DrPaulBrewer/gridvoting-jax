@@ -3,6 +3,7 @@
 import time
 import jax
 from .. import Grid, VotingModel
+from ..models.examples import bjm_spatial_triangle
 
 
 def performance(dict=False):
@@ -58,22 +59,25 @@ def performance(dict=False):
         label = params['label']
         
         # Setup (copied from test)
-        grid = Grid(x0=-g, x1=g, y0=-g, y1=g)
-        number_of_alternatives = (2*g+1)**2
-        voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
+        # grid = Grid(x0=-g, x1=g, y0=-g, y1=g)
+        # number_of_alternatives = (2*g+1)**2
+        # voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
         
-        u = grid.spatial_utilities(
-            voter_ideal_points=voter_ideal_points,
-            metric='sqeuclidean'
-        )
+        # u = grid.spatial_utilities(
+        #     voter_ideal_points=voter_ideal_points,
+        #     metric='sqeuclidean'
+        # )
         
-        vm = VotingModel(
-            utility_functions=u,
-            majority=2,
-            zi=zi,
-            number_of_voters=3,
-            number_of_feasible_alternatives=number_of_alternatives
-        )
+        # vm = VotingModel(
+        #    utility_functions=u,
+        #    majority=2,
+        #    zi=zi,
+        #    number_of_voters=3,
+        #    number_of_feasible_alternatives=number_of_alternatives
+        # )
+        
+        vm = bjm_spatial_triangle(g=g, zi=zi)
+        number_of_alternatives = vm.number_of_feasible_alternatives
         
         try:
             # Benchmark the algebraic solver

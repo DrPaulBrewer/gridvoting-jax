@@ -41,9 +41,10 @@ def compute_winner_matrix_jit(utility_functions, majority, status_quo_indices):
     prefs = jnp.greater(cU[:, jnp.newaxis, :], U_sq[:, :, jnp.newaxis])
     
     # Sum votes -> (B, N)
-    votes = prefs.astype("int32").sum(axis=0)
+    # dtype=bool is allowed with sum
+    votes = prefs.sum(axis=0)
     
     # Determine winners: cV[b, j] = 1 if j beats status_quo_indices[b]
-    cV_batch = jnp.greater_equal(votes, majority).astype("int32")
+    cV_batch = jnp.greater_equal(votes, majority)
     
     return cV_batch

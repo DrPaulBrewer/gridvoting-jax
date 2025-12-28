@@ -118,27 +118,28 @@ else:
 
 @chex.chexify
 @jax.jit
-def assert_valid_transition_matrix(P, *, decimal=6):
+def assert_valid_transition_matrix(P):
     """asserts that JAX array is square and that each row sums to 1.0
-    with default tolerance of 6 decimal places (float32) or 10 decimal places (float64)"""
+    with default tolerance of 2 * P.rows * jnp.finfo.eps  (float64)"""
     P = jnp.asarray(P)
     rows, cols = P.shape
     chex.assert_shape(P, (rows, rows))  # Ensure square matrix
     row_sums = P.sum(axis=1)
     expected = jnp.ones(rows)
-    # Using 1.1 multiplier as seen in original code for slightly loose tolerance
-    tolerance = 10 ** (-decimal) * 1.1  
+    # epsilon jnp.finfo(dtype).eps is the smallest number that  FP can add to 1.0
+    # this allows every row to be 2 epsilon off before assert fails
+    tolerance = 2 * rows * jnp.finfo(P.dtype).eps
     chex.assert_trees_all_close(row_sums, expected, atol=tolerance, rtol=0)
 
 @chex.chexify
 @jax.jit
-def assert_zero_diagonal_int_matrix(M):
-    """asserts that JAX array is square and the diagonal is 0.0"""
+def assert_zero_diagonal_matrix(M):
+    """asserts that JAX array is square with exactly zero diagonal"""
     M = jnp.asarray(M)
     rows, cols = M.shape
     chex.assert_shape(M, (rows, rows))  # Ensure square matrix
     diagonal = jnp.diag(M)
-    expected = jnp.zeros(rows, dtype=int)    
+    expected = jnp.zeros(rows)
     chex.assert_trees_all_equal(diagonal, expected)
 
 @jax.jit

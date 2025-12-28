@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from gridvoting_jax.core import TOLERANCE
 from gridvoting_jax.spatial import Grid
 from gridvoting_jax import VotingModel, SpatialVotingModel
+from gridvoting_jax.models.examples.bjm_spatial import BJM_TRIANGLE_VOTER_IDEAL_POINTS
 
 def test_solvers_consistency():
     """Verify all solvers produce consistent results on a small grid."""
@@ -13,11 +14,7 @@ def test_solvers_consistency():
     grid = Grid(x0=-20, x1=20, y0=-20, y1=20)  # 41x41 = 1681 points
     
     # BJM Triangle 1 configuration
-    voter_ideal_points = jnp.array([
-        [-15, -9],
-        [0, 17],
-        [15, -9]
-    ])
+    voter_ideal_points = jnp.array(BJM_TRIANGLE_VOTER_IDEAL_POINTS)
     
     utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
     

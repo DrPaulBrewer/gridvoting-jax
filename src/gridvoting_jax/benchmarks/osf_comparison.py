@@ -16,6 +16,7 @@ from typing import Dict, Tuple, Optional, List, Any
 
 # Import newly created datasets module for fetching data
 from ..datasets import fetch_osf_spatial_voting_2022_a100
+from ..models.examples import bjm_spatial_triangle
 
 # All available configurations
 ALL_CONFIGS = [
@@ -310,20 +311,17 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
         # Setup Model (Once per config)
         try:
-            # Setup grid
-            grid = gv.Grid(x0=-g, x1=g, y0=-g, y1=g)
-            voter_ideal_points = [[-15, -9], [0, 17], [15, -9]]
-            
             # Create SpatialVotingModel (v0.8.0 API)
             # This works for all solvers including grid_upscaling
-            vm = gv.SpatialVotingModel(
-                voter_ideal_points=voter_ideal_points,
-                grid=grid,
-                number_of_voters=3,
-                majority=2,
-                zi=zi,
-                distance_measure='sqeuclidean'
-            )
+            # vm = gv.SpatialVotingModel(
+            #     voter_ideal_points=voter_ideal_points,
+            #     grid=grid,
+            #     number_of_voters=3,
+            #     majority=2,
+            #     zi=zi,
+            #     distance_measure='sqeuclidean'
+            # )
+            vm = bjm_spatial_triangle(g=g, zi=zi)
         except Exception as e:
             print(f"  ✗ Error setting up model: {e}")
             continue

@@ -20,38 +20,17 @@ def test_replicate_spatial_voting_analysis(params, correct):
     import numpy as np
     g = params['g']
     zi = params['zi']
-    majority = 2
-    grid = gv.Grid(x0=-g,x1=g,y0=-g,y1=g)
-    number_of_alternatives = (2*g+1)*(2*g+1)
-    assert len(grid.x) == number_of_alternatives
-    assert len(grid.y) == number_of_alternatives
-    voter_ideal_points = [
-        [-15,-9],
-        [0,17],
-        [15,-9]
-    ]
-    number_of_voters = 3
-    u = grid.spatial_utilities(
-        voter_ideal_points=voter_ideal_points,
-        metric='sqeuclidean'
-    )
-    assert u.shape == (number_of_voters, number_of_alternatives)
-    vm = gv.VotingModel(
-        utility_functions=u,
-        majority=majority,
-        zi=zi,
-        number_of_voters=number_of_voters,
-        number_of_feasible_alternatives=number_of_alternatives
-    )
+    vm = gv.models.examples.bjm_spatial.bjm_spatial_triangle(g=g, zi=zi)
+    assert len(vm.grid.x) == vm.number_of_feasible_alternatives
+    assert len(vm.grid.y) == vm.number_of_feasible_alternatives
     vm.analyze()
-    stat_dist = vm.stationary_distribution
-    p_boundary = stat_dist[grid.boundary].sum()
+    p_boundary = vm.stationary_distribution[vm.grid.boundary].sum()
     assert p_boundary == pytest.approx(correct['p_boundary'], rel=0.05)
-    triangle_of_voter_ideal_points = grid.within_triangle(points=voter_ideal_points)
-    p_voter_ideal_point_triangle = stat_dist[triangle_of_voter_ideal_points].sum()
+    triangle_of_voter_ideal_points = vm.grid.within_triangle(points=vm.voter_ideal_points)
+    p_voter_ideal_point_triangle = vm.stationary_distribution[triangle_of_voter_ideal_points].sum()
     assert p_voter_ideal_point_triangle == pytest.approx(correct['p_voter_ideal_point_triangle'], rel=0.05)
     diagnostic_metrics = vm.MarkovChain.diagnostic_metrics()
-    assert diagnostic_metrics['||F||'] == number_of_alternatives
+    assert diagnostic_metrics['||F||'] == vm.number_of_feasible_alternatives
     assert diagnostic_metrics['(𝝨𝝿)-1'] == pytest.approx(0.0,abs=5e-5)
     assert diagnostic_metrics['||𝝿P-𝝿||_L1_norm'] < 5e-5
     summary = vm.summarize_in_context(grid=grid)

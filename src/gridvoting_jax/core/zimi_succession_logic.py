@@ -116,6 +116,7 @@ def finalize_transition_matrix(cV, zi, nfa, status_quo_indices, eligibility_mask
     Returns:
         cP: (B, N) transition probability matrix
     """
+
     if zi:
         return finalize_transition_matrix_zi_jit(cV, nfa, status_quo_indices, eligibility_mask)
     else:

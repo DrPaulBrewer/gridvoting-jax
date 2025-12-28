@@ -6,6 +6,7 @@ import pandas as pd
 from gridvoting_jax.core import enable_float64
 from gridvoting_jax import SpatialVotingModel, Grid
 from gridvoting_jax.benchmarks.osf_comparison import load_osf_distribution
+from gridvoting_jax.models.examples.bjm_spatial import BJM_TRIANGLE_VOTER_IDEAL_POINTS
 
 # Enable float64 for precision comparison
 enable_float64()
@@ -44,11 +45,7 @@ def benchmark_solvers_vs_osf(g=20):
         return
 
     # 2. Setup Voters
-    voter_ideal_points = jnp.array([
-        [-15.0, -9.0],
-        [0.0, 17.0],
-        [15.0, -9.0]
-    ])
+    voter_ideal_points = jnp.array(BJM_TRIANGLE_VOTER_IDEAL_POINTS)
     
     utils = grid.spatial_utilities(voter_ideal_points=voter_ideal_points)
     

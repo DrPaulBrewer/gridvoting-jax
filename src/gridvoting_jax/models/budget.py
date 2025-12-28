@@ -180,6 +180,7 @@ class BudgetVotingModel:
             Final bin (n_bins-1) contains ONLY gini_val==1.0 (triangle vertices).
         """
         n_bins = int(jnp.round(1.0 / granularity)) + 1
+        granularity_scalar = 1.0/granularity
         gini_values = jnp.linspace(0.0, 1.0, n_bins)
         gini_probabilities = jnp.zeros(n_bins)
         
@@ -188,11 +189,11 @@ class BudgetVotingModel:
         def assign_to_bin(gini_val):
             # Special case: gini_val == 1.0 goes to final bin
             # This avoids floating point issues with ceil/floor
-            is_max = (gini_val >= 1.0 - 1e-10)  # Tolerance for float comparison
+            is_max = (gini_val >= (1.0 - jnp.finfo(gini_val.dtype).eps))  # Tolerance for float comparison
             bin_idx = jnp.where(
                 is_max,
                 n_bins - 1,  # Final bin for gini_val == 1.0
-                jnp.floor(gini_val / granularity).astype(int)
+                jnp.floor(gini_val * granularity_scalar).astype(int)
             )
             # Clamp to valid range
             return jnp.clip(bin_idx, 0, n_bins - 1)
