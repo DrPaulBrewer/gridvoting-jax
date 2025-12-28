@@ -1,21 +1,25 @@
 #!/bin/bash
 # Docker test script with support for dev and versioned images from GHCR
 # Usage:
-#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--command="..."] [pytest args...]
+#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--dry-run] [--parallel|--jobs=N] [--command="..."] [pytest args...]
 #   
 # Examples:
 #   ./test_docker.sh --dev --gpu tests/
 #   ./test_docker.sh --version=v0.9.1 --cpu
 #   ./test_docker.sh --command="pip list"
-#   ./test_docker.sh --dev  # defaults to CPU
+#   ./test_docker.sh --dev --dry-run
+#   ./test_docker.sh --dev --parallel tests/test_core.py
 
 set -e
 
 MODE="dev"  # dev or release
 VERSION="latest"
 CUDA_TYPE="cpu"
-PYTEST_ARGS="tests/"
+# Default pytest args start empty, user args will be appended
+PYTEST_ARGS_LIST=()
 COMMAND=""
+DRY_RUN=0
+PARALLEL_ARGS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -60,47 +64,88 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --parallel)
-            PYTEST_ARGS="$PYTEST_ARGS -n 2"
+            PARALLEL_ARGS="-n 2"
             shift
             ;;
         --jobs=*)
             JOBS="${1#*=}"
-            PYTEST_ARGS="$PYTEST_ARGS -n $JOBS"
+            PARALLEL_ARGS="-n $JOBS"
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=1
             shift
             ;;
         *)
-            PYTEST_ARGS="$@"
-            break
+            # Collect positional args (files, folders, other pytest flags)
+            PYTEST_ARGS_LIST+=("$1")
+            shift
             ;;
     esac
 done
+
+# Check for conflicts
+if [[ -n "$COMMAND" && -n "$PARALLEL_ARGS" ]]; then
+    echo "Warning: --command override specified; ignoring --parallel/--jobs flags."
+    echo "         To use parallel execution with a custom command, include '-n <cores>' inside your command string."
+fi
 
 # Determine image name
 REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
 
 if [ "$MODE" == "dev" ]; then
     IMAGE="${REGISTRY}/dev/${CUDA_TYPE}:latest"
-    echo "Using dev image: $IMAGE"
-    
-    # Pull latest dev image
-    docker pull "$IMAGE"
-    
+    if [ $DRY_RUN -eq 0 ]; then
+        echo "Using dev image: $IMAGE"
+        # Pull latest dev image
+        docker pull "$IMAGE"
+    fi
     DOCKER_ARGS="-v $(pwd):/workspace"
 else
     # Release mode
     IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
-    echo "Using release image: $IMAGE"
-    
-    # Pull release image
-    docker pull "$IMAGE"
-    
+    if [ $DRY_RUN -eq 0 ]; then
+        echo "Using release image: $IMAGE"
+        # Pull release image
+        docker pull "$IMAGE"
+    fi
     DOCKER_ARGS=""
 fi
 
+# Construct final command
+if [ -n "$COMMAND" ]; then
+    # User specified an exact command override
+    FINAL_CMD="$COMMAND"
+else
+    # Default behavior: wrapped pytest
+    # If no args provided, default to 'tests/' (but respecting pyproject.toml testpaths)
+    # Actually, if no args, pytest defaults to testpaths in config, so we don't need to force tests/
+    
+    # Combine parallel args and collected positional args
+    # Use array expansion for creating the string
+    ARGS_STR="${PARALLEL_ARGS} ${PYTEST_ARGS_LIST[*]}"
+    
+    # Trim whitespace safely using bash pattern matching instead of xargs/echo
+    ARGS_STR="${ARGS_STR#"${ARGS_STR%%[![:space:]]*}"}"
+    ARGS_STR="${ARGS_STR%"${ARGS_STR##*[![:space:]]}"}"
+    
+    FINAL_CMD="python3 -m pytest $ARGS_STR"
+fi
+
 # Run container
+GPU_FLAG=""
+if [ "$CUDA_TYPE" != "cpu" ]; then
+    GPU_FLAG="--gpus all"
+fi
+
 # Note: We use arrays for command arguments to properly handle quoting
-docker run --rm \
-    $DOCKER_ARGS \
-    ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
-    "$IMAGE" \
-    /bin/bash -c "${COMMAND:-python3 -m pytest $PYTEST_ARGS}"
+# Using bash -c allows complex commands inside the container
+FULL_DOCKER_CMD="docker run --rm $DOCKER_ARGS $GPU_FLAG $IMAGE /bin/bash -c \"$FINAL_CMD\""
+
+if [ $DRY_RUN -eq 1 ]; then
+    echo "Dry Run: Not executing."
+    echo "Command:"
+    echo "$FULL_DOCKER_CMD"
+else
+    eval "$FULL_DOCKER_CMD"
+fi

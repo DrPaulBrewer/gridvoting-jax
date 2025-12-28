@@ -8,13 +8,38 @@ on:
       - 'Dockerfiles/base/**'
       - 'Dockerfiles/download_data.py'
       - 'requirements.txt'
+      - 'Dockerfiles/dev/**'
+      - 'requirements-dev.txt'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      base: ${{ steps.filter.outputs.base }}
+      dev: ${{ steps.filter.outputs.dev }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            base:
+              - 'Dockerfiles/base/**'
+              - 'Dockerfiles/download_data.py'
+              - 'requirements.txt'
+            dev:
+              - 'Dockerfiles/dev/**'
+              - 'requirements-dev.txt'
+
   build-base-cpu:
+    needs: changes
+    if: ${{ needs.changes.outputs.base == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,10 +70,12 @@ jobs:
           file: Dockerfiles/base/Dockerfile.jax-cpu
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cpu:latest
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cpu:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cpu:latest
           cache-to: type=inline
 
   build-base-cuda12:
+    needs: changes
+    if: ${{ needs.changes.outputs.base == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,10 +106,12 @@ jobs:
           file: Dockerfiles/base/Dockerfile.jax-cuda12
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda12:latest
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cuda12:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda12:latest
           cache-to: type=inline
 
   build-base-cuda13:
+    needs: changes
+    if: ${{ needs.changes.outputs.base == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -113,11 +142,12 @@ jobs:
           file: Dockerfiles/base/Dockerfile.jax-cuda13
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda13:latest
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/jax-base-cuda13:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/base/cuda13:latest
           cache-to: type=inline
 
   build-dev-cpu:
-    needs: build-base-cpu
+    needs: [build-base-cpu, changes]
+    if: ${{ always() && (needs.changes.outputs.base == 'true' || needs.changes.outputs.dev == 'true' || github.event_name == 'workflow_dispatch') && (needs.build-base-cpu.result == 'success' || needs.build-base-cpu.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,7 +180,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/dev/cpu:latest
 
   build-dev-cuda12:
-    needs: build-base-cuda12
+    needs: [build-base-cuda12, changes]
+    if: ${{ always() && (needs.changes.outputs.base == 'true' || needs.changes.outputs.dev == 'true' || github.event_name == 'workflow_dispatch') && (needs.build-base-cuda12.result == 'success' || needs.build-base-cuda12.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -183,7 +214,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repository }}/dev/cuda12:latest
 
   build-dev-cuda13:
-    needs: build-base-cuda13
+    needs: [build-base-cuda13, changes]
+    if: ${{ always() && (needs.changes.outputs.base == 'true' || needs.changes.outputs.dev == 'true' || github.event_name == 'workflow_dispatch') && (needs.build-base-cuda13.result == 'success' || needs.build-base-cuda13.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
