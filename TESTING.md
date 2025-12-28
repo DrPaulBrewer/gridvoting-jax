@@ -16,6 +16,12 @@ To facilitate faster development loops, the test suite is organized using pytest
 | `spatial` | Spatial voting model and shape tests | `pytest -m spatial` |
 | `slow` | Long-running tests (skipped in CI by default) | `pytest -m "not slow"` |
 
+### Test Lists
+
+To see the tests that correspond to a marker, you can run: `pytest -m <marker> --collect-only`.
+
+For example, to see the tests that correspond to the `lazy` marker, you can run: `pytest -m lazy --collect-only`.
+
 ## Running Tests with Docker
 
 The primary way to run tests is via the `test_docker.sh` script, which ensures a consistent environment.

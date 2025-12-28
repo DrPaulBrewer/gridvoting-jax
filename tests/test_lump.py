@@ -1,4 +1,3 @@
-```python
 import jax.numpy as jnp
 import pytest
 import chex
