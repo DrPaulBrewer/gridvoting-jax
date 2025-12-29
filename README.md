@@ -244,6 +244,9 @@ Constructs a 2D grid for spatial voting models.
 ### 6. Symmetry & Dimension Reduction
 Reduce computational cost by exploiting spatial symmetries.
 
+Known issue: Practicality.  Time currently required to calculate symmetries and lumping is typically higher than solution time
+of the original model.
+
 ```python
 import gridvoting_jax as gv
 from gridvoting_jax.symmetry import suggest_symmetries
@@ -410,11 +413,110 @@ mc = gv.MarkovChain(P, tolerance=5e-5)
 mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 ```
 
-**Solvers:**
-- `"full_matrix_inversion"`: Direct matrix inversion (default)
-- `"gmres_matrix_inversion"`: Iterative GMRES solver
-- `"power_method"`: Power iteration method
-- `"grid_upscaling"`: Spatial upscaling (SpatialVotingModel only)
+**Dense Solvers** (construct full transition matrix):
+- **`"full_matrix_inversion"`** (default): Direct matrix inversion
+  - Fastest for small grids (g≤40)
+  - Memory: O(N²) where N = grid.len
+  - Accuracy: Excellent (limited by float32 precision)
+  - Fails: g≥80 (out of memory on some GPUs)
+
+- **`"gmres_matrix_inversion"`**: Iterative GMRES solver
+  - Memory-efficient for medium grids (g=40-60)
+  - Memory: O(N²) for matrix + O(N) for solver
+  - Accuracy: Excellent
+  - Fails: g≥80 (out of memory on some GPUs matrix construction OOM)
+
+- **`"power_method"`**: Power iteration
+  - Memory: O(N²) for matrix + O(N) for vectors
+  - Slower convergence than GMRES
+  - Robust for difficult cases
+  - Fails: g≥80 (out of memory on some GPUs, matrix construction OOM)
+
+- **`"bifurcated_power_method"`**: Dual-start power iteration
+  - Starts from min and max utility points
+  - Better convergence for some models
+  - Same memory requirements as power_method
+
+**Lazy Solvers** (matrix-free, for large grids):
+- **`"power_method (lazy)"`**: Lazy power iteration
+  - No matrix construction - computes P.T @ v on-the-fly
+  - Memory: O(N) only
+  - Works for g=80, g=100
+  - Slower than dense but enables large grids
+  - Use via: `model.analyze_lazy(solver="power_method")`
+
+- **`"bifurcated_power_method (lazy)"`**: Lazy dual-start power iteration
+  - Lazy version of bifurcated_power_method
+  - Memory: O(N)
+  - Use via: `model.analyze_lazy(solver="power_method", force_lazy=True)`
+
+**Spatial Solvers** (SpatialVotingModel only):
+- **`"grid_upscaling"`**: Solve on subgrid, refine with dense GMRES
+  - Solves on bounding box of voter ideal points
+  - Upscales solution to full grid
+  - Refines with GMRES using upscaled solution as initial guess
+  - Memory: O(N²) for full grid GMRES
+  - Fails: g≥80 (GMRES OOM on some GPUs)
+
+- **`"grid_upscaling_lazy_gmres"`**: Solve on subgrid, refine with lazy GMRES
+  - Same as grid_upscaling but uses lazy GMRES for refinement
+  - Memory: O(N) for lazy solver
+  - Works for g=80 (MI mode)
+  - May produce NaN in some ZI cases (known issue)
+
+- **`"grid_upscaling_lazy_power"`**: Solve on subgrid, refine with lazy power method
+  - Same as grid_upscaling but uses lazy power method for refinement
+  - Memory: O(N)
+  - Works for g=80
+  - More robust than lazy GMRES for ZI mode
+
+**Outline Solvers** *(New in v0.19.0)* (SpatialVotingModel only):
+- **`"outline_and_fill"`**: Solve on coarsened grid (2x spacing), interpolate
+  - Creates coarsened model with 2x grid spacing (same boundaries)
+  - Solves coarsened model (4x fewer points)
+  - Interpolates to original grid using sparse BCOO matrix
+  - Normalizes result
+  - **Fast but low accuracy** (L1 ~0.02-0.03)
+  - Use case: Quick approximation or initial guess generation
+  - Memory: O(N_coarse²) + O(N_fine) for interpolation
+
+- **`"outline_and_power"`**: Outline + power_method refinement
+  - Uses outline_and_fill solution as initial guess
+  - Refines with power_method solver
+  - **Best for large grids** - never hits OOM at g=80
+  - Memory: O(N²) for dense power method
+  - Accuracy: Good to Excellent (L1 ~1e-06 to 5e-04)
+  - **Recommended for g=80** when GMRES fails
+
+- **`"outline_and_gmres"`**: Outline + GMRES refinement
+  - Uses outline_and_fill solution as initial guess
+  - Refines with gmres_matrix_inversion
+  - Excellent accuracy when memory allows
+  - Memory: O(N²) for dense GMRES
+  - Fails: g≥80 (GMRES OOM)
+  - **Recommended for g≤60** for best accuracy
+
+**Solver Selection Guide**:
+
+| Grid Size | Recommended Solver | Alternative | Notes |
+|-----------|-------------------|-------------|-------|
+| g=20-40 | `full_matrix_inversion` | `outline_and_gmres` | Fastest, most accurate |
+| g=60 | `gmres_matrix_inversion` | `outline_and_gmres` | Balance speed/memory |
+| g=80 (MI) | `outline_and_power` | `grid_upscaling_lazy_power` | Only solvers that work |
+| g=80 (ZI) | `outline_and_power` | `power_method` | ZI mode harder |
+| g=100 | `grid_upscaling_lazy_power` | N/A | Requires lazy solver |
+
+**Pre-computed Interpolation Matrix** *(New in v0.19.0)*:
+```python
+from gridvoting_jax.models.spatial import create_outline_interpolation_matrix
+
+# Pre-compute for batch processing
+C = create_outline_interpolation_matrix(model.grid, coarse_grid)
+
+# Reuse for multiple models with same grid size
+model1.analyze(solver="outline_and_fill", interpolation_matrix=C)
+model2.analyze(solver="outline_and_fill", interpolation_matrix=C)
+```
 
 #### `class LazyMarkovChain` *(New in v0.10.0)*
 
@@ -478,7 +580,16 @@ Run performance benchmarks to test solver speed across different grid sizes:
 import gridvoting_jax as gv
 
 # Print formatted benchmark results
+gv.benchmarks.run_osf_comparison()
+
+# run the full suite of benchmarks
 gv.benchmarks.performance()
+
+# download the reference dataset
+gv.datasets.fetch_osf_spatial_voting_2022_a100()
+
+# compare your computed results to the published scientific record using L1 norm
+gv.benchmarks.run_osf_comparison()
 
 # Get results as dictionary for programmatic use
 results = gv.benchmarks.performance(dict=True)

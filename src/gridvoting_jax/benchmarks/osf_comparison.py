@@ -258,6 +258,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
     # Determine solvers
     # PB 2025.12.21 One solver per line for future editing convenience
     # AI 2025.12.26 Added lazy solver variants with consistent naming
+    # AI 2025.12.29 Added outline-based solvers
     solvers = kwargs.get('solvers', [
         "power_method",
         "bifurcated_power_method",
@@ -266,9 +267,13 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
         "grid_upscaling",
         "grid_upscaling_lazy_gmres",
         "grid_upscaling_lazy_power",
+        "outline_and_fill",
+        "outline_and_power",
+        "outline_and_gmres",
         "gmres_matrix_inversion",
         "full_matrix_inversion"
     ])
+
 
     
     # Check precision
