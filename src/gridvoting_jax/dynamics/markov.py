@@ -255,6 +255,9 @@ class MarkovChain:
             v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
             i = batch_end
             
+            # Normalize after batch (critical for numerical stability)
+            v = v / jnp.sum(v)
+            
             # Check convergence
             diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
             if diff < tolerance:
@@ -331,8 +334,10 @@ class MarkovChain:
             V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
             i = batch_end
             
-            # Unpack
+            # Unpack and normalize after batch (critical for numerical stability)
             v1, v2 = V[0], V[1]
+            v1 = v1 / jnp.sum(v1)
+            v2 = v2 / jnp.sum(v2)
             
             # Check convergence (paths converge to each other)
             diff = jnp.linalg.norm(v1 - v2, ord=1)

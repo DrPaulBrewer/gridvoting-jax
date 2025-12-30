@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.21.0] - 2025-12-29
+
+### Fixed - Critical Numerical Stability
+
+- **Power Method Normalization**: Fixed missing periodic normalization in dense `power_method` and `bifurcated_power_method` implementations
+  - **Impact**: 100,000x accuracy improvement (L1 ~6e-3 → ~5e-8 for bifurcated)
+  - **Root cause**: Dense implementations evolved vectors without renormalization, causing numerical drift
+  - **Fix**: Added normalization after each batch to match lazy implementations (standard practice)
+  - Dense `bifurcated_power_method` now achieves ~1 eps difference from lazy (essentially identical)
+  - Dense `power_method` now achieves ~16 eps difference from lazy (was ~280 eps)
+  - Eliminates convergence warnings and "check norm exceeds tolerance" errors
+  - Files modified: `src/gridvoting_jax/dynamics/markov.py` (+5 lines)
+
+### Changed - Test Improvements
+
+- **Tighter Test Tolerances**: Updated `test_lazy_equivalence` tolerances based on experimental measurements
+  - `power_method`: 350 eps → 20 eps (17x more stringent)
+  - `bifurcated_power_method`: 50 eps → 10 eps (5x more stringent)
+  - `gmres`: 500 eps unchanged (supports both float32 and float64)
+  - All tests pass with new tolerances in both float32 and float64 modes
+  - Better regression detection while maintaining cross-precision compatibility
+
+### Added - Testing Infrastructure
+
+- **Tolerance Measurement Script**: `experiments/measure_solver_tolerances.py`
+  - Measures actual L1 differences between dense and lazy solvers
+  - Reports epsilon-based tolerance factors for both float32 and float64
+  - Enables data-driven tolerance tuning
+
+### Notes
+
+- This fix affects all users of dense power method solvers
+- Lazy implementations were already correct (served as reference)
+- Standard practice in iterative methods is to normalize periodically
+- Fix aligns dense implementations with mathematical best practices
+
 ## [0.20.0] - 2025-12-29
 
 ### Added

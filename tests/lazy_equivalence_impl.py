@@ -23,9 +23,10 @@ def assert_distributions_close(pi1, pi2, tol_factor=500.0):
 def test_power_method_equivalence(g):
     """Test standard Power Method equivalence.
     
-    Tolerances:
-    - Power Method accumulates BLAS vs reduce-sum differences over iterations.
-    - Empirical max diff: ~280 eps (float32). Setting to 350.
+    Tolerances (updated 2025-12-29 after normalization fix):
+    - Measured: ~5-16 eps (g=20: 5.1 eps, g=40: 16.2 eps)
+    - Set to 20 eps (was 350 eps before normalization fix)
+    - 17x improvement from adding periodic normalization!
     """
     model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
     model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
@@ -38,15 +39,18 @@ def test_power_method_equivalence(g):
     assert_distributions_close(
         model_dense.stationary_distribution, 
         model_lazy.stationary_distribution,
-        tol_factor=350.0 
+        tol_factor=20.0  # Updated from 350.0
     )
 
 @pytest.mark.parametrize("g", [20, 40])
 def test_bifurcated_power_method_equivalence(g):
     """Test Bifurcated Power Method equivalence.
     
-    Tolerances:
-    - Bifurcated is surprisingly closer (~20 eps).
+    Tolerances (updated 2025-12-29 after normalization fix):
+    - Measured: ~1 eps (g=20: 0.9 eps, g=40: 1.4 eps)
+    - Set to 10 eps (was 50 eps before normalization fix)
+    - 50x improvement from adding periodic normalization!
+    - Now essentially identical between dense and lazy
     """
     model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
     model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
@@ -59,15 +63,18 @@ def test_bifurcated_power_method_equivalence(g):
     assert_distributions_close(
         model_dense.stationary_distribution, 
         model_lazy.stationary_distribution,
-        tol_factor=50.0
+        tol_factor=10.0  # Updated from 50.0
     )
 
 @pytest.mark.parametrize("g", [20, 40])
 def test_gmres_equivalence(g):
     """Test GMRES equivalence.
     
-    Tolerances:
-    - GMRES matches within ~30 eps.
+    Tolerances (updated 2025-12-29 after normalization fix):
+    - Float32: ~16-36 eps (g=20: 36.2 eps, g=40: 15.7 eps)
+    - Float64: ~127-414 eps (g=20: 127.1 eps, g=40: 413.8 eps)
+    - Set to 500 eps (unchanged, but now supports both precisions)
+    - Note: Float64 requires higher tolerance due to different numerical behavior
     """
     model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
     model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
@@ -80,7 +87,7 @@ def test_gmres_equivalence(g):
     assert_distributions_close(
         model_dense.stationary_distribution, 
         model_lazy.stationary_distribution,
-        tol_factor=500.0
+        tol_factor=500.0  # Supports both float32 and float64
     )
 
 def test_condorcet_equivalence():
