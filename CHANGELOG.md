@@ -4,6 +4,45 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.21.1] - 2025-12-30
+
+### Added - Testing Infrastructure
+
+- **ZI/MI Matrix Property Tests**: Comprehensive essential test suite (`tests/test_zi_mi_matrix_properties.py`, 9 tests)
+  - Validates fundamental properties of Zero Intelligence (ZI) and Minimal Intelligence (MI) transition matrices
+  - **Test 1-2**: Diagonal elements are positive for both ZI and MI modes
+  - **Test 3**: ZI diagonal ≥ MI diagonal at all positions (ZI spreads probability more uniformly)
+  - **Test 4**: Off-diagonal elements satisfy MI ≥ ZI relationship (MI concentrates on winners)
+  - **Test 5-6**: Lazy representation diagonal correctness (samples 200 positions via matvec/rmatvec)
+  - **Test 7**: Lazy representation matches dense for both modes (tolerance: atol=1e-6, rtol=1e-4)
+  - **Test 8**: Row sums equal 1.0 within floating-point error (stochastic matrix property)
+  - **Test 9**: All elements strictly in [0, 1] (probability constraints)
+  - All tests use g=20 BJM spatial triangle model
+  - Runtime: ~9 seconds in Docker CPU environment
+
+### Fixed - Code Quality
+
+- **LazyTransitionMatrix.matvec Bug** (unused code path):
+  - **Issue**: `matvec()` was calling `finalize_transition_matrix(cV, self.zi, self.N, all_indices)` with 4 arguments
+  - **Root cause**: Passed `self.N` (integer) as `status_quo_indices`, `all_indices` as `eligibility_mask`
+  - **Impact**: None - no solvers currently use `matvec` (GMRES uses `rmatvec`, power methods use `rmatvec_batched`)
+  - **Fix**: Removed extra `self.N` argument, now correctly calls `finalize_transition_matrix(cV, self.zi, all_indices)`
+  - **Discovery**: Found by new test suite while validating lazy matrix operations
+  - **File**: `src/gridvoting_jax/dynamics/lazy/base.py:142`
+
+- **Runtime Validation**: Added shape assertions to `finalize_transition_matrix()` to catch similar bugs
+  - Validates `cV` is 2D, `status_quo_indices` is 1D, batch sizes match
+  - Validates `eligibility_mask` shape matches `cV` if provided
+  - Provides clear error messages for argument mismatches
+  - **File**: `src/gridvoting_jax/core/zimi_succession_logic.py`
+
+### Notes
+
+- This is a patch release (0.21.1) because current code behavior is unaffected
+- The bug was in an unused code path (`matvec` is not called by any solver)
+- Test suite validates correctness of all lazy matrix operations
+- Runtime validation prevents similar bugs in future development
+
 ## [0.21.0] - 2025-12-29
 
 ### Fixed - Critical Numerical Stability

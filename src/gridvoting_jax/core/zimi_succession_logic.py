@@ -123,7 +123,24 @@ def finalize_transition_matrix(cV, zi, status_quo_indices, eligibility_mask=None
     
     Returns:
         cP: (B, N) transition probability matrix
+    
+    Raises:
+        AssertionError: If input shapes are invalid
     """
+
+    # Runtime validation to catch bugs like the matvec issue
+    cV = jnp.asarray(cV)
+    status_quo_indices = jnp.asarray(status_quo_indices)
+    
+    assert cV.ndim == 2, f"cV must be 2D, got shape {cV.shape}"
+    assert status_quo_indices.ndim == 1, f"status_quo_indices must be 1D, got shape {status_quo_indices.shape}"
+    assert cV.shape[0] == status_quo_indices.shape[0], \
+        f"Batch size mismatch: cV has {cV.shape[0]} rows but status_quo_indices has {status_quo_indices.shape[0]} elements"
+    
+    if eligibility_mask is not None:
+        eligibility_mask = jnp.asarray(eligibility_mask)
+        assert eligibility_mask.shape == cV.shape, \
+            f"eligibility_mask shape {eligibility_mask.shape} must match cV shape {cV.shape}"
 
     if zi:
         return finalize_transition_matrix_zi_jit(cV, status_quo_indices, eligibility_mask)

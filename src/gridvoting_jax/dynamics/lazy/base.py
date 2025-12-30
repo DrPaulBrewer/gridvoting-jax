@@ -139,7 +139,7 @@ class LazyTransitionMatrix:
         cV = compute_winner_matrix_jit(
             self.utility_functions, self.majority, all_indices
         )
-        P = finalize_transition_matrix(cV, self.zi, self.N, all_indices)
+        P = finalize_transition_matrix(cV, self.zi, all_indices)
         
         return jnp.sum(P * v[jnp.newaxis, :], axis=1)
     
