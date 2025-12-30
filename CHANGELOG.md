@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [Unreleased]
+
+### Added
+
+- **GMRES Regression Tests**: Comprehensive test suite to prevent future regressions in `initial_guess` propagation
+  - `tests/test_gmres_initial_guess.py`: Three complementary tests ensuring GMRES solvers receive and use `initial_guess`
+  - **Test 1 (Output Differentiation)**: Verifies GMRES produces different outputs with different initial guesses (L1 > 1e-6)
+  - **Test 2 (Grid Upscaling Instrumentation)**: Directly verifies `grid_upscaling` passes upscaled distribution to GMRES via monkey-patching
+  - **Test 3 (Lazy GMRES Instrumentation)**: Directly verifies lazy GMRES path propagates `initial_guess` correctly
+  - All tests run at float32 precision using BJM spatial triangle (g=20, zi=True) as canonical example
+  - Tests use direct instrumentation (monkey-patching JAX's GMRES) to verify code paths without relying solely on output differences
+  - Prevents regressions where `initial_guess` might be silently ignored or not propagated through solver dispatch chain
+
 ## [0.19.0] - 2025-12-29
 
 ### Added - Outline-Based Solvers
