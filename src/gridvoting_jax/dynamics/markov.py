@@ -137,7 +137,7 @@ class MarkovChain:
         if solver == "full_matrix_inversion":
             self.stationary_distribution = self._solve_full_matrix_inversion(tolerance)
         elif solver == "gmres_matrix_inversion":
-            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations)
+            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations, initial_guess)
         elif solver == "power_method":
             self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess, timeout)
         elif solver == "bifurcated_power_method":
