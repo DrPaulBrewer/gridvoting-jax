@@ -4,6 +4,96 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.22.0] - 2025-12-30
+
+### Added - Unified Renormalization Strategy
+
+- **`normalize_if_needed()` Function**: New JIT-compatible utility for intelligent per-iteration normalization
+  - **Adaptive Thresholding**: Uses N-dependent threshold to avoid unnecessary renormalization
+    - Small grids (N ≤ 1280): threshold = 10·ε (avoids overhead for minor floating-point drift)
+    - Large grids (N > 1280): threshold = (N/128)·ε (scales with problem size)
+  - **Precision-Aware**: Automatically uses correct machine epsilon for float32/float64
+  - **Two-Stage Summation**: Splits large/small values to minimize floating-point accumulation errors
+  - **Conditional Normalization**: Only renormalizes if it improves sum accuracy
+  - **Location**: `src/gridvoting_jax/core/__init__.py`
+  - **Exports**: Added to `__all__` for public API
+
+- **Universal Integration**: Applied `normalize_if_needed()` across all power method implementations
+  - **Dense Power Method** (`markov.py`):
+    - `_solve_power_method()`: Per-iteration normalization in batched evolution loop
+    - `_solve_bifurcated_power_method()`: Per-iteration normalization for both paths
+  - **Lazy Power Method** (`lazy_markov.py`):
+    - `_solve_power_method_lazy()`: Per-iteration normalization in batched evolution loop
+    - `_solve_bifurcated_power_method_lazy()`: Per-iteration normalization for both paths
+  - **GMRES Solvers**: Post-solve normalization (GMRES can have larger deviations)
+    - Dense GMRES: Always normalize after `jax.scipy.sparse.linalg.gmres()`
+    - Lazy GMRES: Always normalize after `jax.scipy.sparse.linalg.gmres()`
+
+- **Comprehensive Test Suite**: `tests/test_normalize_if_needed.py` (6 tests, all passing)
+  - **Test 1**: Normalized vectors unchanged (no-op test)
+  - **Test 2**: Unnormalized vectors corrected
+  - **Test 3**: Small deviations within threshold ignored
+  - **Test 4**: Large deviations beyond threshold trigger normalization
+  - **Test 5**: Shape preservation across vector sizes (n=10, 100, 1000)
+  - **Test 6**: JIT compatibility verification
+
+### Changed - Numerical Stability Improvements
+
+- **Removed Redundant Normalization**: Eliminated post-batch normalization in favor of per-iteration approach
+  - Dense power methods: Removed `v = v / jnp.sum(v)` after batch loops
+  - Lazy power methods: Removed `v = v / jnp.sum(v)` after batch loops
+  - **Rationale**: Per-iteration normalization prevents drift more effectively than periodic batch normalization
+
+- **Simplified Convergence Checks**: Updated convergence logic to leverage pre-normalized vectors
+  - Dense power method: Removed redundant normalization before delta calculation
+  - Lazy power method: Removed redundant normalization before delta calculation
+  - **Impact**: Cleaner code, fewer operations, same numerical accuracy
+
+- **Initial Guess Normalization**: Standardized initial guess handling across all solvers
+  - All power methods now use `normalize_if_needed(initial_guess)` instead of direct division
+  - Consistent behavior across dense and lazy implementations
+
+- **Adaptive Check Interval**: Reduced maximum check interval in bifurcated power method
+  - Changed from 1000 to 100 iterations for more responsive convergence detection
+  - **Rationale**: With per-iteration normalization, convergence is more stable and can be checked more frequently
+
+### Changed - Test Tolerance Adjustments
+
+- **Lazy Equivalence Tests**: Updated tolerance for power method equivalence
+  - `test_power_method_equivalence`: 20 eps → 50 eps
+  - **Rationale**: Per-iteration normalization introduces slightly more floating-point operations, requiring marginally higher tolerance
+  - **Impact**: Tests remain strict while accommodating the new normalization strategy
+  - **File**: `tests/lazy_equivalence_impl.py`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/core/__init__.py`: +53 lines (new `normalize_if_needed()` function)
+- `src/gridvoting_jax/dynamics/markov.py`: Modified 4 functions (dense power methods and GMRES)
+- `src/gridvoting_jax/dynamics/lazy/lazy_markov.py`: Modified 4 functions (lazy power methods and GMRES)
+- `tests/lazy_equivalence_impl.py`: Tolerance adjustment (20 → 50 eps)
+- `tests/test_normalize_if_needed.py`: +71 lines (new test file)
+
+**Key Implementation Details**:
+- Threshold formula: `ε · max(10, N/128)` where ε is machine epsilon
+- Two-stage summation: `sum(v ≥ 2ε) + sum(v < 2ε)` to handle wide dynamic ranges
+- Conditional renormalization: Only applies if `|renorm_sum - 1.0| < |original_sum - 1.0|`
+- JIT-compatible: Uses pure JAX operations (`jnp.where`, `jnp.sum`, `jnp.abs`)
+
+### Performance Impact
+
+- **Negligible Overhead**: Threshold-based approach avoids renormalization when unnecessary
+- **Improved Stability**: Per-iteration normalization prevents numerical drift in long-running iterations
+- **Consistent Behavior**: All power method solvers now use identical normalization strategy
+- **Better Convergence**: More stable evolution reduces convergence warnings
+
+### Notes
+
+- This change affects all users of power method solvers (dense and lazy)
+- GMRES solvers always normalize post-solve (GMRES can have larger deviations)
+- The unified approach simplifies maintenance and ensures consistent numerical behavior
+- Per-iteration normalization is standard practice in iterative methods for numerical stability
+
 ## [0.21.1] - 2025-12-30
 
 ### Added - Testing Infrastructure

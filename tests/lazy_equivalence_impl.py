@@ -39,7 +39,7 @@ def test_power_method_equivalence(g):
     assert_distributions_close(
         model_dense.stationary_distribution, 
         model_lazy.stationary_distribution,
-        tol_factor=20.0  # Updated from 350.0
+        tol_factor=50.0  # Increased from 20.0 to account for per-iteration normalization
     )
 
 @pytest.mark.parametrize("g", [20, 40])

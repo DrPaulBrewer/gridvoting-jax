@@ -10,7 +10,8 @@ from ..core import (
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     assert_valid_transition_matrix, 
-    _move_neg_prob_to_max
+    _move_neg_prob_to_max,
+    normalize_if_needed
 )
 
 class MarkovChain:
@@ -206,7 +207,8 @@ class MarkovChain:
         if info > 0:
             warn(f"GMRES did not converge in {max_iterations} iterations based on internal criteria.")
         
-        # Enforce non-negativity and renormalization (numerical artifacts)
+        # Enforce non-negativity and normalization (numerical artifacts)
+        # GMRES can have larger deviations, so always normalize
         v = _move_neg_prob_to_max(v)
         v = v / jnp.sum(v)
         
@@ -236,7 +238,7 @@ class MarkovChain:
         if initial_guess is None:
             v = jnp.ones(n) / n
         else:
-            v = initial_guess / jnp.sum(initial_guess)  # Normalize
+            v = normalize_if_needed(initial_guess)
         
         # Adaptive batching for time checks
         check_interval = 10
@@ -251,12 +253,12 @@ class MarkovChain:
             # Use lax.fori_loop for compiled batched evolution
             def evolve_step(_, carry):
                 vec, P = carry
-                return (jnp.dot(vec, P), P)
+                new_vec = jnp.dot(vec, P)
+                new_vec = normalize_if_needed(new_vec)
+                return (new_vec, P)
             v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
             i = batch_end
-            
-            # Normalize after batch (critical for numerical stability)
-            v = v / jnp.sum(v)
+
             
             # Check convergence
             diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
@@ -330,14 +332,14 @@ class MarkovChain:
             # Use lax.fori_loop for compiled batched evolution
             def evolve_batch_step(_, carry):
                 V_state, P = carry
-                return (jnp.dot(V_state, P), P)
+                V_new = jnp.dot(V_state, P)
+                V_new = jax.vmap(normalize_if_needed)(V_new)
+                return (V_new, P)
             V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
             i = batch_end
             
-            # Unpack and normalize after batch (critical for numerical stability)
+            # Unpack (already normalized per iteration)
             v1, v2 = V[0], V[1]
-            v1 = v1 / jnp.sum(v1)
-            v2 = v2 / jnp.sum(v2)
             
             # Check convergence (paths converge to each other)
             diff = jnp.linalg.norm(v1 - v2, ord=1)
@@ -350,7 +352,7 @@ class MarkovChain:
                 return (v1 + v2) / 2.0
             
             # Adaptive: Increase interval
-            if check_interval < 1000:
+            if check_interval < 100:
                 check_interval *= 2
             next_check = i + check_interval
         

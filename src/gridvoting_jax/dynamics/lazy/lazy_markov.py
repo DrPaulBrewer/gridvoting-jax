@@ -10,7 +10,7 @@ from warnings import warn
 
 from ..markov import MarkovChain
 from .base import LazyTransitionMatrix
-from ...core import TOLERANCE, _move_neg_prob_to_max, DTYPE_FLOAT
+from ...core import TOLERANCE, _move_neg_prob_to_max, DTYPE_FLOAT, normalize_if_needed
 
 
 class LazyMarkovChain:
@@ -127,7 +127,8 @@ class LazyMarkovChain:
         if info > 0:
             warn(f"GMRES did not converge in {max_iterations} iterations.")
         
-        # Post-process: ensure non-negativity and renormalization
+        # Post-process: ensure non-negativity and normalization
+        # GMRES can have larger deviations, so always normalize
         v = _move_neg_prob_to_max(v)
         v = v / jnp.sum(v)
         
@@ -159,8 +160,7 @@ class LazyMarkovChain:
         
         # Initial guess
         if initial_guess is not None:
-            x = jnp.asarray(initial_guess)
-            x = x / jnp.sum(x)  # Normalize
+            x = normalize_if_needed(jnp.asarray(initial_guess))
         else:
             # Start with uniform distribution
             x = jnp.ones(n, dtype=DTYPE_FLOAT) / n
@@ -203,16 +203,16 @@ class LazyMarkovChain:
             x_batch = x
             for i in range(iters_for_half_time):
                 x_new = self.lazy_P.rmatvec_batched(x_batch)
+                x_new = normalize_if_needed(x_new)
                 
                 # Check convergence every 10 iterations (not every iteration for efficiency)
                 if i % 10 == 0 and i > 0:
-                    # Normalize for convergence check
-                    x_new_norm = x_new / jnp.sum(x_new)
-                    delta = jnp.sum(jnp.abs(x_new_norm - x_batch / jnp.sum(x_batch)))
+                    # x_new already normalized
+                    delta = jnp.sum(jnp.abs(x_new - x_batch))
                     
                     if delta < tolerance:
                         converged = True
-                        x = x_new_norm
+                        x = x_new
                         total_iterations += i + 1
                         break
                 
@@ -221,8 +221,8 @@ class LazyMarkovChain:
             if converged:
                 break
             
-            # Normalize after batch
-            x = x_batch / jnp.sum(x_batch)
+            # x_batch already normalized from loop
+            x = x_batch
             total_iterations += iters_for_half_time
             
             
@@ -303,13 +303,13 @@ class LazyMarkovChain:
             # Evolve both paths for batch_size iterations
             for _ in range(batch_size):
                 v1 = self.lazy_P.rmatvec_batched(v1)
+                v1 = normalize_if_needed(v1)
                 v2 = self.lazy_P.rmatvec_batched(v2)
+                v2 = normalize_if_needed(v2)
             
             i = batch_end
             
-            # Normalize
-            v1 = v1 / jnp.sum(v1)
-            v2 = v2 / jnp.sum(v2)
+            # Already normalized per iteration
             
             # Check convergence (paths converge to each other)
             diff = float(jnp.linalg.norm(v1 - v2, ord=1))

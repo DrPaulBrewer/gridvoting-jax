@@ -58,6 +58,9 @@ else:
     TOLERANCE = 5e-5
     DTYPE_FLOAT = jnp.float32
 
+# Floating point epsilon
+EPSILON = jnp.finfo(DTYPE_FLOAT).eps
+
 # Epsilon for geometric tests (e.g. point in triangle) to handle numerical noise
 # Previously hardcoded as 1e-10 in _is_in_triangle_single, Grid.extremes
 GEOMETRY_EPSILON = 1e-10
@@ -167,9 +170,9 @@ def _move_neg_prob_to_max(pvector):
     # Zero out negative components
     fixed_pvector = jnp.where(to_zero, 0.0, pvector)
     
-    # Find ALL indices with maximum value (within TOLERANCE)
+    # Find ALL indices with maximum value (within 2*EPSILON)
     max_val = fixed_pvector.max()
-    is_max = jnp.abs(fixed_pvector - max_val) < TOLERANCE
+    is_max = jnp.abs(fixed_pvector - max_val) <= 2*EPSILON
     num_max_indices = is_max.sum()
     
     # Distribute mass equally among all maximum indices
@@ -177,6 +180,56 @@ def _move_neg_prob_to_max(pvector):
     fixed_pvector = jnp.where(is_max, fixed_pvector + mass_per_index, fixed_pvector)
     
     return fixed_pvector
+
+
+@jax.jit
+def normalize_if_needed(v):
+    """Normalize probability vector only if sum deviates beyond accumulation error.
+    
+    This function attempts to renormalize to v to have a sum closer to 1.0.
+    If it fails to do so, it returns the original vector.
+         
+    Args:
+        v: Probability vector (1D JAX array)
+    
+    Returns:
+        Normalized vector (or original if sum ≈ 1.0 within threshold)
+    
+    Examples:
+        >>> v = jnp.array([0.25, 0.25, 0.25, 0.25])
+        >>> v_norm = normalize_if_needed(v)  # No-op, sum already ≈ 1.0
+        
+        >>> v = jnp.array([0.5, 0.5, 0.5, 0.5])  # sum = 2.0
+        >>> v_norm = normalize_if_needed(v)  # Normalizes to sum = 1.0
+
+    Notes:
+        - JIT-compatible: uses jnp.where instead of Python conditionals
+    """
+    # to avoid nested jit, the big and little sums are calculated explicitly here and again below, instead of in a helper function
+    big_sum = jnp.sum(jnp.where(v>=2*EPSILON, v, 0.0))
+    little_sum = jnp.sum(jnp.where(v<2*EPSILON, v, 0.0))
+    s = big_sum + little_sum
+    # sum is in s
+    sinv = 1.0/s
+    deviation = jnp.abs(s - 1.0)
+    n = v.shape[0]
+    threshold = EPSILON*jnp.where(n>1280, (n//128), 10)
+    v_renorm =  jnp.where(
+        deviation > threshold,
+        v * sinv,
+        v
+    )
+    # again we need big and little sums to get around machine epsilon
+    renorm_big_sum = jnp.sum(jnp.where(v_renorm>=2*EPSILON, v_renorm, 0.0))
+    renorm_little_sum = jnp.sum(jnp.where(v_renorm<2*EPSILON, v_renorm, 0.0))
+    renorm_s = renorm_big_sum + renorm_little_sum
+    # sum is in renorm_s
+    renorm_deviation = jnp.abs(renorm_s - 1.0)
+    return jnp.where(
+        renorm_deviation < deviation,
+        v_renorm,
+        v
+    )   
 
 def get_available_memory_bytes():
     """ Estimate available memory in bytes on the active device.
@@ -246,8 +299,17 @@ from .winner_determination import (
 )
 
 __all__ = [
+    'TOLERANCE',
+    'DTYPE_FLOAT',
+    'enable_float64',
+    'device_type',
+    'use_accelerator',
+    'assert_valid_transition_matrix',
+    'assert_zero_diagonal_matrix',
+    'normalize_if_needed',
     'finalize_transition_matrix',
     'finalize_transition_matrix_zi_jit',
     'finalize_transition_matrix_mi_jit',
     'compute_winner_matrix_jit',
 ]
+
