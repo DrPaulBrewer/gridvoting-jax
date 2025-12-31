@@ -210,7 +210,7 @@ class MarkovChain:
         # Enforce non-negativity and normalization (numerical artifacts)
         # GMRES can have larger deviations, so always normalize
         v = _move_neg_prob_to_max(v)
-        v = v / jnp.sum(v)
+        v = normalize_if_needed(v)
         
         return v
 

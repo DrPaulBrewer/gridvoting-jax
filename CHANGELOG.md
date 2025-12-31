@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.23.0] - 2025-12-31
+
+### Changed - Normalization Consistency
+
+- **Unified Normalization Strategy**: Refactored all manual `.sum()` normalizations to use centralized `normalize_if_needed()` helper
+  - **GMRES Solvers**: Both dense and lazy GMRES implementations now use `normalize_if_needed()` for post-solve normalization
+    - `markov.py:213`: Changed `v = v / jnp.sum(v)` → `v = normalize_if_needed(v)`
+    - `lazy_markov.py:133`: Changed `v = v / jnp.sum(v)` → `v = normalize_if_needed(v)`
+  - **Spatial Interpolation**: Outline-based solvers now use consistent normalization
+    - `spatial.py:410`: Changed `result = result / result.sum()` → `result = normalize_if_needed(result)`
+    - Added import: `from ..core import normalize_if_needed`
+  - **Rationale**: Ensures all normalization uses the same N-dependent threshold logic and two-stage summation for numerical stability
+  - **Impact**: More consistent numerical behavior across all solvers, better handling of floating-point accumulation errors
+
+### Deprecated - Grid Upscaling Solvers
+
+- **Grid Upscaling Deprecation**: Removed grid upscaling solvers from benchmark suite
+  - Removed from `benchmarks/osf_comparison.py` default solver list:
+    - `grid_upscaling` (commented out)
+    - `grid_upscaling_lazy_gmres` (commented out)
+    - `grid_upscaling_lazy_power` (commented out)
+  - **Rationale**: Grid upscaling solvers are suboptimal and at best provide initial guesses for other methods
+  - **Alternative**: Use outline-based solvers (`outline_and_power`, `outline_and_gmres`) for better accuracy and reliability
+  - **Note**: Grid upscaling methods remain available in the API but are no longer recommended or benchmarked
+  - **Known Issues**: Grid upscaling methods were hanging in benchmarks and have been superseded by more robust outline-based approaches
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/dynamics/markov.py`: GMRES normalization (1 line)
+- `src/gridvoting_jax/dynamics/lazy/lazy_markov.py`: Lazy GMRES normalization (1 line)
+- `src/gridvoting_jax/models/spatial.py`: Spatial interpolation normalization + import (2 lines)
+- `src/gridvoting_jax/benchmarks/osf_comparison.py`: Removed grid upscaling from benchmarks (3 lines commented)
+
+**Testing**:
+- All 15 essential tests pass with new normalization strategy
+- No behavioral changes to solver outputs (same numerical results)
+- Consistent with v0.22.0 unified renormalization approach
+
+### Notes
+
+- This is a maintenance release focusing on code consistency and cleanup
+- Grid upscaling solvers are deprecated but not removed from the API
+- Users should migrate to outline-based solvers for spatial models with large grids
+- The `normalize_if_needed()` function from v0.22.0 is now used universally across all normalization points
+
 ## [0.22.0] - 2025-12-30
 
 ### Added - Unified Renormalization Strategy

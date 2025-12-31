@@ -5,6 +5,7 @@ from warnings import warn
 
 from .base import VotingModel
 from ..spatial import Grid
+from ..core import normalize_if_needed
 
 
 def create_outline_interpolation_matrix(fine_grid, coarse_grid):
@@ -407,7 +408,7 @@ class SpatialVotingModel:
         result = interpolation_matrix @ coarse_model.stationary_distribution
         
         # Task 6: Normalize
-        result = result / result.sum()
+        result = normalize_if_needed(result)
         
         # Set on underlying model
         self.model.stationary_distribution = result

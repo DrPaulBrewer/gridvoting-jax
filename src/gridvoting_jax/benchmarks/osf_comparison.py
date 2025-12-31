@@ -264,9 +264,10 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
         "bifurcated_power_method",
         "power_method (lazy)",
         "bifurcated_power_method (lazy)",
-        "grid_upscaling",
-        "grid_upscaling_lazy_gmres",
-        "grid_upscaling_lazy_power",
+      # remove from benchmark because they are hanging and deprecated
+      #  "grid_upscaling",
+      #  "grid_upscaling_lazy_gmres",
+      #  "grid_upscaling_lazy_power",
         "outline_and_fill",
         "outline_and_power",
         "outline_and_gmres",
