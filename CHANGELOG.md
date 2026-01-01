@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.24.1] - 2026-01-01
+
+### Added
+
+- **Integration Test**: Added `tests/test_lump_bjm_g20_reflection.py`
+  - Verifies numerical accuracy of slumped matrix solvers against full matrix solvers
+  - Uses canonical BJM spatial triangle model (g=20)
+  - Confirms L1 norm difference of < 1e-6 (actual: 7.15e-07) for exact reflection symmetry
+  - Validates the end-to-end lumping/unlumping pipeline with high precision
+
 ## [0.24.0] - 2026-01-01
 
 ### Changed - BREAKING CHANGE: Partition Format Refactoring
