@@ -36,7 +36,7 @@ def main():
         [('rotate', 0, -0.5, 120)],
         tolerance=0.5
     )
-    n_lumped = len(partition)
+    n_lumped = int(partition.max()) + 1
     reduction_factor = n_original / n_lumped
     print(f"  ✓ Lumped chain size: {n_lumped:,} aggregate states")
     print(f"  ✓ Reduction factor: {reduction_factor:.2f}x")

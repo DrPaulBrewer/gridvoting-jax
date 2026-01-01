@@ -39,7 +39,7 @@ def main():
     print("  Symmetry: reflect_x (exact symmetry of ideal points)")
     print("  Expected: Strongly lumpable (preserves Markov property)")
     partition = model.get_spatial_symmetry_partition(['reflect_x'])
-    n_lumped = len(partition)
+    n_lumped = int(partition.max()) + 1
     reduction_factor = n_original / n_lumped
     print(f"  ✓ Lumped chain size: {n_lumped:,} aggregate states")
     print(f"  ✓ Reduction factor: {reduction_factor:.2f}x")

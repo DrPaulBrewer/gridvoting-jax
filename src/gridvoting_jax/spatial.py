@@ -305,11 +305,27 @@ class Grid:
         else:
             plt.savefig(fname)
 
+
+    def parts_from_linear_discriminator(self, center=(0,0), d1=(0,0), d2=(0,0), d3=(0,0)) -> jnp.ndarray:
+        """
+        
+        """
+        center = jnp.array(center)
+        d1 = jnp.array(d1)
+        d2 = jnp.array(d2)
+        d3 = jnp.array(d3)
+        centered = self.points - center
+        values = jnp.dot(centered, d1) + jnp.dot(jnp.abs(centered), d2) + jnp.abs(jnp.dot(centered, d3))
+        inverse_indices = jnp.unique(values, return_inverse=True)[1]
+        return inverse_indices
+        
+
+
     def partition_from_symmetry(
         self,
         symmetries: list,
         tolerance: float = 1e-6
-    ) -> list[list[int]]:
+    ) -> jnp.ndarray:
         """
         Generate partition from spatial symmetries.
         
@@ -331,7 +347,8 @@ class Grid:
                        Useful for approximate symmetries like 120° rotation on grid
         
         Returns:
-            list[list[int]]: Partition grouping symmetric points
+            jnp.ndarray: Inverse indices array where inverse_indices[i] gives
+                        the group ID for grid point i
         
         Examples:
             >>> # Reflection symmetry around y-axis
@@ -352,9 +369,52 @@ class Grid:
             - Rotation tolerance allows approximate symmetries
             - User is responsible for ensuring symmetries are appropriate
             - Optimized for regular grids using direct index computation
+            - Use suggest_symmetries() from gridvoting_jax.symmetry to automatically
+              detect symmetries in voter ideal points
         """
         n_states = self.len
         
+        # Fast path: For singleton symmetries, use parts_from_linear_discriminator
+        if len(symmetries) == 1:
+            sym = symmetries[0]
+            
+            # Handle string symmetries
+            if isinstance(sym, str):
+                if sym == 'reflect_x' or sym.startswith('reflect_x='):
+                    # Extract offset if present
+                    offset = 0.0 if sym == 'reflect_x' else float(sym.split('=')[1])
+                    # Reflection across vertical line x=offset: (x,y) ≡ (2*offset-x, y)
+                    # Discriminant: self.len * y + |x - offset|
+                    return self.parts_from_linear_discriminator(
+                        center=(offset, 0),
+                        d1=(0, self.len),  # self.len * y
+                        d2=(1, 0),         # |x - offset|
+                        d3=(0, 0)
+                    )
+                
+                elif sym == 'reflect_y' or sym.startswith('reflect_y='):
+                    # Extract offset if present
+                    offset = 0.0 if sym == 'reflect_y' else float(sym.split('=')[1])
+                    # Reflection across horizontal line y=offset: (x,y) ≡ (x, 2*offset-y)
+                    # Discriminant: self.len * x + |y - offset|
+                    return self.parts_from_linear_discriminator(
+                        center=(0, offset),
+                        d1=(self.len, 0),  # self.len * x
+                        d2=(0, 1),         # |y - offset|
+                        d3=(0, 0)
+                    )
+                
+                elif sym in ('swap_xy', 'reflect_xy'):
+                    # Diagonal reflection: (x,y) ≡ (y,x)
+                    # Discriminant: self.len * (x+y) + |x-y|
+                    return self.parts_from_linear_discriminator(
+                        center=(0, 0),
+                        d1=(self.len, self.len),  # self.len * (x+y)
+                        d2=(0, 0),
+                        d3=(1, -1)                # |x-y|
+                    )
+        
+        # General case: Use connected components for multiple symmetries or rotations
         # We will build a list of edges (u, v) representing symmetric equivalence
         # source_indices = []
         # target_indices = []
@@ -491,26 +551,7 @@ class Grid:
             return_labels=True
         )
         
-        # 5. Group into Partition List
-        # ----------------------------------------------------------------
-        # labels is array of shape (n_states,) with component ID
-        # We need list of lists.
+        # Convert labels to inverse indices (already in correct format!)
+        inverse_indices = jnp.array(labels, dtype=jnp.int32)
         
-        # Sort by label to group
-        order = np.argsort(labels)
-        sorted_labels = labels[order]
-        sorted_indices = order
-        
-        # Find split points where label changes
-        # diff gives non-zero where value changes
-        # np.where returns indices
-        split_indices = np.where(np.diff(sorted_labels))[0] + 1
-        
-        # Split sorted_indices into groups
-        # np.split returns a list of arrays
-        groups_arrays = np.split(sorted_indices, split_indices)
-        
-        # Convert to list of lists (Python ints)
-        partition = [arr.tolist() for arr in groups_arrays]
-        
-        return partition
+        return inverse_indices

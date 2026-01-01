@@ -526,7 +526,7 @@ class SpatialVotingModel:
             tolerance: Distance tolerance for matching points (default: 1e-6)
         
         Returns:
-            list[list[int]]: Partition grouping symmetric grid points
+            jnp.ndarray: Inverse indices array grouping symmetric grid points
         
         Examples:
             >>> # Reflection around y-axis

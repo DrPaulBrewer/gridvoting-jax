@@ -249,16 +249,20 @@ of the original model.
 
 ```python
 import gridvoting_jax as gv
+import jax.numpy as jnp
 from gridvoting_jax.symmetry import suggest_symmetries
 
 # 1. Detect Symmetries
-# Suggest valid spatial symmetries for the mode
+# Suggest valid spatial symmetries for the model
 symmetries = suggest_symmetries(model)
 print(f"Detected: {symmetries}") 
 
 # 2. Partition Grid
-# Create equivalence classes (e.g. reflection across y-axis)
+# Create partition using inverse indices (JAX array format)
+# partition[i] gives the group ID for state i
 partition = model.grid.partition_from_symmetry(['reflect_x'])
+print(f"Partition shape: {partition.shape}")  # (N,) array
+print(f"Number of groups: {int(partition.max()) + 1}")
 
 # 3. Lump Markov Chain
 # Solve on reduced state space (e.g., 50% fewer states)
@@ -268,6 +272,31 @@ lumped_pi = lumped_mc.find_unique_stationary_distribution()
 # 4. Unlump
 # Map results back to full grid
 stationary_distribution = gv.unlump(lumped_pi, partition)
+
+# 5. Verify Lumpability (optional)
+# Check if partition preserves Markov property
+is_valid = gv.is_lumpable(model.MarkovChain, partition)
+print(f"Strongly lumpable: {is_valid}")
+```
+
+**Partition Format** *(Changed in v0.24.0)*:
+- Partitions are now represented as **inverse indices** (JAX arrays)
+- Format: `jnp.ndarray` of shape `(N,)` where `partition[i]` is the group ID for state `i`
+- Example: `jnp.array([0, 0, 1, 1])` means states 0,1 are in group 0; states 2,3 are in group 1
+- Migration helper: `gv.list_partition_to_inverse(old_partition, n_states)` converts from old format
+
+**Symmetry Types**:
+- `'reflect_x'`: Reflection across x=0 (vertical line)
+- `'reflect_y'`: Reflection across y=0 (horizontal line)
+- `'reflect_x=c'`: Reflection across x=c (custom vertical line)
+- `'reflect_y=c'`: Reflection across y=c (custom horizontal line)
+- `'swap_xy'`: Diagonal reflection (x,y) ↔ (y,x)
+- `('rotate', cx, cy, angle)`: Rotation by `angle` degrees around `(cx, cy)`
+
+**Performance**:
+- Singleton symmetries (single symmetry) use optimized fast path (3-5x faster)
+- Multiple symmetries use general connected components algorithm
+- Lumping uses fully vectorized JAX operations (5-10x faster than v0.23.0)
 ```
 
 ### 7. Pareto Efficiency

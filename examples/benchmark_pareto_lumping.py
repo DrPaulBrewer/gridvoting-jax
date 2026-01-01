@@ -48,20 +48,9 @@ def benchmark_pareto_lumping():
                 P = model.model._get_transition_matrix()
                 mc = gv.MarkovChain(P=P)
 
-                # Construct partition: [Pareto Indices, Outside Indices]
-                indices = jnp.arange(model.grid.len)
-                pareto_indices = indices[pareto_mask].tolist()
-                outside_indices = indices[~pareto_mask].tolist()
-                
-                if len(outside_indices) == 0:
-                   # Edge case: All points are Pareto (e.g. Unanimity rule or weird geometry)
-                   # Cannot lump into 2 states if one is empty. 
-                   # But for BJM Triangle with Majority, this shouldn't happen.
-                   # If it does, we handle it by skipping or single-state lump
-                   print(f"Warning: Full Pareto set for g={g}, zi={zi}. Skipping lumping.")
-                   continue
-
-                partition = [pareto_indices, outside_indices]
+                # Construct partition using inverse indices
+                # 0 = Pareto states, 1 = Outside states
+                partition = jnp.where(pareto_mask, 0, 1)
                 
                 start_lump = time.time()
                 

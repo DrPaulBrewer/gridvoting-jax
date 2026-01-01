@@ -6,51 +6,52 @@ from gridvoting_jax import Grid
 def test_partition_spatial_reflect_x():
     """Test reflection symmetry around x=0."""
     grid = Grid(x0=-2, x1=2, y0=-1, y1=1)
-    partition = grid.partition_from_symmetry( ['reflect_x'])
+    partition = grid.partition_from_symmetry(['reflect_x'])
     
     # Should have some grouping (points symmetric around x=0)
-    assert len(partition) > 0
-    assert len(partition) < grid.len  # Some grouping occurred
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len  # Some grouping occurred
     
-    # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    # Verify partition is valid (correct length)
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_reflect_y():
     """Test reflection symmetry around y=0."""
     grid = Grid(x0=-1, x1=1, y0=-2, y1=2)
-    partition = grid.partition_from_symmetry( ['reflect_y'])
+    partition = grid.partition_from_symmetry(['reflect_y'])
     
     # Should have some grouping
-    assert len(partition) > 0
-    assert len(partition) < grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_swap_xy():
     """Test (x,y) <-> (y,x) symmetry."""
     grid = Grid(x0=-2, x1=2, y0=-2, y1=2)
-    partition = grid.partition_from_symmetry( ['swap_xy'])
+    partition = grid.partition_from_symmetry(['swap_xy'])
     
     # Should have some grouping
-    assert len(partition) > 0
-    assert len(partition) < grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len
     
     # Diagonal points (x,x) should be in singleton groups
-    # Off-diagonal points should be paired
-    for group in partition:
-        if len(group) == 1:
-            idx = group[0]
-            # Check if it's on diagonal
-            assert abs(grid.x[idx] - grid.y[idx]) < 1e-6
+    # Check a few diagonal points
+    for i in range(grid.len):
+        if abs(grid.x[i] - grid.y[i]) < 1e-6:
+            # Diagonal point - check if paired with itself only
+            group_id = partition[i]
+            group_size = jnp.sum(partition == group_id)
+            assert group_size == 1  # Singleton
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_rotation_120():
@@ -64,12 +65,12 @@ def test_partition_spatial_rotation_120():
     )
     
     # Should group points that are approximately 120° rotations
-    assert len(partition) > 0
-    assert len(partition) <= grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups <= grid.len
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_multiple_symmetries():
@@ -77,40 +78,41 @@ def test_partition_spatial_multiple_symmetries():
     grid = Grid(x0=-2, x1=2, y0=-2, y1=2)
     
     # Reflect around both axes
-    partition = grid.partition_from_symmetry( ['reflect_x', 'reflect_y'])
+    partition = grid.partition_from_symmetry(['reflect_x', 'reflect_y'])
     
     # Should have significant grouping
-    assert len(partition) > 0
-    assert len(partition) < grid.len / 2  # At least 2x reduction
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len / 2  # At least 2x reduction
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_identity():
     """Test with no symmetries (identity partition)."""
     grid = Grid(x0=-1, x1=1, y0=-1, y1=1)
-    partition = grid.partition_from_symmetry( [])
+    partition = grid.partition_from_symmetry([])
     
     # Should have one state per group (no grouping)
-    assert len(partition) == grid.len
-    for group in partition:
-        assert len(group) == 1
+    num_groups = int(partition.max()) + 1
+    assert num_groups == grid.len
+    # Each state in its own group
+    assert jnp.all(partition == jnp.arange(grid.len))
 
 
 def test_partition_spatial_reflect_x_custom_axis():
     """Test reflection around custom x=c axis."""
     grid = Grid(x0=-2, x1=4, y0=-1, y1=1)
-    partition = grid.partition_from_symmetry( ['reflect_x=1'])
+    partition = grid.partition_from_symmetry(['reflect_x=1'])
     
     # Should group points symmetric around x=1
-    assert len(partition) > 0
-    assert len(partition) < grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 def test_partition_spatial_rotation_90():
@@ -123,12 +125,12 @@ def test_partition_spatial_rotation_90():
     )
     
     # Should group points in sets of up to 4 (90° rotations)
-    assert len(partition) > 0
-    assert len(partition) <= grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups <= grid.len
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len
 
 
 # ============================================================================
@@ -145,9 +147,10 @@ def test_partition_permutation_identity():
     partition = partition_from_permutation_symmetry(3, state_labels, [])
     
     # Should have one state per group
-    assert len(partition) == 3
-    for group in partition:
-        assert len(group) == 1
+    num_groups = int(partition.max()) + 1
+    assert num_groups == 3
+    # Each state in its own group
+    assert jnp.all(partition == jnp.arange(3))
 
 
 def test_partition_permutation_z2():
@@ -162,13 +165,15 @@ def test_partition_permutation_z2():
     partition = partition_from_permutation_symmetry(6, state_labels, z2_group)
     
     # Should have 3 groups of 2
-    assert len(partition) == 3
-    for group in partition:
-        assert len(group) == 2
+    num_groups = int(partition.max()) + 1
+    assert num_groups == 3
+    # Check all groups have size 2
+    for g in range(num_groups):
+        group_size = jnp.sum(partition == g)
+        assert group_size == 2
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(6))
+    assert len(partition) == 6
 
 
 def test_partition_permutation_s3():
@@ -183,12 +188,12 @@ def test_partition_permutation_s3():
     partition = partition_from_permutation_symmetry(6, state_labels, s3_group)
     
     # All states should be in one group (full symmetry)
-    assert len(partition) == 1
-    assert len(partition[0]) == 6
+    num_groups = int(partition.max()) + 1
+    assert num_groups == 1
+    assert jnp.all(partition == 0)
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(6))
+    assert len(partition) == 6
 
 
 def test_partition_permutation_multiple_cycles():
@@ -203,9 +208,11 @@ def test_partition_permutation_multiple_cycles():
     partition = partition_from_permutation_symmetry(4, state_labels, perm_group)
     
     # Should group states that are swapped
-    assert len(partition) == 2
-    for group in partition:
-        assert len(group) == 2
+    num_groups = int(partition.max()) + 1
+    assert num_groups == 2
+    for g in range(num_groups):
+        group_size = jnp.sum(partition == g)
+        assert group_size == 2
 
 
 def test_partition_permutation_3cycle():
@@ -220,8 +227,9 @@ def test_partition_permutation_3cycle():
     partition = partition_from_permutation_symmetry(3, state_labels, perm_group)
     
     # All should be in one group (cyclic symmetry)
-    assert len(partition) == 1
-    assert len(partition[0]) == 3
+    num_groups = int(partition.max()) + 1
+    assert num_groups == 1
+    assert jnp.all(partition == 0)
 
 
 # ============================================================================
@@ -239,12 +247,12 @@ def test_budget_voting_model_s3_symmetry():
     partition = model.get_permutation_symmetry_partition()
     
     # Should group symmetric allocations
-    assert len(partition) > 0
-    assert len(partition) < model.number_of_alternatives
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < model.number_of_alternatives
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(model.number_of_alternatives))
+    assert len(partition) == model.number_of_alternatives
 
 
 def test_spatial_voting_model_symmetry():
@@ -271,9 +279,9 @@ def test_spatial_voting_model_symmetry():
     partition = model.get_spatial_symmetry_partition(['reflect_x'])
     
     # Should group symmetric points
-    assert len(partition) > 0
-    assert len(partition) < grid.len
+    num_groups = int(partition.max()) + 1
+    assert num_groups > 0
+    assert num_groups < grid.len
     
     # Verify partition is valid
-    all_states = [s for group in partition for s in group]
-    assert set(all_states) == set(range(grid.len))
+    assert len(partition) == grid.len

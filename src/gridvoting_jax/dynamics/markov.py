@@ -377,93 +377,73 @@ class MarkovChain:
 # Markov Chain Lumping Functions
 # ============================================================================
 
-def _validate_partition(partition: list[list[int]], n_states: int) -> None:
+def _validate_inverse_indices(inverse_indices: jnp.ndarray, n_states: int) -> None:
     """
-    Validate partition is a proper partition of states.
+    Validate inverse indices is a proper partition representation.
     
     Checks (in order, fails on first violation):
-    1. All groups are non-empty
-    2. All state indices are valid (0 to n-1)
-    3. All states are included
-    4. No state appears more than once
+    1. Correct length (matches n_states)
+    2. Valid indices (all values >= 0)
+    3. No gaps (all groups 0..k-1 are used)
+    
+    Args:
+        inverse_indices: Array mapping each state to its group (0 to k-1)
+        n_states: Expected number of states
     
     Raises:
         ValueError: On first violation with descriptive error message
     """
-    # Check 1: No empty groups
-    for i, group in enumerate(partition):
-        if len(group) == 0:
-            raise ValueError(f"Partition group {i} is empty")
+    # Check 1: Correct length
+    if len(inverse_indices) != n_states:
+        raise ValueError(
+            f"Inverse indices length {len(inverse_indices)} != n_states {n_states}"
+        )
     
-    # Flatten partition
-    all_states = [s for group in partition for s in group]
+    # Check 2: Valid indices (0 to k-1 for some k)
+    min_idx = int(inverse_indices.min())
+    max_idx = int(inverse_indices.max())
+    if min_idx < 0:
+        raise ValueError(f"Invalid negative index: {min_idx}")
     
-    # Check 2: Valid indices
-    for s in all_states:
-        if not (0 <= s < n_states):
-            raise ValueError(f"Invalid state index {s} (must be 0-{n_states-1})")
-    
-    # Check 3: All states present
-    if set(all_states) != set(range(n_states)):
-        missing = set(range(n_states)) - set(all_states)
-        raise ValueError(f"Partition missing states: {sorted(missing)}")
-    
-    # Check 4: No duplicates
-    if len(all_states) != len(set(all_states)):
-        counts = Counter(all_states)
-        duplicates = [s for s, count in counts.items() if count > 1]
-        raise ValueError(f"Partition contains duplicate states: {duplicates}")
+    # Check 3: No gaps (all groups 0..k-1 must be used)
+    k = max_idx + 1
+    unique_groups = jnp.unique(inverse_indices)
+    if len(unique_groups) != k:
+        raise ValueError(
+            f"Partition has gaps: expected {k} groups, found {len(unique_groups)}"
+        )
 
 
-def _compute_lumped_transition_matrix(P: jnp.ndarray, partition: list[list[int]]) -> jnp.ndarray:
+
+def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarray) -> jnp.ndarray:
     """
-    Compute lumped transition matrix using vectorized scatter-add operations.
+    Compute lumped transition matrix using fully vectorized operations.
     
-    Fully vectorized implementation that avoids A @ P @ A.T matrix multiplication.
-    Uses JAX's advanced indexing to accumulate transition probabilities directly.
+    Uses JAX's segment_sum for efficient aggregation without Python loops.
     
     P'[i,j] = (1/|Si|) * sum_{s in Si, t in Sj} P[s,t]
     
     Args:
         P: Original transition matrix (n×n)
-        partition: Partition specification
+        inverse_indices: Array mapping each state to its group (0 to k-1)
     
     Returns:
-        jnp.ndarray: Lumped transition matrix (k×k) where k = len(partition)
+        jnp.ndarray: Lumped transition matrix (k×k)
     
     Performance:
-        Old: O(n²k) for A @ P @ A.T with dense matrices
-        New: O(n²) vectorized scatter-add (much faster, no Python loops)
+        Fully vectorized O(n²) using segment_sum (no Python loops)
     """
-    k = len(partition)
     n = P.shape[0]
+    k = int(inverse_indices.max()) + 1
     
-    # Create mapping from original state to aggregate state
-    state_to_aggregate = jnp.zeros(n, dtype=jnp.int32)
-    group_sizes = jnp.zeros(k)
+    # Compute group sizes
+    group_sizes = jnp.bincount(inverse_indices, length=k)
     
-    for i, group in enumerate(partition):
-        for s in group:
-            state_to_aggregate = state_to_aggregate.at[s].set(i)
-        group_sizes = group_sizes.at[i].set(len(group))
+    # Fully vectorized: sum rows by source aggregate
+    P_lumped = jax.ops.segment_sum(P, inverse_indices, num_segments=k)  # (k×n)
     
-    # Vectorized approach: Use advanced indexing to accumulate
-    # For each entry P[s,t], we want to add it to P_lumped[i,j]
-    # where i = state_to_aggregate[s] and j = state_to_aggregate[t]
-    
-    # Create index arrays for all (s,t) pairs
-    row_indices = state_to_aggregate  # Shape: (n,) - maps each row to aggregate
-    col_indices = state_to_aggregate  # Shape: (n,) - maps each col to aggregate
-    
-    # Use at[].add() with broadcasting to accumulate all values at once
-    # We need to iterate over rows but vectorize over columns
-    P_lumped = jnp.zeros((k, k))
-    
-    for s in range(n):
-        i = int(row_indices[s])
-        # Vectorized: add entire row P[s,:] to aggregate row i
-        # using col_indices to determine which aggregate columns
-        P_lumped = P_lumped.at[i, col_indices].add(P[s, :])
+    # Sum columns by destination aggregate
+    P_lumped = jax.ops.segment_sum(P_lumped.T, inverse_indices, num_segments=k).T  # (k×k)
     
     # Divide by group sizes to get average (uniform weighting)
     P_lumped = P_lumped / group_sizes[:, jnp.newaxis]
@@ -475,7 +455,8 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, partition: list[list[int]]
     return P_lumped
 
 
-def lump(MC: MarkovChain, partition: list[list[int]]) -> MarkovChain:
+
+def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     """
     Create a lumped (aggregated) Markov chain by combining states.
     
@@ -505,12 +486,12 @@ def lump(MC: MarkovChain, partition: list[list[int]]) -> MarkovChain:
     
     Examples:
         >>> # Reflection symmetry: (x,y) -> (y,x)
-        >>> partition = [[0, 2], [1, 3]]
-        >>> lumped = lump(mc, partition)
+        >>> inverse_indices = jnp.array([0, 1, 0, 1])  # States 0,2 in group 0; 1,3 in group 1
+        >>> lumped = lump(mc, inverse_indices)
         
         >>> # Swap states
-        >>> partition = [[1], [0]]  # Swaps states 0 and 1
-        >>> lumped = lump(mc, partition)
+        >>> inverse_indices = jnp.array([1, 0])  # Swaps states 0 and 1
+        >>> lumped = lump(mc, inverse_indices)
     
     Notes:
         - Partition must include all states exactly once
@@ -520,11 +501,11 @@ def lump(MC: MarkovChain, partition: list[list[int]]) -> MarkovChain:
     """
     n_states = MC.P.shape[0]
     
-    # Validate partition (strict checking, fails on first violation)
-    _validate_partition(partition, n_states)
+    # Validate inverse indices (strict checking, fails on first violation)
+    _validate_inverse_indices(inverse_indices, n_states)
     
     # Compute lumped transition matrix
-    P_lumped = _compute_lumped_transition_matrix(MC.P, partition)
+    P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
     
     # Create new MarkovChain instance
     # Preserve tolerance if available
@@ -532,7 +513,7 @@ def lump(MC: MarkovChain, partition: list[list[int]]) -> MarkovChain:
     return MarkovChain(P=P_lumped, tolerance=tolerance)
 
 
-def unlump(lumped_distribution: jnp.ndarray, partition: list[list[int]]) -> jnp.ndarray:
+def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jnp.ndarray:
     """
     Map a probability distribution from lumped space back to original space.
     
@@ -540,46 +521,42 @@ def unlump(lumped_distribution: jnp.ndarray, partition: list[list[int]]) -> jnp.
     
     Args:
         lumped_distribution: Probability distribution over k aggregate states
-        partition: Same partition used to create the lumped chain
+        inverse_indices: Same inverse indices used to create the lumped chain
     
     Returns:
         jnp.ndarray: Probability distribution over n original states
     
     Example:
-        >>> partition = [[0,1], [2,3,4]]
+        >>> inverse_indices = jnp.array([0, 0, 1, 1, 1])  # 2 states in group 0, 3 in group 1
         >>> lumped_pi = jnp.array([0.4, 0.6])
-        >>> pi = unlump(lumped_pi, partition)
+        >>> pi = unlump(lumped_pi, inverse_indices)
         >>> # pi = [0.2, 0.2, 0.2, 0.2, 0.2]  (uniform within aggregates)
     
     Notes:
         - If the original lumping violated strong lumpability, the unlumped
           distribution will not match the original chain's stationary distribution
     """
-    k = len(partition)
+    k = int(inverse_indices.max()) + 1
+    n_states = len(inverse_indices)
     
     # Validate input
     if lumped_distribution.shape[0] != k:
         raise ValueError(
             f"Distribution size {lumped_distribution.shape[0]} doesn't match "
-            f"partition size {k}"
+            f"number of groups {k}"
         )
     
-    # Determine original state space size
-    n_states = sum(len(group) for group in partition)
+    # Compute group sizes
+    group_sizes = jnp.bincount(inverse_indices, length=k)
     
     # Distribute probability uniformly within each aggregate
-    original_distribution = jnp.zeros(n_states)
+    # For each state, get its group's probability divided by group size
+    prob_per_state = lumped_distribution[inverse_indices] / group_sizes[inverse_indices]
     
-    for i, group in enumerate(partition):
-        # Distribute lumped probability equally among states in this aggregate
-        prob_per_state = lumped_distribution[i] / len(group)
-        for s in group:
-            original_distribution = original_distribution.at[s].set(prob_per_state)
-    
-    return original_distribution
+    return prob_per_state
 
 
-def is_lumpable(MC: MarkovChain, partition: list[list[int]], tolerance: float = 1e-6) -> bool:
+def is_lumpable(MC: MarkovChain, inverse_indices: jnp.ndarray, tolerance: float = 1e-6) -> bool:
     """
     Test whether a partition preserves the Markov property (strong lumpability).
     
@@ -590,7 +567,7 @@ def is_lumpable(MC: MarkovChain, partition: list[list[int]], tolerance: float = 
     
     Args:
         MC: MarkovChain instance
-        partition: Partition to test
+        inverse_indices: Inverse indices representing the partition
         tolerance: Numerical tolerance for equality check (default: 1e-6)
     
     Returns:
@@ -600,27 +577,28 @@ def is_lumpable(MC: MarkovChain, partition: list[list[int]], tolerance: float = 
         >>> # Test if partition preserves Markov property
         >>> P = jnp.array([[0.5, 0.5, 0.0], [0.5, 0.5, 0.0], [0.1, 0.1, 0.8]])
         >>> mc = MarkovChain(P=P)
-        >>> is_lumpable(mc, [[0, 1], [2]])  # True
-        >>> is_lumpable(mc, [[0, 2], [1]])  # False
+        >>> is_lumpable(mc, jnp.array([0, 0, 1]))  # True
+        >>> is_lumpable(mc, jnp.array([0, 1, 0]))  # False
     
     Notes:
         - This is a dense matrix operation: O(n²k) where n=states, k=aggregates
         - For large chains, this may be expensive
     """
-    _validate_partition(partition, MC.P.shape[0])
+    _validate_inverse_indices(inverse_indices, MC.P.shape[0])
+    
+    k = int(inverse_indices.max()) + 1
     
     # For each pair of aggregates (i, j)
-    for i, group_i in enumerate(partition):
-        for j, group_j in enumerate(partition):
+    for i in range(k):
+        for j in range(k):
+            # Get states in each group
+            group_i_mask = (inverse_indices == i)
+            group_j_mask = (inverse_indices == j)
+            
             # Compute total transition probability from each state in group_i to group_j
-            probs_to_j = []
-            for k in group_i:
-                # Sum transition probabilities from state k to all states in group_j
-                prob_k_to_j = jnp.sum(MC.P[k, group_j])
-                probs_to_j.append(prob_k_to_j)
+            probs_to_j = jnp.sum(MC.P[:, group_j_mask], axis=1)[group_i_mask]
             
             # Check if all states in group_i have same transition probability to group_j
-            probs_to_j = jnp.array(probs_to_j)
             if not jnp.allclose(probs_to_j, probs_to_j[0], atol=tolerance):
                 return False
     
@@ -631,7 +609,7 @@ def partition_from_permutation_symmetry(
     n_states: int,
     state_labels: list[tuple],
     permutation_group: list[tuple]
-) -> list[list[int]]:
+) -> jnp.ndarray:
     """
     Generate partition from permutation symmetries.
     
@@ -647,7 +625,7 @@ def partition_from_permutation_symmetry(
                           Empty tuple () represents identity
     
     Returns:
-        list[list[int]]: Partition grouping symmetric states
+        jnp.ndarray: Inverse indices array grouping symmetric states
     
     Examples:
         >>> # 3-voter model with full S3 symmetry (all voters interchangeable)
@@ -655,12 +633,12 @@ def partition_from_permutation_symmetry(
         >>> # S3 generators: (0,1) swap and (0,1,2) rotation
         >>> s3_group = [((0,1),), ((0,1,2),)]
         >>> partition = partition_from_permutation_symmetry(6, state_labels, s3_group)
-        >>> # Result: [[0,1,2,3,4,5]] - all states equivalent
+        >>> # Result: jnp.array([0, 0, 0, 0, 0, 0]) - all states in group 0
         
         >>> # Z2 symmetry: swap voters 0 and 1
         >>> z2_group = [((0,1),)]
         >>> partition = partition_from_permutation_symmetry(6, state_labels, z2_group)
-        >>> # Result: [[0,1], [2,3], [4,5]] - pairs of swapped states
+        >>> # Result: jnp.array([0, 0, 1, 1, 2, 2]) - pairs of swapped states
     
     Notes:
         - Permutations use cycle notation: ((0,1),) swaps 0↔1
@@ -714,12 +692,44 @@ def partition_from_permutation_symmetry(
                     union(i, j)
                     break
     
-    # Build partition from equivalence classes
-    groups = {}
+    # Build inverse indices from equivalence classes
+    inverse_indices = jnp.zeros(n_states, dtype=jnp.int32)
+    group_mapping = {}
+    group_id = 0
+    
     for i in range(n_states):
         root = find(i)
-        if root not in groups:
-            groups[root] = []
-        groups[root].append(i)
+        if root not in group_mapping:
+            group_mapping[root] = group_id
+            group_id += 1
+        inverse_indices = inverse_indices.at[i].set(group_mapping[root])
     
-    return list(groups.values())
+    return inverse_indices
+
+def list_partition_to_inverse(partition: list[list[int]], n_states: int) -> jnp.ndarray:
+    """
+    Convert partition from list[list[int]] format to inverse indices format.
+    
+    This helper function is provided for migrating existing code that uses
+    the old partition format.
+    
+    Args:
+        partition: Partition as list of lists, where each inner list contains
+                  state indices belonging to the same group
+        n_states: Total number of states
+    
+    Returns:
+        jnp.ndarray: Inverse indices array where inverse_indices[i] gives
+                    the group ID for state i
+    
+    Example:
+        >>> partition = [[0, 2], [1, 3]]
+        >>> inverse = list_partition_to_inverse(partition, 4)
+        >>> # inverse = jnp.array([0, 1, 0, 1])
+        >>> # States 0 and 2 are in group 0, states 1 and 3 are in group 1
+    """
+    inverse = jnp.zeros(n_states, dtype=jnp.int32)
+    for i, group in enumerate(partition):
+        for s in group:
+            inverse = inverse.at[s].set(i)
+    return inverse

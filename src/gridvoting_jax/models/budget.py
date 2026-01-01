@@ -223,7 +223,7 @@ class BudgetVotingModel:
                               Example for Z2: [((0,1),)] swaps voters 0 and 1
         
         Returns:
-            list[list[int]]: Partition grouping symmetric alternatives
+            jnp.ndarray: Inverse indices array grouping symmetric alternatives
         
         Examples:
             >>> # Full S3 symmetry (default)
