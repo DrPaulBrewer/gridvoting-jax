@@ -1,23 +1,35 @@
-"""Test float64 precision support"""
+"""Test float64 precision support using subprocess for isolation."""
 import pytest
-import jax.numpy as jnp
-import gridvoting_jax as gv
+import subprocess
+import os
+import sys
 
+# Path to the implementation file
+IMPL_FILE = "tests/float64_impl.py"
 
 def test_enable_float64():
-    """Test that enable_float64() enables 64-bit precision"""
-    # Enable float64
-    gv.enable_float64()
+    """Run float64 precision test in a subprocess to avoid affecting global JAX state."""
+    env = os.environ.copy()
     
-    # Test precision with sum that should equal 1.0
-    # Create vector of 101 elements, each 1/101
-    vec = jnp.full(101, 1/101)
-    total = jnp.sum(vec)
-    diff = abs(total - 1.0)
+    # Ensure PYTHONPATH includes src
+    if "PYTHONPATH" not in env:
+        env["PYTHONPATH"] = "src"
+    else:
+        env["PYTHONPATH"] = f"src:{env['PYTHONPATH']}"
     
-    # With float64, difference should be very small (< 1e-10)
-    # With float32, difference would be ~2.4e-7
-    assert diff < 1e-10, f"Float64 precision not enabled: diff={diff}"
+    # Disable pre-allocation and use platform allocator for the subprocess
+    env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    env["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+        
+    cmd = [sys.executable, IMPL_FILE]
     
-    # Verify dtype is float64
-    assert vec.dtype == jnp.float64, f"Expected float64, got {vec.dtype}"
+    # Run in subprocess
+    result = subprocess.run(
+        cmd, 
+        env=env, 
+        capture_output=True, 
+        text=True
+    )
+    
+    # Fail this wrapper test if the subprocess failed
+    assert result.returncode == 0, f"Float64 test failed:\n{result.stdout}\n{result.stderr}"

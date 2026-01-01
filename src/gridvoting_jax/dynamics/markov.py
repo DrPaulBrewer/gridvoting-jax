@@ -8,6 +8,7 @@ from collections import Counter
 # Import from core
 from ..core import (
     TOLERANCE, 
+    DTYPE_FLOAT,
     NEGATIVE_PROBABILITY_TOLERANCE, 
     assert_valid_transition_matrix, 
     _move_neg_prob_to_max,
@@ -47,9 +48,9 @@ class MarkovChain:
         v is the eigenvector of eigenvalue 1 to be found; and
         b is the first basis vector, where b[0]=1 and 0 elsewhere."""
         n = self.P.shape[0]
-        Q = jnp.transpose(self.P) - jnp.eye(n)
-        Q = Q.at[0].set(jnp.ones(n))  # JAX immutable update
-        b = jnp.zeros(n)
+        Q = jnp.transpose(self.P) - jnp.eye(n, dtype=DTYPE_FLOAT)
+        Q = Q.at[0].set(jnp.ones(n, dtype=DTYPE_FLOAT))  # JAX immutable update
+        b = jnp.zeros(n, dtype=DTYPE_FLOAT)
         b = b.at[0].set(1.0)  # JAX immutable update        
         error_unable_msg = "unable to find unique unit eigenvector "
         try:
@@ -177,26 +178,20 @@ class MarkovChain:
         n = self.P.shape[0]
         I = jnp.eye(n)
         
-        # System matrix A = P.T - I
-        # We want to perform matrix-vector product A @ x without strictly materializing A if possible,
-        # but for now, explicit A is fine as it fits in memory (unlike factorization).
-        A = self.P.T - I
+        # Row-replacement linear system:
+        # Equation 0: sum(v) = 1
+        # Equations 1 to N-1: (P.T v - v)[j] = 0
+        def constrained_matvec(x):
+            res = jnp.dot(self.P.T, x) - x
+            return res.at[0].set(jnp.sum(x))
         
-        # Enforce sum(v) = 1 constraint on the first row
-        # This makes the system A' v = b where b = [1, 0, ... 0]
-        # And the first row of A' is [1, 1, ... 1]
-        A = A.at[0, :].set(1.0)
-        
-        b = jnp.zeros(n)
-        b = b.at[0].set(1.0)
-        
-        # Prepare initial guess
-        x0 = initial_guess if initial_guess is not None else jnp.ones(n) / n
+        b = jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
+        x0 = initial_guess if initial_guess is not None else jnp.ones(n, dtype=DTYPE_FLOAT) / n
         
         # Use JAX's GMRES
         # tol in gmres is residual tolerance, roughly related to error
         v, info = jax.scipy.sparse.linalg.gmres(
-            lambda x: jnp.dot(A, x), 
+            constrained_matvec, 
             b,
             x0=x0,
             tol=tolerance, 
@@ -236,9 +231,9 @@ class MarkovChain:
         
         # Use uniform initial guess if not provided (matches lazy behavior)
         if initial_guess is None:
-            v = jnp.ones(n) / n
+            v = jnp.ones(n, dtype=DTYPE_FLOAT) / n
         else:
-            v = normalize_if_needed(initial_guess)
+            v = normalize_if_needed(jnp.asarray(initial_guess, dtype=DTYPE_FLOAT))
         
         # Adaptive batching for time checks
         check_interval = 10
@@ -309,11 +304,11 @@ class MarkovChain:
         
         # Start 1: Max entropy (most uncertain transition)
         idx_max = jnp.argmax(row_entropy).item()
-        v1 = jnp.zeros(n).at[idx_max].set(1.0)
+        v1 = jnp.zeros(n, dtype=DTYPE_FLOAT).at[idx_max].set(1.0)
         
         # Start 2: Min entropy (most deterministic transition)
         idx_min = jnp.argmin(row_entropy).item()
-        v2 = jnp.zeros(n).at[idx_min].set(1.0)
+        v2 = jnp.zeros(n, dtype=DTYPE_FLOAT).at[idx_min].set(1.0)
         
         # Adaptive batching for time checks
         check_interval = 10
@@ -352,7 +347,7 @@ class MarkovChain:
                 return (v1 + v2) / 2.0
             
             # Adaptive: Increase interval
-            if check_interval < 100:
+            if check_interval < 1000:
                 check_interval *= 2
             next_check = i + check_interval
         

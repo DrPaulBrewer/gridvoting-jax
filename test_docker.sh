@@ -140,7 +140,7 @@ fi
 
 # Note: We use arrays for command arguments to properly handle quoting
 # Using bash -c allows complex commands inside the container
-FULL_DOCKER_CMD="docker run --rm $DOCKER_ARGS $GPU_FLAG $IMAGE /bin/bash -c \"$FINAL_CMD\""
+FULL_DOCKER_CMD="docker run --rm $DOCKER_ARGS $GPU_FLAG -e XLA_PYTHON_CLIENT_PREALLOCATE=false -e XLA_PYTHON_CLIENT_ALLOCATOR=platform $IMAGE /bin/bash -c \"$FINAL_CMD\""
 
 if [ $DRY_RUN -eq 1 ]; then
     echo "Dry Run: Not executing."

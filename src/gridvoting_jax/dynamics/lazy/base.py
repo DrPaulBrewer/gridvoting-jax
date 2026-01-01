@@ -46,36 +46,41 @@ class LazyTransitionMatrix:
         self.num_batches = (self.N + BATCH_SIZE - 1) // BATCH_SIZE
         total_size = self.num_batches * BATCH_SIZE
         
-        # Create padded indices array
-        # Use self.N as padding value (not 0) so mask comparison works correctly
+        # Create padded indices and valid mask for JAX-native loops
         indices = jnp.arange(total_size)
-        indices = jnp.where(indices < self.N, indices, self.N)
-        self.batch_indices = indices.reshape(self.num_batches, BATCH_SIZE)
+        self.valid_mask = (indices < self.N).reshape(self.num_batches, BATCH_SIZE)
+        # Use index 0 for padding (will be masked out by weight * 0)
+        self.batch_indices = jnp.where(indices < self.N, indices, 0).reshape(self.num_batches, BATCH_SIZE)
     
     def rmatvec(self, v):
         """
-        Compute P.T @ v without materializing P (non-batched for GMRES compatibility).
+        Compute P.T @ v without materializing P (JAX-native batched for GMRES).
         
-        Args:
-            v: (N,) vector
-        
-        Returns:
-            (N,) vector, result of P.T @ v
+        Uses an unrolled batch loop to ensure complete compatibility with JAX AD
+        (custom_linear_solve) while maintaining memory efficiency.
         """
-        v = jnp.asarray(v)
+        v = jnp.asarray(v, dtype=DTYPE_FLOAT)
         
-        # Non-batched: works with GMRES
-        all_indices = jnp.arange(self.N)
-        cV = compute_winner_matrix_jit(
-            self.utility_functions, self.majority, all_indices
-        )
-        # this recreates the transition matrix on every call to rmatvec
-        # so it is computationally expensive but slightly more memory efficient because P can be deallocated
-        # also compatible with GMRES
-
-        P = finalize_transition_matrix(cV, self.zi, all_indices)
-
-        return jnp.sum(P * v[:, jnp.newaxis], axis=0)
+        # Pad v to the full execution size (num_batches * BATCH_SIZE) to avoid OOB
+        v_full = jnp.zeros(self.num_batches * BATCH_SIZE, dtype=DTYPE_FLOAT)
+        v_full = v_full.at[:self.N].set(v)
+        
+        contributions = []
+        for i in range(self.num_batches):
+            batch_inds = self.batch_indices[i]
+            mask = self.valid_mask[i]
+            
+            cV_batch = compute_winner_matrix_jit(
+                self.utility_functions, self.majority, batch_inds
+            )
+            batch_rows = finalize_transition_matrix(cV_batch, self.zi, batch_inds)
+            
+            # Weighted rows: sum_i (v_i * Row_i)
+            batch_rows = batch_rows.astype(DTYPE_FLOAT)
+            v_weights = (v_full[batch_inds] * mask).astype(DTYPE_FLOAT)
+            contributions.append(jnp.sum(batch_rows * v_weights[:, jnp.newaxis], axis=0))
+            
+        return jnp.sum(jnp.stack(contributions), axis=0)
 
     
     def rmatvec_batched(self, v):
@@ -91,19 +96,18 @@ class LazyTransitionMatrix:
         Returns:
             (N,) vector, result of P.T @ v
         """
-        v = jnp.asarray(v)
+        v = jnp.asarray(v, dtype=DTYPE_FLOAT)
         
         result = jnp.zeros(self.N, dtype=DTYPE_FLOAT)
         
         # Process batches with Python loop (not JIT, so no nested issues)
         for batch_idx in range(self.num_batches):
             batch_inds = self.batch_indices[batch_idx]
+            # Use pre-computed mask (index-based masking broke when padding changed to 0)
+            mask = self.valid_mask[batch_idx]
             
-            # Create mask for valid indices (not padding)
-            valid_mask = batch_inds < self.N
-            
-            # Only process valid indices to avoid duplicate diagonal additions
-            valid_inds = batch_inds[valid_mask]
+            # Only process valid indices
+            valid_inds = batch_inds[mask]
             
             # Compute rows for valid indices only
             cV_batch = compute_winner_matrix_jit(
@@ -112,9 +116,7 @@ class LazyTransitionMatrix:
             batch_rows = finalize_transition_matrix(cV_batch, self.zi, valid_inds)
             
             # For P.T @ v, weight each row i by v[valid_inds[i]]
-            # batch_rows has shape (num_valid, N)
-            # We want: sum over i of (v[i] * P[i, :])
-            v_weights = v[valid_inds]  # Get v values for valid indices
+            v_weights = v[valid_inds]
             
             weighted = batch_rows * v_weights[:, jnp.newaxis]
             result = result + jnp.sum(weighted, axis=0)
@@ -123,25 +125,33 @@ class LazyTransitionMatrix:
     
     def matvec(self, v):
         """
-        Compute P @ v without materializing P (non-batched for GMRES compatibility).
+        Compute P @ v without materializing P (JAX-native batched for GMRES).
         
-        Args:
-            v: (N,) vector
-        
-        Returns:
-            (N,) vector, result of P @ v
+        Uses an unrolled batch loop for JAX AD compatibility. 
         """
-        v = jnp.asarray(v)
+        v = jnp.asarray(v, dtype=DTYPE_FLOAT)
         
-        # Non-batched:
-        # Compute all rows
-        all_indices = jnp.arange(self.N)
-        cV = compute_winner_matrix_jit(
-            self.utility_functions, self.majority, all_indices
-        )
-        P = finalize_transition_matrix(cV, self.zi, all_indices)
-        
-        return jnp.sum(P * v[jnp.newaxis, :], axis=1)
+        batch_results = []
+        for i in range(self.num_batches):
+            batch_inds = self.batch_indices[i]
+            mask = self.valid_mask[i]
+            
+            cV_batch = compute_winner_matrix_jit(
+                self.utility_functions, self.majority, batch_inds
+            )
+            batch_rows = finalize_transition_matrix(cV_batch, self.zi, batch_inds)
+            
+            # Row-wise dot product: sum_j (P[batch_inds, j] * v[j])
+            batch_rows = batch_rows.astype(DTYPE_FLOAT)
+            row_results = jnp.sum(batch_rows * v[jnp.newaxis, :], axis=1)
+            
+            # Mask out contribution of padding rows
+            batch_results.append(row_results * mask.astype(DTYPE_FLOAT))
+            
+        # Concatenate and truncate
+        flat_results = jnp.concatenate(batch_results)
+        return flat_results[:self.N]
+            
     
     def todense(self):
         """

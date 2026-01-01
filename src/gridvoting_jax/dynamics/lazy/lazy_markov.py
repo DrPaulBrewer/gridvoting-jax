@@ -99,22 +99,21 @@ class LazyMarkovChain:
         def matvec_fn(x):
             return self.lazy_P.rmatvec(x) - x
         
-        # Enforce sum(v) = 1 constraint by replacing first row
-        # We need to modify the system to incorporate this constraint
-        # Standard approach: replace first equation with sum(v) = 1
-        
-        # Create modified matvec that enforces constraint
-        # Note: Don't use @jax.jit here - GMRES will JIT the whole thing
+        # Row-replacement linear system: (Standard/Legacy)
+        # Equation 0: sum(x) = 1
+        # Equations 1 to N-1: (P.T x - x)[j] = 0
         def constrained_matvec(x):
-            result = matvec_fn(x)
-            # Replace first element with sum(x) - 1
-            return result.at[0].set(jnp.sum(x) - 1.0)
+            res = matvec_fn(x)
+            # res is already (P^T - I)x
+            return res.at[0].set(jnp.sum(x))
         
-        # Right-hand side: all zeros except first element = 0 (since sum(v) - 1 = 0)
-        b = jnp.zeros(n)
+        # RHS: sum(x) = 1, others 0
+        b = jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
+        
+        # Start with a valid probability distribution (sum(x)=1)
+        x0 = initial_guess if initial_guess is not None else jnp.ones(n, dtype=DTYPE_FLOAT) / n
         
         # GMRES with initial guess
-        x0 = initial_guess if initial_guess is not None else jnp.ones(n) / n
         v, info = jax.scipy.sparse.linalg.gmres(
             constrained_matvec, 
             b, 

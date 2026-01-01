@@ -12,6 +12,10 @@ def run_precision_test(enable_float64: bool):
     """Run the implementation tests in a subprocess with specific precision."""
     env = os.environ.copy()
     env["GV_ENABLE_FLOAT64"] = "1" if enable_float64 else "0"
+    # Disable JAX pre-allocation for subprocesses to avoid OOM collisions on GPU
+    env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    # Use platform allocator to encourage memory release
+    env["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
     
     # Ensure PYTHONPATH includes src
     if "PYTHONPATH" not in env:

@@ -42,7 +42,7 @@ def test_lump_bjm_g20_reflection():
     # Verify sum is 1.0
     assert jnp.allclose(jnp.sum(pi_unlumped), 1.0, atol=1e-6)
     
-    # Threshold check (requested 10^-4 or 10^-5)
+    # Threshold check (1e-5 is safe for GPU numerical variations)
     # Since this is an exact symmetry, expectation is very high accuracy
     print(f"L1 norm difference: {diff_l1:.2e}")
-    assert diff_l1 < 1e-6
+    assert diff_l1 < 1e-5

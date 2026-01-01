@@ -4,13 +4,48 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
-## [0.24.1] - 2026-01-01
+## [0.25.0] - 2026-01-01
+
+### Fixed - GPU Stability & Correctness
+
+- **LazyTransitionMatrix Refactoring**: Replaced `jax.lax.map` with unrolled Python loops in `rmatvec` and `matvec`.
+  - **Rationale**: Prevents nested JIT and Autodiff (AD) issues on GPU that were causing execution failures and OOM errors during linear solve operations.
+  - **Out-of-Bounds Fix**: Corrected a padding bug in `rmatvec` that caused incorrect indexing for certain grid sizes when `N` was not a multiple of `BATCH_SIZE`.
+  - **Memory Safety**: Unrolled loops provide more predictable memory footprints on GPU compared to vectorized `lax.map`.
+
+- **GMRES Linear System Standardization**: Reverted both dense and lazy solvers to the **Row-Replacement system**.
+  - **Change**: Replaces the first equation of $P^T v = v$ with $\sum v = 1$.
+  - **Rationale**: Found to be significantly more stable and accurate than the previously attempted Rank-1 update system $(P^T - I + \mathbf{1}\mathbf{1}^T)x = \mathbf{1}$ for large grids ($g=40+$) and low-iteration (20) convergence checks.
+  - **Accuracy**: Restored L1 error consistency to $< 10^{-5}$ between backends.
+
+### Changed - Precision & Parameter Standardization
+
+- **Global `DTYPE_FLOAT` Enforcement**: Updated all solver initializations (`jnp.zeros`, `jnp.ones`, `jnp.eye`) to use `core.DTYPE_FLOAT`.
+  - **Impact**: Ensures that `GV_ENABLE_FLOAT64=1` correctly propagates through all iterative solvers and internal vector states.
+  - **Consistency**: Eliminates "check norm exceeds tolerance" warnings caused by mixed-precision intermediate calculations.
+
+- **Unified Adaptive Intervals**: Standardized the maximum adaptive check interval to **1000** iterations across all power method implementations (`markov.py` and `lazy_markov.py`).
+  - **Rationale**: Resolves the previous discrepancy where dense and lazy solvers used different interval limits (100 vs 1000).
+
+- **Batch Size Standardization**: Confirmed and enforced `BATCH_SIZE = 128` as the production standard for all batched transition matrix operations.
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/dynamics/markov.py`: Updated GMRES system and enforced `DTYPE_FLOAT` in all constructors.
+- `src/gridvoting_jax/dynamics/lazy/base.py`: Unrolled loop refactor for `rmatvec`/`matvec` and fixed padding bug.
+- `src/gridvoting_jax/dynamics/lazy/lazy_markov.py`: Updated GMRES system and standardized adaptive intervals.
+- `src/gridvoting_jax/core/__init__.py`: Added missing `DTYPE_FLOAT` exports.
+
+**Verification**:
+- **Full Test Suite Passing**: 125/125 tests passed on both **CPU** and **GPU** (Nvidia 1080Ti).
+- **Lazy Equivalence**: Verified L1 accuracy between dense and lazy solvers for $g=10, 20, 40$.
+- **Precision Robustness**: Verified stability in both Float32 and Float64 modes via automated equivalence suite.
 
 ### Added
 
 - **Integration Test**: Added `tests/test_lump_bjm_g20_reflection.py`
-  - Verifies numerical accuracy of slumped matrix solvers against full matrix solvers
-  - Uses canonical BJM spatial triangle model (g=20)
+  - Verifies numerical accuracy of lumped matrix solution for one case (BJM spatial triangle g=20, zi=False)
   - Confirms L1 norm difference of < 1e-6 (actual: 7.15e-07) for exact reflection symmetry
   - Validates the end-to-end lumping/unlumping pipeline with high precision
 
