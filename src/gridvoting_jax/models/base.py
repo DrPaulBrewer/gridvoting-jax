@@ -5,10 +5,8 @@ from warnings import warn
 
 # Import from core and dynamics
 from ..core import (
-    assert_valid_transition_matrix, 
-    assert_zero_diagonal_matrix
+    LazyLeftGVMatrix
 )
-from ..core.winner_determination import compute_winner_matrix_jit
 from ..dynamics import MarkovChain
 from ..dynamics.lazy import FlexMarkovChain
 
@@ -158,22 +156,103 @@ class VotingModel:
         
         self.analyzed = True
 
-    def what_beats(self, *, index):
-        """returns array of size number_of_feasible_alternatives
-        with value 1 where alternative beats current index by some majority"""
-        assert self.analyzed
-        points = (self.MarkovChain.P[index, :] > 0)
-        points = points.at[index].set(0)
-        return points
-
-    def what_is_beaten_by(self, *, index):
-        """returns array of size number_of_feasible_alternatives
-        with value 1 where current index beats alternative by some majority"""
-        assert self.analyzed
-        points = (self.MarkovChain.P[:, index] > 0)
-        points = points.at[index].set(0)
-        return points
+    def what_beats(self, *, i:int):
+        """Returns boolean array of size number_of_feasible_alternatives
+        with value True where alternative beats current state i by some majority.
         
+        Args:
+            i: Index of the alternative to compare against
+        
+        Returns:
+            Boolean array where True indicates alternative beats i
+        """
+        cU = self.utility_functions
+        N = self.number_of_feasible_alternatives
+        
+        # Get utilities for alternative i (status quo)
+        # U_i shape: (V,)
+
+        U_i = cU[:, i]
+        
+        # Generate preferences: does each voter prefer j over i?
+        # cU shape: (V, N)
+        # U_i shape: (V,) -> broadcast to (V, 1)
+        # Result: (V, N) where [v, j] = "does voter v prefer j over i?"
+        prefs = jnp.greater(cU, U_i[:, jnp.newaxis])
+        
+        # Sum votes for each alternative -> (N,)
+        votes = prefs.sum(axis=0)
+        
+        # Determine winners: alternative j beats i if votes[j] >= majority
+        beats_i = jnp.greater_equal(votes, self.majority)
+        
+        # Set diagonal to False (alternative doesn't beat itself)
+        beats_i = beats_i.at[i].set(False)
+        
+        return beats_i
+    
+    def what_is_beaten_by(self, *, i:int):
+        """Returns array of size number_of_feasible_alternatives
+        with value 1 where current state i beats alternative by some majority.
+        
+        This is the converse of what_beats: instead of finding what beats i,
+        we find what i beats.
+        
+        Args:
+            i: Index of the alternative doing the beating
+            
+        Returns:
+            Boolean array where True indicates i beats that alternative
+        """
+        cU = self.utility_functions
+        N = self.number_of_feasible_alternatives
+        
+        # Get utilities for alternative i (the challenger)
+        # U_i shape: (V,)
+        U_i = cU[:, i]
+        
+        # Generate preferences: does each voter prefer i over j?
+        # cU shape: (V, N)
+        # U_i shape: (V,) -> broadcast to (V, 1)
+        # Result: (V, N) where [v, j] = "does voter v prefer i over j?"
+        prefs = jnp.greater(U_i[:, jnp.newaxis], cU)
+        
+        # Sum votes for each comparison -> (N,)
+        votes = prefs.sum(axis=0)
+        
+        # Determine which alternatives i beats: i beats j if votes[j] >= majority
+        i_beats = jnp.greater_equal(votes, self.majority)
+        
+        # Set diagonal to False (alternative doesn't beat itself)
+        i_beats = i_beats.at[i].set(False)
+        
+        return i_beats
+
+    def transition_matrix_row(self, i:int):
+        """Returns row i of transition matrix"""
+        
+        winner_mask = self.what_beats(i=i)
+        number_of_winners = winner_mask.sum()
+        number_of_losers = self.number_of_feasible_alternatives - number_of_winners
+        status_quo_value = jnp.where(
+            self.zi,
+            (0.0+number_of_losers)/(0.0+self.number_of_feasible_alternatives),
+            (1.0/(1.0+number_of_winners))
+        )
+        challenger_value = jnp.where(
+            self.zi,
+            1.0/(0.0+self.number_of_feasible_alternatives),
+            (1.0/(1.0+number_of_winners))
+        )
+        row = jnp.zeros(self.number_of_feasible_alternatives, dtype=DTYPE_FLOAT)
+        row = row.at[i].set(status_quo_value)
+        row = row.at[winner_mask].set(challenger_value)
+        return row
+
+    def transition_matrix(self):
+        """Returns the a transition matrix for the model's Markov Chain as a LazyLeftGVMatrix"""
+        return core.LazyLeftGVMatrix(n=self.number_of_feasible_alternatives, get_row=self.transition_matrix_row)
+
     def summarize_in_context(self,*,grid,valid=None):
         """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""
         # missing valid defaults to all True array for grid

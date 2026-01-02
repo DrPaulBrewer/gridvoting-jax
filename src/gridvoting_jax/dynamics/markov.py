@@ -9,7 +9,6 @@ from collections import Counter
 from ..core import (
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
-    assert_valid_transition_matrix, 
     _move_neg_prob_to_max,
     normalize_if_needed
 )
@@ -20,24 +19,35 @@ class MarkovChain:
         matrix P and calculating chain properties"""
         if tolerance is None:
             tolerance = TOLERANCE
-        self.P = jnp.asarray(P)  # copy transition matrix to JAX array
+        self.P = P
         self.tolerance = tolerance  # Store tolerance for later use
-        assert_valid_transition_matrix(P)
-        diagP = jnp.diagonal(self.P)
+        diagP = P.diagonal()
         self.absorbing_points = jnp.equal(diagP, 1.0)
-        self.unreachable_points = jnp.equal(jnp.sum(self.P, axis=0), diagP)
         self.has_unique_stationary_distribution = not jnp.any(self.absorbing_points)
 
+    def dense_P(self):
+        """ Materialize the transition matrix if it is a lazy matrix. """
+        if hasattr(self.P, 'to_dense') and callable(self.P.to_dense):
+            return self.P.to_dense()
+        else:
+            return self.P
 
-    def evolve(self, x):
-        """ evolve the probability vector x_t one step in the Markov Chain by returning x*P. """
-        return jnp.dot(x,self.P)
 
-    def L1_norm_of_single_step_change(self, x):
-        """returns float(L1(xP-x))"""
-        return float(jnp.linalg.norm(self.evolve(x) - x, ord=1))
+    def _Q_matrix(self, dense=False):
+        n = self.P.shape[0]
+        if dense:
+            Q = self.dense_P().T - jnp.eye(n)
+            Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
+        else:
+            def Q_get_col(i):
+                P_T_minus_I = self.P.get_row(i).at[i].add(-1.0)
+                Q_col_i = P_T_minus_I.at[0].set(1.0)
+                return Q_col_i
+            Q = LazyRightGVMatrix(n=n, get_col = Q_get_col)
+        
+        return Q
 
-    def solve_for_unit_eigenvector(self):
+    def dense_solve_for_unit_eigenvector(self):
         """This is another way to potentially find the stationary distribution,
         but can suffer from numerical irregularities like negative entries.
         Assumes eigenvalue of 1.0 exists and solves for the eigenvector by
@@ -47,8 +57,7 @@ class MarkovChain:
         v is the eigenvector of eigenvalue 1 to be found; and
         b is the first basis vector, where b[0]=1 and 0 elsewhere."""
         n = self.P.shape[0]
-        Q = jnp.transpose(self.P) - jnp.eye(n)
-        Q = Q.at[0].set(jnp.ones(n))  # JAX immutable update
+        Q = self._Q_matrix(dense=True)
         b = jnp.zeros(n)
         b = b.at[0].set(1.0)  # JAX immutable update        
         error_unable_msg = "unable to find unique unit eigenvector "
@@ -56,8 +65,8 @@ class MarkovChain:
             unit_eigenvector = jnp.linalg.solve(Q, b)
         except Exception as err:
             warn(str(err)) # print the original exception lest it be lost for debugging purposes
-            raise RuntimeError(error_unable_msg+"(solver)")
-        
+            raise RuntimeError(error_unable_msg+"(dense_solve)")
+
         if jnp.isnan(unit_eigenvector.sum()):
             raise RuntimeError(error_unable_msg+"(nan)")
         
@@ -65,15 +74,19 @@ class MarkovChain:
         # Use extracted constant from core for negative checks
         if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
             unit_eigenvector = _move_neg_prob_to_max(unit_eigenvector)
-            unit_eigenvector = self.evolve(unit_eigenvector)
+            unit_eigenvector = unit_eigenvector @ P
             min_component = float(unit_eigenvector.min())
         
         if (min_component < 0.0):
             neg_msg = "(negative components: "+str(min_component)+" )"
             warn(neg_msg)
             raise RuntimeError(error_unable_msg+neg_msg)
-        
-        self.unit_eigenvector = unit_eigenvector
+
+        del Q
+        del P
+        del b
+
+        self.unit_eigenvector = normalize_if_needed(unit_eigenvector)
         return self.unit_eigenvector
 
 
@@ -156,9 +169,9 @@ class MarkovChain:
 
     def _solve_full_matrix_inversion(self, tolerance):
         """Original algebraic solver using direct dense matrix inversion / linear solve."""
-        return self.solve_for_unit_eigenvector()
+        return self.dense_solve_for_unit_eigenvector()
 
-    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, initial_guess=None):
+    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, dense=False, initial_guess=None):
         """
         Find stationary distribution using GMRES iterative solver.
         Solves (P.T - I)v = 0 subject to sum(v)=1.
@@ -175,18 +188,7 @@ class MarkovChain:
             initial_guess: Optional initial guess for GMRES (useful for grid upscaling)
         """
         n = self.P.shape[0]
-        I = jnp.eye(n)
-        
-        # System matrix A = P.T - I
-        # We want to perform matrix-vector product A @ x without strictly materializing A if possible,
-        # but for now, explicit A is fine as it fits in memory (unlike factorization).
-        A = self.P.T - I
-        
-        # Enforce sum(v) = 1 constraint on the first row
-        # This makes the system A' v = b where b = [1, 0, ... 0]
-        # And the first row of A' is [1, 1, ... 1]
-        A = A.at[0, :].set(1.0)
-        
+        Q = self._Q_matrix(dense=dense)
         b = jnp.zeros(n)
         b = b.at[0].set(1.0)
         
@@ -196,12 +198,12 @@ class MarkovChain:
         # Use JAX's GMRES
         # tol in gmres is residual tolerance, roughly related to error
         v, info = jax.scipy.sparse.linalg.gmres(
-            lambda x: jnp.dot(A, x), 
+            Q, 
             b,
             x0=x0,
             tol=tolerance, 
             maxiter=max_iterations,
-            solve_method='batched'
+            solve_method='incremental'
         )
         
         if info > 0:
@@ -214,7 +216,7 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, timeout=30.0):
+    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, dense=False, timeout=30.0):
         """
         Single-path power method with uniform initial guess.
         
@@ -225,6 +227,7 @@ class MarkovChain:
             tolerance: Convergence tolerance
             max_iterations: Maximum iterations
             initial_guess: Optional initial distribution (if None, uses uniform)
+            dense: Whether to use dense matrix representation
             timeout: Max execution time in seconds
         
         Returns:
@@ -232,6 +235,11 @@ class MarkovChain:
         """
         import time
         n = self.P.shape[0]
+        if dense:
+            P = self.dense_P()
+        else:
+            P = self.P
+
         start_time = time.time()
         
         # Use uniform initial guess if not provided (matches lazy behavior)
@@ -247,21 +255,19 @@ class MarkovChain:
         i = 0
         while i < max_iterations:
             # Evolve until next check using JAX compiled loop
-            batch_end = min(next_check, max_iterations)
-            batch_size = batch_end - i
+            power_method_batch_end = min(next_check, max_iterations)
+            power_method_batch_size = power_method_batch_end - i
             
             # Use lax.fori_loop for compiled batched evolution
             def evolve_step(_, carry):
                 vec, P = carry
-                new_vec = jnp.dot(vec, P)
-                new_vec = normalize_if_needed(new_vec)
-                return (new_vec, P)
-            v, _ = jax.lax.fori_loop(0, batch_size, evolve_step, (v, self.P))
-            i = batch_end
+                return (normalize_if_needed(vec @ P), P)
+            v, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_step, (v, P))
+            i = power_method_batch_end
 
             
             # Check convergence
-            diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
+            diff = jnp.linalg.norm(v@P - v, ord=1)
             if diff < tolerance:
                 return v
             
@@ -271,13 +277,13 @@ class MarkovChain:
                 return v
             
             # Adaptive: Increase interval
-            if check_interval < 1000:
+            if check_interval < 100:
                 check_interval *= 2
             next_check = i + check_interval
         
         # Final check
-        diff = jnp.linalg.norm(self.evolve(v) - v, ord=1)
-        warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
+        if diff >= tolerance:
+            warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
         return v
 
     def _solve_bifurcated_power_method(self, tolerance, max_iterations, timeout=30.0):

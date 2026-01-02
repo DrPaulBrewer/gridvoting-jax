@@ -121,33 +121,6 @@ else:
     warn("GV_FORCE_CPU=1: JAX forced to CPU-only mode")
 
 
-
-@chex.chexify
-@jax.jit
-def assert_valid_transition_matrix(P):
-    """asserts that JAX array is square and that each row sums to 1.0
-    with default tolerance of 2 * P.rows * jnp.finfo.eps  (float64)"""
-    P = jnp.asarray(P)
-    rows, cols = P.shape
-    chex.assert_shape(P, (rows, rows))  # Ensure square matrix
-    row_sums = P.sum(axis=1)
-    expected = jnp.ones(rows)
-    # epsilon jnp.finfo(dtype).eps is the smallest number that  FP can add to 1.0
-    # this allows every row to be 2 epsilon off before assert fails
-    tolerance = 2 * rows * jnp.finfo(P.dtype).eps
-    chex.assert_trees_all_close(row_sums, expected, atol=tolerance, rtol=0)
-
-@chex.chexify
-@jax.jit
-def assert_zero_diagonal_matrix(M):
-    """asserts that JAX array is square with exactly zero diagonal"""
-    M = jnp.asarray(M)
-    rows, cols = M.shape
-    chex.assert_shape(M, (rows, rows))  # Ensure square matrix
-    diagonal = jnp.diag(M)
-    expected = jnp.zeros(rows, dtype=M.dtype)
-    chex.assert_trees_all_equal(diagonal, expected)
-
 @jax.jit
 def _move_neg_prob_to_max(pvector):
     """Fix negative probability components by moving mass to maximum values.
@@ -181,6 +154,9 @@ def _move_neg_prob_to_max(pvector):
     
     return fixed_pvector
 
+def entropy_in_bits(v):
+    safe = jnp.where(v>0, v, 1.0)
+    return -jnp.sum(safe * jnp.log2(safe))
 
 @jax.jit
 def normalize_if_needed(v):
@@ -229,7 +205,87 @@ def normalize_if_needed(v):
         renorm_deviation < deviation,
         v_renorm,
         v
-    )   
+    )
+
+class LazyLeftGVMatrix():
+    def __init__(self, *, n, get_row):
+        self.n = n
+        self.shape = (n,n)
+        self.get_row = get_row
+        self.dtype = DTYPE_FLOAT
+        self._diagonal_cache = None
+
+    def __rmatmul__(self, v):
+        """Compute v @ M using get_row"""
+        def body_fn(i, result):
+            return result.at[i].set(jnp.dot(v, self.get_row(i)))
+        
+        result = jnp.zeros(self.n, dtype=v.dtype)
+        return jax.lax.fori_loop(0, self.n, body_fn, result)
+    
+    def __matmul__(self, v):
+        """Not supported for LazyLeftGVMatrix (use M.T @ v instead)"""
+        return NotImplemented
+
+    def __getitem__(self, i_row):
+        if (type(i_row) is int):
+            return self.get_row(i_row)
+        else:
+            raise TypeError("LazyLeftGVMatrix only supports integer indexing of rows")
+
+    def diagonal(self):
+        """Compute diagonal of matrix using get_row (memoized)"""
+        if self._diagonal_cache is None:
+            self._diagonal_cache = jax.lax.map(lambda i: self.get_row(i)[i], jnp.arange(self.n))
+        return self._diagonal_cache
+
+    def to_dense(self):
+        """Convert to dense matrix by stacking all rows"""
+        return jax.lax.map(self.get_row, jnp.arange(self.n))
+
+    @property
+    def T(self):
+        """Return transpose as LazyRightGVMatrix"""
+        return LazyRightGVMatrix(n=self.n, get_col=self.get_row)
+
+class LazyRightGVMatrix():
+    def __init__(self, *, n, get_col):
+        self.n = n
+        self.shape = (n,n)
+        self.get_col = get_col
+        self.dtype=DTYPE_FLOAT
+        self._diagonal_cache = None
+    
+    def __matmul__(self, v):
+        """Compute M @ v using get_col"""
+        def body_fn(i, result):
+            return result.at[i].set(jnp.dot(self.get_col(i), v))
+        
+        result = jnp.zeros(self.n, dtype=v.dtype)
+        return jax.lax.fori_loop(0, self.n, body_fn, result)
+    
+    def __rmatmul__(self, v):
+        """Not supported for LazyRightGVMatrix (use v @ M.T instead)"""
+        return NotImplemented
+
+    def diagonal(self):
+        """Compute diagonal of matrix using get_col (memoized)"""
+        if self._diagonal_cache is None:
+            self._diagonal_cache = jax.lax.map(lambda i: self.get_col(i)[i], jnp.arange(self.n))
+        return self._diagonal_cache
+
+    def to_dense(self):
+        """Convert to dense matrix by stacking all columns as rows, then transpose"""
+        # Get all columns and stack them as rows
+        cols_as_rows = jax.lax.map(self.get_col, jnp.arange(self.n))
+        # Transpose to get columns in correct orientation
+        return cols_as_rows.T
+    
+    @property
+    def T(self):
+        """Return transpose as LazyLeftGVMatrix"""
+        return LazyLeftGVMatrix(n=self.shape[0], get_row=self.get_col)
+
 
 def get_available_memory_bytes():
     """ Estimate available memory in bytes on the active device.
