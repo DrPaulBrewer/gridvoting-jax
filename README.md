@@ -479,26 +479,6 @@ mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
   - Memory: O(N)
   - Use via: `model.analyze_lazy(solver="power_method", force_lazy=True)`
 
-**Spatial Solvers** (SpatialVotingModel only):
-- **`"grid_upscaling"`**: Solve on subgrid, refine with dense GMRES
-  - Solves on bounding box of voter ideal points
-  - Upscales solution to full grid
-  - Refines with GMRES using upscaled solution as initial guess
-  - Memory: O(N²) for full grid GMRES
-  - Fails: g≥80 (GMRES OOM on some GPUs)
-
-- **`"grid_upscaling_lazy_gmres"`**: Solve on subgrid, refine with lazy GMRES
-  - Same as grid_upscaling but uses lazy GMRES for refinement
-  - Memory: O(N) for lazy solver
-  - Works for g=80 (MI mode)
-  - May produce NaN in some ZI cases (known issue)
-
-- **`"grid_upscaling_lazy_power"`**: Solve on subgrid, refine with lazy power method
-  - Same as grid_upscaling but uses lazy power method for refinement
-  - Memory: O(N)
-  - Works for g=80
-  - More robust than lazy GMRES for ZI mode
-
 **Outline Solvers** *(New in v0.19.0)* (SpatialVotingModel only):
 - **`"outline_and_fill"`**: Solve on coarsened grid (2x spacing), interpolate
   - Creates coarsened model with 2x grid spacing (same boundaries)
@@ -531,9 +511,8 @@ mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 |-----------|-------------------|-------------|-------|
 | g=20-40 | `full_matrix_inversion` | `outline_and_gmres` | Fastest, most accurate |
 | g=60 | `gmres_matrix_inversion` | `outline_and_gmres` | Balance speed/memory |
-| g=80 (MI) | `outline_and_power` | `grid_upscaling_lazy_power` | Only solvers that work |
-| g=80 (ZI) | `outline_and_power` | `power_method` | ZI mode harder |
-| g=100 | `grid_upscaling_lazy_power` | N/A | Requires lazy solver |
+| g=80 | `outline_and_power` | `power_method (lazy)` | Use outline or lazy solvers |
+| g=100 | `outline_and_power` | N/A | Requires outline solver |
 
 **Pre-computed Interpolation Matrix** *(New in v0.19.0)*:
 ```python
@@ -587,11 +566,11 @@ mc.find_unique_stationary_distribution(solver="auto")
 ### Large Grid Support *(New in v0.10.0)*
 
 - **g=80**: Validated (L1 ~1e-08)
-- **g=100**: 10,201 alternatives, uses lazy solvers + grid upscaling
+- **g=100**: 10,201 alternatives, uses lazy solvers + outline solvers
 
 ```python
 model = gv.bjm_spatial_triangle(g=100, zi=False)
-model.analyze(solver="grid_upscaling")  # Uses lazy GMRES
+model.analyze(solver="outline_and_power")  # Recommended for large grids
 ```
 
 

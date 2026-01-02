@@ -149,10 +149,6 @@ def run_benchmarks(grid_sizes, output_file=None, track_memory=True):
         result = benchmark_solver(g, "lazy_power_method", track_memory=track_memory)
         results.append(result)
         
-        # Lazy grid upscaling (GMRES)
-        print(f"  - Lazy grid upscaling...")
-        result = benchmark_solver(g, "lazy_grid_upscaling", track_memory=track_memory)
-        results.append(result)
     
     # Create DataFrame
     df = pd.DataFrame(results)

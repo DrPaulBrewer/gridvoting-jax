@@ -75,10 +75,6 @@ if __name__ == "__main__":
     if device.platform == 'gpu':
         print(f"Profiling GPU memory (g={g})...\n")
         profile_gpu_memory(g, "lazy_power_method")
-        print()
-        profile_gpu_memory(g, "lazy_grid_upscaling")
     else:
         print(f"Profiling CPU memory (g={g})...\n")
         profile_cpu_memory(g, "lazy_power_method")
-        print()
-        profile_cpu_memory(g, "lazy_grid_upscaling")

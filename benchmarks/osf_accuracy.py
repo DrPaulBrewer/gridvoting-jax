@@ -56,7 +56,7 @@ def run_osf_validation(grid_sizes=[20, 40, 60, 80]):
     for g in grid_sizes:
         print(f"\nValidating g={g}...")
         
-        for solver in ['dense', 'lazy_power_method', 'lazy_grid_upscaling']:
+        for solver in ['dense', 'lazy_power_method']:
             if solver == 'dense' and g > 60:
                 continue  # Skip dense for large grids
             

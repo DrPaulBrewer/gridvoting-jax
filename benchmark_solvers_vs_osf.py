@@ -58,7 +58,7 @@ def benchmark_solvers_vs_osf(g=20):
         zi=False
     )
     
-    solvers = ["gmres_matrix_inversion", "power_method", "grid_upscaling"]
+    solvers = ["gmres_matrix_inversion", "power_method"]
     
     results = {}
     

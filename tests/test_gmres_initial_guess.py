@@ -77,51 +77,6 @@ def test_gmres_respects_initial_guess():
     )
 
 
-def test_gmres_initial_guess_propagation():
-    """
-    Test 3: Direct Instrumentation
-    
-    Monkey-patch JAX's GMRES to verify that initial_guess is actually
-    passed as the x0 argument. This directly verifies the code path.
-    
-    Tests grid_upscaling solver which should pass upscaled distribution
-    as initial_guess to GMRES.
-    """
-    captured_x0 = {'value': None}
-    
-    # Store original gmres function
-    original_gmres = jax.scipy.sparse.linalg.gmres
-    
-    def patched_gmres(A, b, x0=None, **kwargs):
-        """Capture x0 argument and call original."""
-        captured_x0['value'] = x0
-        return original_gmres(A, b, x0=x0, **kwargs)
-    
-    # Monkey-patch gmres
-    with patch('jax.scipy.sparse.linalg.gmres', side_effect=patched_gmres):
-        # Run grid_upscaling which should pass initial_guess to GMRES
-        model = gv.bjm_spatial_triangle(g=20, zi=True)
-        model.analyze(solver="grid_upscaling", max_iterations=2000)
-    
-    # Verify x0 was captured
-    assert captured_x0['value'] is not None, (
-        "GMRES was called with x0=None, initial_guess was not propagated"
-    )
-    
-    # Verify x0 is not uniform (should be upscaled distribution)
-    x0 = captured_x0['value']
-    n = len(x0)
-    uniform = jnp.ones(n) / n
-    l1_from_uniform = float(jnp.linalg.norm(x0 - uniform, ord=1))
-    
-    print(f"L1 distance from uniform: {l1_from_uniform:.2e}")
-    
-    assert l1_from_uniform > 1e-6, (
-        f"initial_guess is too close to uniform (L1={l1_from_uniform:.2e}), "
-        "suggesting grid upscaling is not working correctly"
-    )
-
-
 def test_lazy_gmres_initial_guess():
     """
     Test 4: Lazy Solver Direct Instrumentation

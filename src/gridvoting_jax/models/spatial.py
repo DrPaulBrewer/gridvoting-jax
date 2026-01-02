@@ -189,29 +189,16 @@ class SpatialVotingModel:
         Analyze with spatial-aware solvers.
         
         Supports all base solvers plus:
-        - grid_upscaling: Solve on subgrid then refine with dense GMRES
-        - grid_upscaling_lazy_gmres: Solve on subgrid then refine with lazy GMRES
-        - grid_upscaling_lazy_power: Solve on subgrid then refine with lazy power method
         - outline_and_fill: Solve on coarsened grid (2x spacing) and interpolate
         - outline_and_power: Solve on coarsened grid then refine with power_method
         - outline_and_gmres: Solve on coarsened grid then refine with gmres
         """
-        if solver == "grid_upscaling":
-            return self._analyze_grid_upscaling(**kwargs)
-        elif solver == "grid_upscaling_lazy_gmres":
-            return self._analyze_lazy_grid_upscaling(step2_solver="gmres", **kwargs)
-        elif solver == "grid_upscaling_lazy_power":
-            return self._analyze_lazy_grid_upscaling(step2_solver="power_method", **kwargs)
-        elif solver == "outline_and_fill":
+        if solver == "outline_and_fill":
             return self._analyze_outline_and_fill(**kwargs)
         elif solver == "outline_and_power":
             return self._analyze_outline_and_power(**kwargs)
         elif solver == "outline_and_gmres":
             return self._analyze_outline_and_gmres(**kwargs)
-        # Backward compatibility
-        elif solver == "lazy_grid_upscaling":
-            warn("'lazy_grid_upscaling' is deprecated, use 'grid_upscaling_lazy_gmres'", DeprecationWarning)
-            return self._analyze_lazy_grid_upscaling(step2_solver="gmres", **kwargs)
         else:
             return self.model.analyze(solver=solver, **kwargs)
     
@@ -231,118 +218,7 @@ class SpatialVotingModel:
         """
         return self.model.analyze_lazy(solver=solver, force_lazy=force_lazy, force_dense=force_dense, **kwargs)
     
-    def _analyze_subgrid(self, border_units=1, **kwargs):
-        """
-        Solve on subgrid (bounding box of voter ideal points + border).
-        
-        Args:
-            border_units: Number of grid steps to add as border (default: 5)
-            **kwargs: Passed to subgrid solver
-        
-        Returns:
-            tuple: (sub_model, box_mask, initial_guess)
-                - sub_model: Solved VotingModel on subgrid
-                - box_mask: Boolean mask for subgrid in full grid
-                - initial_guess: Upscaled distribution for full grid (or None if core exists)
-        """
-        # 1. Define Subgrid (Bounding Box of Ideal Points + border)
-        voter_ideal_points = jnp.asarray(self.voter_ideal_points)
-        min_xy = jnp.min(voter_ideal_points, axis=0)
-        max_xy = jnp.max(voter_ideal_points, axis=0)
-        
-        # Add border
-        x0_sub = min_xy[0] - border_units * self.grid.xstep
-        y0_sub = min_xy[1] - border_units * self.grid.ystep
-        x1_sub = max_xy[0] + border_units * self.grid.xstep
-        y1_sub = max_xy[1] + border_units * self.grid.ystep
 
-        # Check that subgrid fits inside main grid
-        # Note: This will fail for small grids (e.g. g=20) where the 5-unit border
-        # extends beyond the grid bounds. This is expected behavior - grid upscaling
-        # is designed for larger grids where voters don't occupy the entire grid.
-        if x0_sub < self.grid.x0 or y0_sub < self.grid.y0 or x1_sub > self.grid.x1 or y1_sub > self.grid.y1:
-            raise ValueError("Subgrid extends beyond main grid bounds.")
-
-        # Mask for subgrid
-        box_mask = self.grid.within_box(x0=x0_sub, x1=x1_sub, y0=y0_sub, y1=y1_sub)
-        valid_indices = jnp.nonzero(box_mask)[0]
-        
-        if len(valid_indices) == 0:
-            raise ValueError("Subgrid is empty. Check ideal points and grid bounds.")
-        
-        # 2. Solve Sub-problem
-        sub_utility_functions = self.utility_functions[:, valid_indices]
-        
-        sub_model = VotingModel(
-            utility_functions=sub_utility_functions,
-            number_of_voters=self.number_of_voters,
-            number_of_feasible_alternatives=len(valid_indices),
-            majority=self.majority,
-            zi=self.zi
-        )
-        # Solve submodel (dense is fine for subgrid)
-        sub_model.analyze(solver="full_matrix_inversion", **kwargs)
-        
-        # 3. Create upscaled initial guess
-        initial_guess = None
-        if not sub_model.core_exists:
-            # test sub_model stationary distribution
-            assert jnp.isnan(sub_model.stationary_distribution).any() == False, "Submodel stationary distribution contains NaN"
-            assert jnp.isinf(sub_model.stationary_distribution).any() == False, "Submodel stationary distribution contains Inf"
-            assert jnp.all(sub_model.stationary_distribution>=0), "Submodel stationary distribution contains negative values"
-
-            # Upscale & prepare initial guess
-            # Place 0.99 of probability mass on subgrid and 0.01 distributed evenly on non-subgrid points
-            N = self.grid.len
-            num_subgrid = len(valid_indices)
-            num_nonsubgrid = N - num_subgrid
-            
-            subgrid_mass = 0.99
-            nonsubgrid_mass = 0.01
-            
-            # Scale subgrid distribution to 99% of total mass
-            scaled_subgrid_dist = sub_model.stationary_distribution * subgrid_mass
-            
-            # Calculate fill value for non-subgrid points (1% distributed evenly)
-            fill_value = nonsubgrid_mass / num_nonsubgrid if num_nonsubgrid > 0 else 0.0
-            
-            # Embed with fill - no renormalization needed
-            embed_fn = self.grid.embedding(valid=box_mask)
-            initial_guess = embed_fn(scaled_subgrid_dist, fill=fill_value)
-            
-            # Validate
-            assert jnp.isclose(initial_guess.sum(), 1.0, atol=1e-4), \
-                f"Initial guess sum {initial_guess.sum()} != 1.0"
-        else:
-            raise AssertionError(
-                "Core found in subgrid_upscaling. Grid upscaling is not supported for this case."
-            )
-        
-        return sub_model, box_mask, initial_guess
-    
-    def _analyze_grid_upscaling(self, **kwargs):
-        """Grid upscaling implementation (moved from VotingModel.analyze)."""
-        # Solve on subgrid and get upscaled initial guess
-        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=1, **kwargs)
-        
-        # Solve on full grid with GMRES using upscaled solution as initial guess
-        # This should converge much faster than power_method or starting from uniform
-        return self.model.analyze(solver="gmres_matrix_inversion", initial_guess=initial_guess, **kwargs)
-    
-    def _analyze_lazy_grid_upscaling(self, *, step2_solver="gmres", **kwargs):
-        """
-        Grid upscaling with lazy solver for large grids (avoids OOM).
-        
-        Args:
-            step2_solver: Solver for refinement step - "gmres" or "power_method"
-            **kwargs: Passed to solver
-        """
-        # Solve on subgrid and get upscaled initial guess
-        sub_model, box_mask, initial_guess = self._analyze_subgrid(border_units=1, **kwargs)
-        
-        # Solve on full grid with lazy solver
-        # Use upscaled solution as initial guess
-        return self.model.analyze_lazy(solver=step2_solver, force_lazy=True, initial_guess=initial_guess, **kwargs)
     
     def _create_coarsened_model(self):
         """

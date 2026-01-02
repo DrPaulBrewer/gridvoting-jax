@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.25.0] - 2026-01-02
+
+### Removed - Breaking Change
+
+- **Grid Upscaling Solvers**: Removed deprecated grid upscaling functionality
+  - Removed solvers: `grid_upscaling`, `grid_upscaling_lazy_gmres`, `grid_upscaling_lazy_power`, `lazy_grid_upscaling` (deprecated alias)
+  - **Rationale**: Grid upscaling solvers were superseded by outline-based solvers (v0.19.0) which provide better accuracy and reliability
+  - **Migration**: Use outline-based solvers instead:
+    - `grid_upscaling` → `outline_and_gmres`
+    - `grid_upscaling_lazy_gmres` → `outline_and_gmres`
+    - `grid_upscaling_lazy_power` → `outline_and_power`
+  - **Files Modified**:
+    - `src/gridvoting_jax/models/spatial.py`: Removed 3 methods (118 lines)
+    - `tests/test_gmres_initial_guess.py`: Removed grid upscaling test
+    - `tests/test_solvers.py`: Removed grid upscaling test
+    - `benchmarks/`: Updated 3 benchmark files
+    - `README.md`: Updated solver documentation
+  - **Deleted**: Entire `quick_tests/` directory (19 files) - available in git history
+
 ## [0.24.2] - 2026-01-01
 
 ### Changed - Test Execution Strategy

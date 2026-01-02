@@ -65,22 +65,6 @@ def test_solvers_consistency():
     assert l1_power < 1e-4
 
 
-    # Test Grid Upscaling (now uses SpatialVotingModel)
-    model_upscale = SpatialVotingModel(
-        voter_ideal_points=voter_ideal_points,
-        grid=grid,
-        number_of_voters=3,
-        majority=2,
-        zi=False
-    )
-    model_upscale.analyze(solver="grid_upscaling", tolerance=1e-5)
-    dist_upscale = model_upscale.stationary_distribution
-    
-    l1_upscale = float(jnp.linalg.norm(base_dist - dist_upscale, ord=1))
-    print(f"Upscaling L1 Diff: {l1_upscale}")
-    assert l1_upscale < 1e-4
-
-
 def test_solver_invalid_arg():
     grid = Grid(x0=-1.0, x1=1.0, xstep=0.2, y0=-1.0, y1=1.0, ystep=0.2)
     
