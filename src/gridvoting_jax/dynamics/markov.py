@@ -216,7 +216,7 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, tolerance, max_iterations, initial_guess=None, dense=False, timeout=30.0):
+    def _solve_power_method(self, *, tolerance, max_iterations, initial_guess=None, force_dense=False, timeout=30.0):
         """
         Single-path power method with uniform initial guess.
         
@@ -227,7 +227,7 @@ class MarkovChain:
             tolerance: Convergence tolerance
             max_iterations: Maximum iterations
             initial_guess: Optional initial distribution (if None, uses uniform)
-            dense: Whether to use dense matrix representation
+            force_dense: Whether to use dense matrix representation
             timeout: Max execution time in seconds
         
         Returns:
@@ -235,7 +235,7 @@ class MarkovChain:
         """
         import time
         n = self.P.shape[0]
-        if dense:
+        if force_dense:
             P = self.dense_P()
         else:
             P = self.P
@@ -286,7 +286,7 @@ class MarkovChain:
             warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
         return v
 
-    def _solve_bifurcated_power_method(self, tolerance, max_iterations, timeout=30.0):
+    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance, max_iterations, timeout=30.0):
         """
         Bifurcated (dual-start) power method using entropy-based starting points.
         
@@ -307,18 +307,20 @@ class MarkovChain:
         import time
         n = self.P.shape[0]
         start_time = time.time()
+
+        if force_dense:
+            P = self.dense_P()
+        else:
+            P = self.P
         
-        # Calculate entropy of each row of P to find diverse starting points
-        # Entropy of a row P[i]: H(i) = - sum(P[i,j] * log2(P[i,j]))
-        P_safe = jnp.where(self.P > 0, self.P, 1.0)  # Avoid log(0)
-        row_entropy = -jnp.sum(self.P * jnp.log2(P_safe), axis=1)
-        
+        row_entropies = jax.vmap(lambda i: entropy_in_bits(P[i]))(jnp.arange(n))
+
         # Start 1: Max entropy (most uncertain transition)
-        idx_max = jnp.argmax(row_entropy).item()
+        idx_max = jnp.argmax(row_entropies).item()
         v1 = jnp.zeros(n).at[idx_max].set(1.0)
         
         # Start 2: Min entropy (most deterministic transition)
-        idx_min = jnp.argmin(row_entropy).item()
+        idx_min = jnp.argmin(row_entropies).item()
         v2 = jnp.zeros(n).at[idx_min].set(1.0)
         
         # Adaptive batching for time checks
@@ -332,17 +334,17 @@ class MarkovChain:
             V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
             
             # Evolve batch until next check
-            batch_end = min(next_check, max_iterations)
-            batch_size = batch_end - i
+            power_method_batch_end = min(next_check, max_iterations)
+            power_method_batch_size = power_method_batch_end - i
             
             # Use lax.fori_loop for compiled batched evolution
             def evolve_batch_step(_, carry):
                 V_state, P = carry
-                V_new = jnp.dot(V_state, P)
+                V_new = V_state @ P
                 V_new = jax.vmap(normalize_if_needed)(V_new)
                 return (V_new, P)
-            V, _ = jax.lax.fori_loop(0, batch_size, evolve_batch_step, (V, self.P))
-            i = batch_end
+            V, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_batch_step, (V, P))
+            i = power_method_batch_end
             
             # Unpack (already normalized per iteration)
             v1, v2 = V[0], V[1]
@@ -459,8 +461,42 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarr
     P_lumped = P_lumped / row_sums
     
     return P_lumped
-
-
+    
+def _compute_lumped_transition_matrix_lazy(P: LazyLeftGVMatrix, inverse_indices: jnp.ndarray) -> jnp.ndarray:
+    n = P.shape[0]
+    k = int(inverse_indices.max()) + 1
+    
+    # Compute group sizes
+    group_sizes = jnp.bincount(inverse_indices, length=k)
+    
+    # Initialize result
+    P_lumped = jnp.zeros((k, k), dtype=P.dtype)
+    
+    # For each row in original matrix
+    def process_row(i, P_lumped_carry):
+        row_i = P[i]  # Get row i
+        src_group = inverse_indices[i]  # Which group does state i belong to?
+        
+        # For each destination group j, sum transitions to states in that group
+        def add_to_group(j, carry):
+            dest_mask = (inverse_indices == j)  # States in group j
+            transition_sum = jnp.sum(row_i[dest_mask])  # Sum P[i, t] for t in Sj
+            return carry.at[src_group, j].add(transition_sum)
+        
+        return jax.lax.fori_loop(0, k, add_to_group, P_lumped_carry)
+    
+    # Process all rows
+    P_lumped = jax.lax.fori_loop(0, n, process_row, P_lumped)
+    
+    # Divide by source group sizes (average over states in source group)
+    P_lumped = P_lumped / group_sizes[:, jnp.newaxis]
+    
+    # Renormalize rows
+    row_sums = jnp.sum(P_lumped, axis=1, keepdims=True)
+    P_lumped = P_lumped / row_sums
+    
+    return P_lumped
+    
 
 def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     """
@@ -511,7 +547,11 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     _validate_inverse_indices(inverse_indices, n_states)
     
     # Compute lumped transition matrix
-    P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
+    if (type(MC.P) is jnp.ndarray) or (n_states<=60):
+        P_lumped = _compute_lumped_transition_matrix(MC.dense_P(), inverse_indices)
+    else:
+        P_lumped = _compute_lumped_transition_matrix_lazy(MC.P, inverse_indices)
+
     
     # Create new MarkovChain instance
     # Preserve tolerance if available
