@@ -7,6 +7,7 @@ from collections import Counter
 
 # Import from core
 from ..core import (
+    LazyLeftGVMatrix,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     _move_neg_prob_to_max,
@@ -21,21 +22,32 @@ class MarkovChain:
             tolerance = TOLERANCE
         self.P = P
         self.tolerance = tolerance  # Store tolerance for later use
-        diagP = P.diagonal()
+
+    def calculate_chain_properties(self):
+        diagP = self.P.diagonal()
         self.absorbing_points = jnp.equal(diagP, 1.0)
         self.has_unique_stationary_distribution = not jnp.any(self.absorbing_points)
+        return self
 
     def dense_P(self):
-        """ Materialize the transition matrix if it is a lazy matrix. """
-        if hasattr(self.P, 'to_dense') and callable(self.P.to_dense):
+        """Materialize the transition matrix if it is a lazy matrix."""
+        if (hasattr(self.P, 'to_dense') and callable(self.P.to_dense)):
             return self.P.to_dense()
         else:
             return self.P
 
+    def force_dense(self):
+        self.P = self.dense_P()
+        if not(hasattr(self, 'has_unique_stationary_distribution')):
+            self.calculate_chain_properties()
+        return self
+
+    def is_dense(self):
+        return type(self.P) == jnp.ndarray
 
     def _Q_matrix(self, dense=False):
         n = self.P.shape[0]
-        if dense:
+        if (dense) or (self.is_dense()):
             Q = self.dense_P().T - jnp.eye(n)
             Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
         else:

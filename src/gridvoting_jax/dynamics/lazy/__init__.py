@@ -1,14 +1,11 @@
 """Lazy matrix construction for memory-efficient large-scale models."""
-
-from .base import LazyTransitionMatrix
-from .lazy_markov import LazyMarkovChain, FlexMarkovChain
+    
 from .utils import should_use_lazy, estimate_memory_for_dense_matrix
+from .lazy_markov import FlexMarkovChain
 
 __all__ = [
-    'LazyTransitionMatrix', 
-    'LazyMarkovChain', 
-    'FlexMarkovChain',
     'should_use_lazy', 
-    'estimate_memory_for_dense_matrix'
+    'estimate_memory_for_dense_matrix',
+    'FlexMarkovChain'
 ]
 

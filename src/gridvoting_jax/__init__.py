@@ -6,7 +6,7 @@ __version__ = "0.25.0"
 from .core import TOLERANCE, enable_float64, device_type, use_accelerator
 
 # Core components
-from .dynamics import MarkovChain, LazyMarkovChain, FlexMarkovChain, LazyTransitionMatrix, lump, unlump, is_lumpable, partition_from_permutation_symmetry
+from .dynamics import MarkovChain, lump, unlump, is_lumpable, partition_from_permutation_symmetry
 from .symmetry import suggest_symmetries
 from .spatial import Grid, dist_sqeuclidean, dist_manhattan
 
@@ -34,7 +34,7 @@ __all__ = [
     # Core utilities
     'TOLERANCE', 'enable_float64', 'device_type', 'use_accelerator',
     # Core components
-    'MarkovChain', 'LazyMarkovChain', 'FlexMarkovChain', 'LazyTransitionMatrix',
+    'MarkovChain',
     'lump', 'unlump', 'is_lumpable', 'partition_from_permutation_symmetry',
     'suggest_symmetries',
     'Grid', 'dist_sqeuclidean', 'dist_manhattan',

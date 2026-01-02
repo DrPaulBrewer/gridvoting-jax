@@ -337,22 +337,7 @@ def get_available_memory_bytes():
     # skipping here to avoid fragility. psutil is recommended for Mac.
     
     return None
-"""Core voting logic modules.
-
-This package contains shared voting-specific logic used across the codebase:
-- zimi_succession_logic: ZI/MI succession rules
-- winner_determination: Pairwise winner computation
-"""
-
-from .zimi_succession_logic import (
-    finalize_transition_matrix,
-    finalize_transition_matrix_zi_jit,
-    finalize_transition_matrix_mi_jit,
-)
-
-from .winner_determination import (
-    compute_winner_matrix_jit,
-)
+"""Core utility modules."""
 
 __all__ = [
     'TOLERANCE',
@@ -362,10 +347,6 @@ __all__ = [
     'use_accelerator',
     'assert_valid_transition_matrix',
     'assert_zero_diagonal_matrix',
-    'normalize_if_needed',
-    'finalize_transition_matrix',
-    'finalize_transition_matrix_zi_jit',
-    'finalize_transition_matrix_mi_jit',
-    'compute_winner_matrix_jit',
+    'normalize_if_needed'
 ]
 
