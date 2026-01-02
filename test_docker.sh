@@ -1,14 +1,13 @@
 #!/bin/bash
 # Docker test script with support for dev and versioned images from GHCR
 # Usage:
-#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--dry-run] [--parallel|--jobs=N] [--command="..."] [pytest args...]
+#   ./test_docker.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--dry-run] [--command="..."] [pytest args...]
 #   
 # Examples:
 #   ./test_docker.sh --dev --gpu tests/
 #   ./test_docker.sh --version=v0.9.1 --cpu
 #   ./test_docker.sh --command="pip list"
 #   ./test_docker.sh --dev --dry-run
-#   ./test_docker.sh --dev --parallel tests/test_core.py
 
 set -e
 
@@ -19,7 +18,6 @@ CUDA_TYPE="cpu"
 PYTEST_ARGS_LIST=()
 COMMAND=""
 DRY_RUN=0
-PARALLEL_ARGS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -63,15 +61,7 @@ while [[ $# -gt 0 ]]; do
             COMMAND="${1#*=}"
             shift
             ;;
-        --parallel)
-            PARALLEL_ARGS="-n 2"
-            shift
-            ;;
-        --jobs=*)
-            JOBS="${1#*=}"
-            PARALLEL_ARGS="-n $JOBS"
-            shift
-            ;;
+
         --dry-run)
             DRY_RUN=1
             shift
@@ -84,11 +74,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for conflicts
-if [[ -n "$COMMAND" && -n "$PARALLEL_ARGS" ]]; then
-    echo "Warning: --command override specified; ignoring --parallel/--jobs flags."
-    echo "         To use parallel execution with a custom command, include '-n <cores>' inside your command string."
-fi
+
 
 # Determine image name
 REGISTRY="ghcr.io/drpaulbrewer/gridvoting-jax"
@@ -121,9 +107,8 @@ else
     # If no args provided, default to 'tests/' (but respecting pyproject.toml testpaths)
     # Actually, if no args, pytest defaults to testpaths in config, so we don't need to force tests/
     
-    # Combine parallel args and collected positional args
     # Use array expansion for creating the string
-    ARGS_STR="${PARALLEL_ARGS} ${PYTEST_ARGS_LIST[*]}"
+    ARGS_STR="${PYTEST_ARGS_LIST[*]}"
     
     # Trim whitespace safely using bash pattern matching instead of xargs/echo
     ARGS_STR="${ARGS_STR#"${ARGS_STR%%[![:space:]]*}"}"

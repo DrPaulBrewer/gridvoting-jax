@@ -9,6 +9,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 import gridvoting_jax as gv
+from gridvoting_jax.core import EPSILON
 from gridvoting_jax.dynamics.lazy.base import LazyTransitionMatrix
 
 pytestmark = pytest.mark.essential
@@ -89,22 +90,7 @@ def test_zi_mi_offdiagonal_relationship():
     assert jnp.all(relationship_mask[mi_mask]), "MI >= ZI must hold at all non-zero locations"
 
 
-def test_lazy_mi_diagonal_is_positive():
-    """Validate lazy representation produces positive diagonal for MI.
-    
-    Tests both matvec and rmatvec operations by sampling diagonal positions.
-    """
-    model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
-    P_mi_dense = model_mi.model._get_transition_matrix()
-    
-    # Create lazy representation
-    lazy_P = LazyTransitionMatrix(
-        utility_functions=model_mi.model.utility_functions,
-        majority=model_mi.majority,
-        zi=False,
-        number_of_feasible_alternatives=model_mi.model.number_of_feasible_alternatives
-    )
-    
+def _lazy_check_diagonal(label, lazy_P):
     # Sample 200 diagonal positions uniformly
     n = lazy_P.shape[0]
     sample_indices = jnp.linspace(0, n-1, 200, dtype=int)
@@ -116,12 +102,36 @@ def test_lazy_mi_diagonal_is_positive():
         
         # matvec: P @ e_i gives column i
         col_i = lazy_P.matvec(e_i)
-        assert col_i[i] > 0.0, f"Lazy MI matvec diagonal[{i}] must be positive"
+        assert col_i[i] > 0.0, f"Lazy {label} matvec diagonal[{i}] must be positive"
         
         # rmatvec: e_i^T @ P gives row i  
         row_i = lazy_P.rmatvec(e_i)
-        assert row_i[i] > 0.0, f"Lazy MI rmatvec diagonal[{i}] must be positive"
+        assert row_i[i] > 0.0, f"Lazy {label} rmatvec diagonal[{i}] must be positive"
 
+        # matvec and rmatvec values for [i,i] should match
+        diff_in_eps = round(abs(col_i[i] -row_i[i])/EPSILON)
+        assert diff_in_eps<= 2, f"Lazy {label} matvec and rmatvec values for [{i},{i}] should match (diff_in_eps={diff_in_eps})"
+
+
+
+def test_lazy_mi_diagonal_is_positive():
+    """Validate lazy representation produces positive diagonal for MI.
+    
+    Tests both matvec and rmatvec operations by sampling diagonal positions.
+    """
+    model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
+    
+    # Create lazy representation
+    lazy_P = LazyTransitionMatrix(
+        utility_functions=model_mi.model.utility_functions,
+        majority=model_mi.majority,
+        zi=False,
+        number_of_feasible_alternatives=model_mi.model.number_of_feasible_alternatives
+    )
+
+    _lazy_check_diagonal("MI", lazy_P)
+    
+    
 
 def test_lazy_zi_diagonal_is_positive():
     """Validate lazy representation produces positive diagonal for ZI.
@@ -129,7 +139,6 @@ def test_lazy_zi_diagonal_is_positive():
     Tests both matvec and rmatvec operations by sampling diagonal positions.
     """
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_zi_dense = model_zi.model._get_transition_matrix()
     
     # Create lazy representation
     lazy_P = LazyTransitionMatrix(
@@ -139,23 +148,8 @@ def test_lazy_zi_diagonal_is_positive():
         number_of_feasible_alternatives=model_zi.model.number_of_feasible_alternatives
     )
     
-    # Sample 200 diagonal positions uniformly
-    n = lazy_P.shape[0]
-    sample_indices = jnp.linspace(0, n-1, 200, dtype=int)
-    
-    for i in sample_indices:
-        i = int(i)
-        e_i = jnp.zeros(n)
-        e_i = e_i.at[i].set(1.0)
+    _lazy_check_diagonal("ZI", lazy_P)
         
-        # matvec: P @ e_i gives column i
-        col_i = lazy_P.matvec(e_i)
-        assert col_i[i] > 0.0, f"Lazy ZI matvec diagonal[{i}] must be positive"
-        
-        # rmatvec: e_i^T @ P gives row i  
-        row_i = lazy_P.rmatvec(e_i)
-        assert row_i[i] > 0.0, f"Lazy ZI rmatvec diagonal[{i}] must be positive"
-
 
 def test_lazy_matches_dense():
     """Validate lazy representation matches dense for both ZI and MI.
@@ -247,8 +241,7 @@ def test_row_sums_stochastic():
     # Expected error from floating point arithmetic
     # Error ~ n * eps where we're summing n terms of ~1/n magnitude
     dtype = P_mi.dtype
-    eps = jnp.finfo(dtype).eps
-    expected_error = n * eps
+    expected_error = n * EPSILON
     
     # All row sums should be 1.0 within tolerance
     assert jnp.allclose(row_sums, 1.0, atol=expected_error * 10), \

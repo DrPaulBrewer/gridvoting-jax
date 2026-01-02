@@ -4,6 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Disable parallel execution and ensure test isolation
+addopts = "--tb=short --strict-markers -p no:xdist"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "essential: marks core functionality tests",
@@ -19,3 +21,4 @@ markers = [
     "budget: marks budget voting tests",
     "spatial: marks spatial voting model tests",
 ]
+

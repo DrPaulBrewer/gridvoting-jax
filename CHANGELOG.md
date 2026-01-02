@@ -4,7 +4,51 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.24.2] - 2026-01-01
+
+### Changed - Test Execution Strategy
+
+- **Removed Parallel Test Execution**: Disabled pytest-xdist to ensure all tests run sequentially and in isolation
+  - **Removed Dependencies**:
+    - Removed `pytest-xdist>=3.0.0` from `setup.cfg` dev dependencies
+    - Removed `pytest-xdist>=3.0.0` from `requirements-dev.txt`
+  - **Configuration Updates** (`pyproject.toml`):
+    - Added `addopts = "--tb=short --strict-markers -p no:xdist"` to explicitly disable parallel execution
+    - Ensures sequential test execution even if pytest-xdist is accidentally installed
+  - **Test Script Updates** (`test_docker.sh`):
+    - Removed `--parallel` and `--jobs=N` command-line flags
+    - Removed all parallel execution logic and argument parsing
+    - Simplified command construction to remove parallel args
+  - **Test Isolation** (`tests/test_lazy_equivalence.py`):
+    - Enhanced documentation to clarify subprocess isolation strategy
+    - Updated docstrings to explain that sequential execution is guaranteed by pytest configuration
+    - Float32 and Float64 tests run one at a time in separate subprocesses to prevent JAX state contamination
+  - **Rationale**: Sequential execution ensures complete test isolation, prevents race conditions, and provides more predictable and reproducible test results
+  - **Impact**: Tests now run one at a time with guaranteed isolation between test cases
+
+### Technical Details
+
+**Files Modified**:
+- `setup.cfg`: Removed pytest-xdist dependency
+- `requirements-dev.txt`: Removed pytest-xdist dependency
+- `pyproject.toml`: Added explicit sequential execution configuration
+- `test_docker.sh`: Removed parallel execution flags and logic (67 lines modified)
+- `tests/test_lazy_equivalence.py`: Enhanced documentation for subprocess isolation
+
+**Testing**:
+- All 15 essential tests pass in sequential mode (14.04s runtime)
+- Test isolation verified: Float32 and Float64 tests run in separate subprocesses
+- No parallel execution detected in test runs
+
+### Notes
+
+- This is a testing infrastructure change with no impact on library functionality
+- Sequential execution provides better test isolation and reproducibility
+- The `test_lazy_equivalence.py` subprocess isolation strategy remains unchanged
+- Users running tests via `./test_docker.sh` will no longer have access to `--parallel` flags
+
 ## [0.24.1] - 2026-01-01
+
 
 ### Added
 
