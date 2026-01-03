@@ -121,12 +121,15 @@ else:
     warn("GV_FORCE_CPU=1: JAX forced to CPU-only mode")
 
 
-@jax.jit
 def _move_neg_prob_to_max(pvector):
     """Fix negative probability components by moving mass to maximum values.
     
     Redistributes the total mass from negative components equally among
     all indices that share the maximum value (within TOLERANCE).
+    
+    This function is NOT decorated with @jax.jit to avoid nested JIT issues
+    when called from GMRES (which internally JIT-compiles). JAX will still
+    JIT-compile this function when called from JIT-compiled contexts.
     
     Args:
         pvector: JAX array that may contain small negative values
@@ -169,12 +172,15 @@ def matrix_is_dense(M):
     """
     return not hasattr(M, 'to_dense')
 
-@jax.jit
 def normalize_if_needed(v):
     """Normalize probability vector only if sum deviates beyond accumulation error.
     
     This function attempts to renormalize to v to have a sum closer to 1.0.
     If it fails to do so, it returns the original vector.
+    
+    This function is NOT decorated with @jax.jit to avoid nested JIT issues
+    when called from GMRES (which internally JIT-compiles). JAX will still
+    JIT-compile this function when called from JIT-compiled contexts.
          
     Args:
         v: Probability vector (1D JAX array)
@@ -264,7 +270,7 @@ class LazyRightGVMatrix():
     def __matmul__(self, v):
         """Compute M @ v using get_col"""
         def body_fn(i, result):
-            return result.at[i].add(v[i]*self.get_col(i))
+            return jnp.add(result, v[i]*self.get_col(i))
         
         result = jnp.zeros(self.n, dtype=v.dtype)
         return jax.lax.fori_loop(0, self.n, body_fn, result)

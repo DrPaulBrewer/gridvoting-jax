@@ -138,7 +138,7 @@ class MarkovChain:
             if available_mem is not None:
                 n = self.P.shape[0]
                 # Determine element size (float32=4, float64=8)
-                item_size = DTYPE_FLOAT.itemsize
+                item_size = jnp.dtype(DTYPE_FLOAT).itemsize
                 
                 estimated_needed = 0
                 if solver == "full_matrix_inversion":
@@ -167,7 +167,7 @@ class MarkovChain:
         if solver == "full_matrix_inversion":
             self.stationary_distribution = self._solve_full_matrix_inversion(tolerance=tolerance)
         elif solver == "gmres_matrix_inversion":
-            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess)
+            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, force_dense=force_dense)
         elif solver == "power_method":
             self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout, force_dense=force_dense)
         elif solver == "bifurcated_power_method":
@@ -187,7 +187,7 @@ class MarkovChain:
         """Original algebraic solver using direct dense matrix inversion / linear solve."""
         return self.dense_solve_for_unit_eigenvector()
 
-    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, dense=False, initial_guess=None):
+    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, force_dense=True, initial_guess=None):
         """
         Find stationary distribution using GMRES iterative solver.
         Solves (P.T - I)v = 0 subject to sum(v)=1.
@@ -201,11 +201,21 @@ class MarkovChain:
         Args:
             tolerance: Convergence tolerance
             max_iterations: Maximum GMRES iterations
+            force_dense: Ignored - GMRES always uses dense Q matrix
             initial_guess: Optional initial guess for GMRES (useful for grid upscaling)
+        
+        Note:
+            GMRES always uses dense Q matrix because JAX's GMRES implementation
+            uses automatic differentiation internally, which is not compatible
+            with our lazy matrix implementation.
         """
+        if not force_dense:
+            raise NotImplementedError("Lazy mode is not supported for GMRES solver. Use force_dense=True instead")
         n = self.P.shape[0]
-        Q = self._Q_matrix(dense=dense)
-        b = jnp.zeros(n)
+        # Always use dense Q for GMRES (autodiff compatibility)
+        Q = self._Q_matrix(dense=True)
+        assert Q.shape == (n, n)
+        b = jnp.zeros(n, dtype=DTYPE_FLOAT)
         b = b.at[0].set(1.0)
         
         # Prepare initial guess
