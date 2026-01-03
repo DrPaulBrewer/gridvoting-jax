@@ -218,7 +218,7 @@ class LazyLeftGVMatrix():
     def __rmatmul__(self, v):
         """Compute v @ M using get_row"""
         def body_fn(i, result):
-            return result.at[i].set(jnp.dot(v, self.get_row(i)))
+            return jnp.add(result, v[i]*self.get_row(i))
         
         result = jnp.zeros(self.n, dtype=v.dtype)
         return jax.lax.fori_loop(0, self.n, body_fn, result)
@@ -226,12 +226,6 @@ class LazyLeftGVMatrix():
     def __matmul__(self, v):
         """Not supported for LazyLeftGVMatrix (use M.T @ v instead)"""
         return NotImplemented
-
-    def __getitem__(self, i_row):
-        if (type(i_row) is int):
-            return self.get_row(i_row)
-        else:
-            raise TypeError("LazyLeftGVMatrix only supports integer indexing of rows")
 
     def diagonal(self):
         """Compute diagonal of matrix using get_row (memoized)"""
@@ -259,7 +253,7 @@ class LazyRightGVMatrix():
     def __matmul__(self, v):
         """Compute M @ v using get_col"""
         def body_fn(i, result):
-            return result.at[i].set(jnp.dot(self.get_col(i), v))
+            return result.at[i].add(v[i]*self.get_col(i))
         
         result = jnp.zeros(self.n, dtype=v.dtype)
         return jax.lax.fori_loop(0, self.n, body_fn, result)

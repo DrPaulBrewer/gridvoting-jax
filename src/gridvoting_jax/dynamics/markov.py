@@ -7,11 +7,14 @@ from collections import Counter
 
 # Import from core
 from ..core import (
-    LazyLeftGVMatrix,
+   LazyLeftGVMatrix,
+    LazyRightGVMatrix,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
+    DTYPE_FLOAT,
     _move_neg_prob_to_max,
-    normalize_if_needed
+    normalize_if_needed,
+    entropy_in_bits
 )
 
 class MarkovChain:
@@ -44,6 +47,9 @@ class MarkovChain:
 
     def is_dense(self):
         return type(self.P) == jnp.ndarray
+
+    def L1_step_norm(self, x):
+        return jnp.linalg.norm((x @ self.P ) - x, ord=1)
 
     def _Q_matrix(self, dense=False):
         n = self.P.shape[0]
@@ -86,7 +92,7 @@ class MarkovChain:
         # Use extracted constant from core for negative checks
         if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
             unit_eigenvector = _move_neg_prob_to_max(unit_eigenvector)
-            unit_eigenvector = unit_eigenvector @ P
+            unit_eigenvector = unit_eigenvector @ self.P
             min_component = float(unit_eigenvector.min())
         
         if (min_component < 0.0):
@@ -95,7 +101,6 @@ class MarkovChain:
             raise RuntimeError(error_unable_msg+neg_msg)
 
         del Q
-        del P
         del b
 
         self.unit_eigenvector = normalize_if_needed(unit_eigenvector)
@@ -134,7 +139,7 @@ class MarkovChain:
             if available_mem is not None:
                 n = self.P.shape[0]
                 # Determine element size (float32=4, float64=8)
-                item_size = self.P.dtype.itemsize
+                item_size = DTYPE_FLOAT.itemsize
                 
                 estimated_needed = 0
                 if solver == "full_matrix_inversion":
@@ -161,18 +166,18 @@ class MarkovChain:
 
         # Dispatch to solver
         if solver == "full_matrix_inversion":
-            self.stationary_distribution = self._solve_full_matrix_inversion(tolerance)
+            self.stationary_distribution = self._solve_full_matrix_inversion(tolerance=tolerance)
         elif solver == "gmres_matrix_inversion":
-            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance, max_iterations, initial_guess)
+            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess)
         elif solver == "power_method":
-            self.stationary_distribution = self._solve_power_method(tolerance, max_iterations, initial_guess, timeout)
+            self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout)
         elif solver == "bifurcated_power_method":
-            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance, max_iterations, timeout)
+            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance=tolerance, max_iterations=max_iterations, timeout=timeout)
         else:
             raise ValueError(f"Unknown solver: {solver}")
 
         # Verification
-        self.check_norm = self.L1_norm_of_single_step_change(self.stationary_distribution)
+        self.check_norm = self.L1_step_norm(self.stationary_distribution)
         if self.check_norm > tolerance:
             # If iterative solvers failed to converge tightly enough but didn't raise
             warn(f"Stationary distribution check norm {self.check_norm} exceeds tolerance {tolerance}")
@@ -228,7 +233,7 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, *, tolerance, max_iterations, initial_guess=None, force_dense=False, timeout=30.0):
+    def _solve_power_method(self, *, tolerance=1e-5, max_iterations=5000, initial_guess=None, force_dense=False, timeout=30.0):
         """
         Single-path power method with uniform initial guess.
         
@@ -265,22 +270,29 @@ class MarkovChain:
         next_check = check_interval
         
         i = 0
+        diff = 1.0e100
         while i < max_iterations:
             # Evolve until next check using JAX compiled loop
             power_method_batch_end = min(next_check, max_iterations)
             power_method_batch_size = power_method_batch_end - i
-            
-            # Use lax.fori_loop for compiled batched evolution
-            def evolve_step(_, carry):
-                vec, P = carry
-                return (normalize_if_needed(vec @ P), P)
-            v, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_step, (v, P))
-            i = power_method_batch_end
 
+            if type(P) == jnp.ndarray:
+                # Use lax.fori_loop for compiled batched evolution
+                def evolve_step(_, carry):
+                    vec, P = carry
+                    return (normalize_if_needed(vec @ P), P)
+                v, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_step, (v, P))
+            else:
+                # manual loop for lazy matrix 
+                for _ in range(power_method_batch_size):
+                    v = normalize_if_needed(v @ P) 
+            
+            i = power_method_batch_end
             
             # Check convergence
-            diff = jnp.linalg.norm(v@P - v, ord=1)
+            diff = jnp.linalg.norm((v@P) - v, ord=1)
             if diff < tolerance:
+                warn(f"Power method converged in {i} iterations. Check norm: {diff}")
                 return v
             
             # Check timeout
@@ -296,6 +308,7 @@ class MarkovChain:
         # Final check
         if diff >= tolerance:
             warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
+        warn(f"Power method converged in {i} iterations. Check norm: {diff}")
         return v
 
     def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance, max_iterations, timeout=30.0):
@@ -325,8 +338,11 @@ class MarkovChain:
         else:
             P = self.P
         
-        row_entropies = jax.vmap(lambda i: entropy_in_bits(P[i]))(jnp.arange(n))
-
+        is_dense = isinstance(P, jnp.ndarray)
+        row_entropies = jnp.where(is_dense,
+            jax.vmap(entropy_in_bits)(P),
+            jax.vmap(lambda i: entropy_in_bits(P.get_row(i)))(jnp.arange(n))
+)
         # Start 1: Max entropy (most uncertain transition)
         idx_max = jnp.argmax(row_entropies).item()
         v1 = jnp.zeros(n).at[idx_max].set(1.0)
@@ -386,9 +402,7 @@ class MarkovChain:
         metrics = {
             '||F||': self.P.shape[0],
             '(𝝨𝝿)-1':  float(self.stationary_distribution.sum())-1.0, # cast to float to avoid singleton
-            '||𝝿P-𝝿||_L1_norm': self.L1_norm_of_single_step_change(
-                              self.stationary_distribution
-                          )
+            '||𝝿P-𝝿||_L1_norm': self.L1_step_norm(self.stationary_distribution)
         }
         return metrics
 

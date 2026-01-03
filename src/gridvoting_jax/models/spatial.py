@@ -202,24 +202,6 @@ class SpatialVotingModel:
         else:
             return self.model.analyze(solver=solver, **kwargs)
     
-    def analyze_lazy(self, *, solver="auto", force_lazy=False, force_dense=False, **kwargs):
-        """
-        Analyze using lazy matrix construction (delegates to underlying VotingModel).
-        
-        Args:
-            solver: "auto", "gmres", or "power_method"
-            force_lazy: Force lazy construction (useful for large grids)
-            force_dense: Force dense construction
-            **kwargs: Passed to find_unique_stationary_distribution
-        
-        Example:
-            >>> model = gv.bjm_spatial_triangle(g=80, zi=False)
-            >>> model.analyze_lazy(force_lazy=True)  # Avoids GPU OOM
-        """
-        return self.model.analyze_lazy(solver=solver, force_lazy=force_lazy, force_dense=force_dense, **kwargs)
-    
-
-    
     def _create_coarsened_model(self):
         """
         Create a coarsened SpatialVotingModel with 2x grid spacing.

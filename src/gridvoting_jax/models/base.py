@@ -5,10 +5,10 @@ from warnings import warn
 
 # Import from core and dynamics
 from ..core import (
-    LazyLeftGVMatrix
+    LazyLeftGVMatrix,
+    DTYPE_FLOAT
 )
 from ..dynamics import MarkovChain
-from ..dynamics.lazy import FlexMarkovChain
 
 
 class VotingModel:
@@ -198,14 +198,17 @@ class VotingModel:
             1.0/(0.0+self.number_of_feasible_alternatives),
             (1.0/(1.0+number_of_winners))
         )
-        row = jnp.zeros(self.number_of_feasible_alternatives, dtype=DTYPE_FLOAT)
+        row = jnp.where(
+            winner_mask,
+            challenger_value,
+            0.0
+        )
         row = row.at[i].set(status_quo_value)
-        row = row.at[winner_mask].set(challenger_value)
         return row
 
     def transition_matrix(self):
         """Returns the a transition matrix for the model's Markov Chain as a LazyLeftGVMatrix"""
-        return core.LazyLeftGVMatrix(n=self.number_of_feasible_alternatives, get_row=self.transition_matrix_row)
+        return LazyLeftGVMatrix(n=self.number_of_feasible_alternatives, get_row=self.transition_matrix_row)
 
     def summarize_in_context(self,*,grid,valid=None):
         """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""
