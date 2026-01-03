@@ -14,7 +14,8 @@ from ..core import (
     DTYPE_FLOAT,
     _move_neg_prob_to_max,
     normalize_if_needed,
-    entropy_in_bits
+    entropy_in_bits,
+    matrix_is_dense,
 )
 
 class MarkovChain:
@@ -45,15 +46,12 @@ class MarkovChain:
             self.calculate_chain_properties()
         return self
 
-    def is_dense(self):
-        return type(self.P) == jnp.ndarray
-
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1)
 
     def _Q_matrix(self, dense=False):
         n = self.P.shape[0]
-        if (dense) or (self.is_dense()):
+        if (dense) or (matrix_is_dense(self.P)):
             Q = self.dense_P().T - jnp.eye(n)
             Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
         else:

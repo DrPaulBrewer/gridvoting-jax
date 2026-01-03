@@ -158,6 +158,9 @@ def entropy_in_bits(v):
     safe = jnp.where(v>0, v, 1.0)
     return -jnp.sum(safe * jnp.log2(safe))
 
+def matrix_is_dense(M):
+    return type(M) == jnp.ndarray
+
 @jax.jit
 def normalize_if_needed(v):
     """Normalize probability vector only if sum deviates beyond accumulation error.
