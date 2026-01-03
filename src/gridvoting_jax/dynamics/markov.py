@@ -124,7 +124,7 @@ class MarkovChain:
             force_dense: Whether to force dense matrix representation for power method solvers.
         """
         if tolerance is None:
-            tolerance = TOLERANCE
+            tolerance = self.tolerance
             
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
@@ -211,6 +211,8 @@ class MarkovChain:
         """
         if not force_dense:
             raise NotImplementedError("Lazy mode is not supported for GMRES solver. Use force_dense=True instead")
+        if tolerance is None:
+            tolerance = self.tolerance
         n = self.P.shape[0]
         # Always use dense Q for GMRES (autodiff compatibility)
         Q = self._Q_matrix(dense=True)
@@ -242,7 +244,7 @@ class MarkovChain:
         
         return v
 
-    def _solve_power_method(self, *, tolerance=1e-5, max_iterations=5000, initial_guess=None, force_dense=False, timeout=30.0):
+    def _solve_power_method(self, *, tolerance=None, max_iterations=5000, initial_guess=None, force_dense=False, timeout=30.0):
         """
         Single-path power method with uniform initial guess.
         
@@ -260,6 +262,8 @@ class MarkovChain:
             Stationary distribution vector
         """
         import time
+        if tolerance is None:
+            tolerance = self.tolerance
         n = self.P.shape[0]
         if force_dense:
             P = self.dense_P()
@@ -316,11 +320,12 @@ class MarkovChain:
         
         # Final check
         if diff >= tolerance:
-            warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}")
-        warn(f"Power method converged in {i} iterations. Check norm: {diff}")
+            warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}, tolerance:{tolerance}")
+        else:
+            warn(f"Power method converged in {i} iterations. Check norm: {diff}")
         return v
 
-    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance=1e-5, max_iterations=5000, timeout=30.0):
+    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance=None, max_iterations=5000, timeout=30.0):
         """
         Bifurcated (dual-start) power method using entropy-based starting points.
         
@@ -341,6 +346,8 @@ class MarkovChain:
         """
         import time
         n = self.P.shape[0]
+        if tolerance is None:
+            tolerance = self.tolerance
         start_time = time.time()
 
         if force_dense:
@@ -397,12 +404,12 @@ class MarkovChain:
             # Check convergence (paths converge to each other)
             diff = jnp.linalg.norm(v1 - v2, ord=1)
             if diff < tolerance:
-                warn(f"Bifurcated power method converged in {i} iterations. Diff between paths: {diff}")
+                warn(f"Bifurcated power method converged in {i} iterations. Diff between paths: {diff}, tolerance: {tolerance}")
                 return (v1 + v2) / 2.0
             
             # Check timeout
             if (time.time() - start_time) > timeout:
-                warn(f"Bifurcated power method timed out after {timeout}s (iter {i}). Diff between paths: {diff}")
+                warn(f"Bifurcated power method timed out after {timeout}s (iter {i}). Diff between paths: {diff}, tolerance: {tolerance}")
                 return (v1 + v2) / 2.0
             
             # Adaptive: Increase interval
@@ -412,7 +419,7 @@ class MarkovChain:
         
         # Final convergence check
         diff = jnp.linalg.norm(v1 - v2, ord=1)
-        warn(f"Bifurcated power method did not converge in {max_iterations} iterations. Final diff between paths: {diff}")
+        warn(f"Bifurcated power method did not converge in {max_iterations} iterations. Final diff between paths: {diff}, tolerance: {tolerance}")
         return (v1 + v2) / 2.0
 
     def diagnostic_metrics(self):

@@ -51,12 +51,13 @@ import chex
 # This allows JAX to start in float64 mode and sets tighter tolerances
 if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64") in ["1", "True", "true"]:
     jax.config.update("jax_enable_x64", True)
-    TOLERANCE = 1e-10
+    TOLERANCE = 1e-8
     DTYPE_FLOAT = jnp.float64
-    warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, TOLERANCE set to 1e-10")
+    warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, default solver TOLERANCE set to 1e-8")
 else:
-    TOLERANCE = 5e-5
+    TOLERANCE = 1e-4
     DTYPE_FLOAT = jnp.float32
+    warn("GV_ENABLE_FLOAT64=0: JAX float32 enabled, default solver TOLERANCE set to 1e-4")
 
 # Floating point epsilon
 EPSILON = jnp.finfo(DTYPE_FLOAT).eps
