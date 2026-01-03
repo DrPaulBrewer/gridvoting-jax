@@ -159,7 +159,15 @@ def entropy_in_bits(v):
     return -jnp.sum(safe * jnp.log2(safe))
 
 def matrix_is_dense(M):
-    return type(M) == jnp.ndarray
+    """Check if matrix is dense (JAX array) vs lazy (LazyLeftGVMatrix/LazyRightGVMatrix).
+    
+    JAX arrays don't have get_row/get_col methods, while lazy matrices do.
+    We can't use type(M) == jnp.ndarray because JAX arrays are ArrayImpl instances.
+
+    LazyLeftGVMatrix and LazyRightGVMatrix have a to_dense method, 
+    and if a matrix has a to_dense method, it is not dense.
+    """
+    return not hasattr(M, 'to_dense')
 
 @jax.jit
 def normalize_if_needed(v):

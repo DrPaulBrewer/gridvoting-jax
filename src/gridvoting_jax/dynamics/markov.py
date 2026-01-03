@@ -105,7 +105,7 @@ class MarkovChain:
         return self.unit_eigenvector
 
 
-    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=30.0, **kwargs):
+    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=30.0, force_dense=False, **kwargs):
         """
         Finds the stationary distribution for a Markov Chain.
         
@@ -121,6 +121,7 @@ class MarkovChain:
             initial_guess: Optional starting distribution for "power_method".
             max_iterations: Maximum iterations for iterative solvers.
             timeout: Maximum time in seconds for iterative solvers (default: 30.0).
+            force_dense: Whether to force dense matrix representation for power method solvers.
         """
         if tolerance is None:
             tolerance = TOLERANCE
@@ -168,9 +169,9 @@ class MarkovChain:
         elif solver == "gmres_matrix_inversion":
             self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess)
         elif solver == "power_method":
-            self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout)
+            self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout, force_dense=force_dense)
         elif solver == "bifurcated_power_method":
-            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance=tolerance, max_iterations=max_iterations, timeout=timeout)
+            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance=tolerance, max_iterations=max_iterations, timeout=timeout, force_dense=force_dense)
         else:
             raise ValueError(f"Unknown solver: {solver}")
 
@@ -274,7 +275,7 @@ class MarkovChain:
             power_method_batch_end = min(next_check, max_iterations)
             power_method_batch_size = power_method_batch_end - i
 
-            if type(P) == jnp.ndarray:
+            if matrix_is_dense(P):
                 # Use lax.fori_loop for compiled batched evolution
                 def evolve_step(_, carry):
                     vec, P = carry
@@ -309,7 +310,7 @@ class MarkovChain:
         warn(f"Power method converged in {i} iterations. Check norm: {diff}")
         return v
 
-    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance, max_iterations, timeout=30.0):
+    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance=1e-5, max_iterations=5000, timeout=30.0):
         """
         Bifurcated (dual-start) power method using entropy-based starting points.
         
@@ -320,6 +321,7 @@ class MarkovChain:
         This was the previous default power method implementation.
         
         Args:
+            force_dense: Whether to use dense matrix representation
             tolerance: Convergence tolerance
             max_iterations: Maximum iterations
             timeout: Max execution time in seconds
@@ -336,11 +338,14 @@ class MarkovChain:
         else:
             P = self.P
         
-        is_dense = isinstance(P, jnp.ndarray)
-        row_entropies = jnp.where(is_dense,
-            jax.vmap(entropy_in_bits)(P),
-            jax.vmap(lambda i: entropy_in_bits(P.get_row(i)))(jnp.arange(n))
-)
+        is_dense = matrix_is_dense(P)
+        
+        # Calculate row entropies
+        if is_dense:
+            row_entropies = jax.vmap(entropy_in_bits)(P)
+        else:
+            row_entropies = jax.vmap(lambda i: entropy_in_bits(P.get_row(i)))(jnp.arange(n))
+        
         # Start 1: Max entropy (most uncertain transition)
         idx_max = jnp.argmax(row_entropies).item()
         v1 = jnp.zeros(n).at[idx_max].set(1.0)
@@ -356,28 +361,33 @@ class MarkovChain:
         # Evolve both paths
         i = 0
         while i < max_iterations:
-            # Stack both vectors for batched evolution
-            V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
-            
             # Evolve batch until next check
             power_method_batch_end = min(next_check, max_iterations)
             power_method_batch_size = power_method_batch_end - i
             
-            # Use lax.fori_loop for compiled batched evolution
-            def evolve_batch_step(_, carry):
-                V_state, P = carry
-                V_new = V_state @ P
-                V_new = jax.vmap(normalize_if_needed)(V_new)
-                return (V_new, P)
-            V, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_batch_step, (V, P))
-            i = power_method_batch_end
+            if is_dense:
+                # Dense: Use lax.fori_loop for compiled batched evolution
+                V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
+                
+                def evolve_batch_step(_, carry):
+                    V_state, P = carry
+                    V_new = V_state @ P
+                    V_new = jax.vmap(normalize_if_needed)(V_new)
+                    return (V_new, P)
+                V, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_batch_step, (V, P))
+                v1, v2 = V[0], V[1]
+            else:
+                # Lazy: Manual loop for lazy matrix
+                for _ in range(power_method_batch_size):
+                    v1 = normalize_if_needed(v1 @ P)
+                    v2 = normalize_if_needed(v2 @ P)
             
-            # Unpack (already normalized per iteration)
-            v1, v2 = V[0], V[1]
+            i = power_method_batch_end
             
             # Check convergence (paths converge to each other)
             diff = jnp.linalg.norm(v1 - v2, ord=1)
             if diff < tolerance:
+                warn(f"Bifurcated power method converged in {i} iterations. Diff between paths: {diff}")
                 return (v1 + v2) / 2.0
             
             # Check timeout
