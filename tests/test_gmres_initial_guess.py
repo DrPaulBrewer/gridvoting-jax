@@ -77,60 +77,6 @@ def test_gmres_respects_initial_guess():
     )
 
 
-def test_lazy_gmres_initial_guess():
-    """
-    Test 4: Lazy Solver Direct Instrumentation
-    
-    Verify that the lazy GMRES path actually passes initial_guess to GMRES.
-    Uses direct instrumentation (monkey-patching) to verify the code path.
-    
-    Note: We use instrumentation rather than output differentiation because
-    GMRES converges to the same solution regardless of initial_guess (it only
-    affects convergence speed, not the final result).
-    """
-    captured_x0 = {'value': None}
-    
-    # Store original gmres function
-    original_gmres = jax.scipy.sparse.linalg.gmres
-    
-    def patched_gmres(A, b, x0=None, **kwargs):
-        """Capture x0 argument and call original."""
-        captured_x0['value'] = x0
-        return original_gmres(A, b, x0=x0, **kwargs)
-    
-    # Monkey-patch gmres
-    with patch('jax.scipy.sparse.linalg.gmres', side_effect=patched_gmres):
-        # Run lazy GMRES with custom initial_guess
-        model = gv.bjm_spatial_triangle(g=20, zi=True)
-        n = model.model.number_of_feasible_alternatives
-        custom_guess = jnp.zeros(n).at[0].set(1.0)
-        
-        model.model.analyze_lazy(
-            solver="gmres",
-            force_lazy=True,
-            initial_guess=custom_guess,
-            max_iterations=2000
-        )
-    
-    # Verify x0 was captured and is not None
-    assert captured_x0['value'] is not None, (
-        "Lazy GMRES was called with x0=None, initial_guess was not propagated"
-    )
-    
-    # Verify x0 matches our custom guess (concentrated on first point)
-    x0 = captured_x0['value']
-    
-    # Check that x0 is concentrated (not uniform)
-    n = len(x0)
-    uniform = jnp.ones(n) / n
-    l1_from_uniform = float(jnp.linalg.norm(x0 - uniform, ord=1))
-    
-    print(f"Lazy GMRES initial_guess L1 distance from uniform: {l1_from_uniform:.2e}")
-    
-    assert l1_from_uniform > 0.1, (
-        f"Lazy GMRES initial_guess is too close to uniform (L1={l1_from_uniform:.2e}), "
-        "suggesting custom initial_guess was not propagated correctly"
-    )
 
 
 if __name__ == "__main__":

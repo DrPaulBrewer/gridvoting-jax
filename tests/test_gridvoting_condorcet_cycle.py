@@ -24,7 +24,7 @@ def test_condorcet(zi, correct_P):
     assert condorcet_model.analyzed
     mc = condorcet_model.MarkovChain
     chex.assert_trees_all_close(
-        mc.P,
+        mc.P.to_dense(),
         jnp.array(correct_P),
         atol=1e-6,
         rtol=0

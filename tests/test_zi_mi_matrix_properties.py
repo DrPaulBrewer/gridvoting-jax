@@ -10,7 +10,6 @@ import jax
 import jax.numpy as jnp
 import gridvoting_jax as gv
 from gridvoting_jax.core import EPSILON
-from gridvoting_jax.dynamics.lazy.base import LazyTransitionMatrix
 
 pytestmark = pytest.mark.essential
 
@@ -22,8 +21,8 @@ def test_mi_diagonal_is_positive():
     so prob(i→i) = 1/set_size > 0.
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
-    P_mi = model_mi.model._get_transition_matrix()
-    diagonal = jnp.diag(P_mi)
+    P_mi = model_mi.model.transition_matrix()
+    diagonal = P_mi.diagonal()
     
     assert jnp.all(diagonal > 0.0), "MI diagonal must be positive (status quo in selection set)"
 
@@ -34,8 +33,8 @@ def test_zi_diagonal_is_positive():
     ZI always has non-zero probability of proposing status quo against itself.
     """
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_zi = model_zi.model._get_transition_matrix()
-    diagonal = jnp.diag(P_zi)
+    P_zi = model_zi.model.transition_matrix()
+    diagonal = P_zi.diagonal()
     
     assert jnp.all(diagonal > 0.0), "ZI diagonal must be positive (allows self-transitions)"
 
@@ -48,13 +47,14 @@ def test_zi_diagonal_greater_than_mi():
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_mi = model_mi.model._get_transition_matrix()
-    P_zi = model_zi.model._get_transition_matrix()
-    
-    diagonal_mi = jnp.diag(P_mi)
-    diagonal_zi = jnp.diag(P_zi)
+    P_mi = model_mi.model.transition_matrix()
+    P_zi = model_zi.model.transition_matrix()
+
+    diagonal_mi = P_mi.diagonal()
+    diagonal_zi = P_zi.diagonal()
     
     assert jnp.all(diagonal_zi >= diagonal_mi), "ZI diagonal must be >= MI diagonal at all positions"
+
 def test_zi_mi_offdiagonal_relationship():
     """Validate that non-diagonal elements satisfy MI >= ZI relationship.
     
@@ -65,8 +65,8 @@ def test_zi_mi_offdiagonal_relationship():
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_mi = model_mi.model._get_transition_matrix()
-    P_zi = model_zi.model._get_transition_matrix()
+    P_mi = model_mi.model.transition_matrix().to_dense()
+    P_zi = model_zi.model.transition_matrix().to_dense()
     
     # Create off-diagonal matrices
     P_mi_offdiag = P_mi - jnp.diag(jnp.diag(P_mi))
@@ -93,23 +93,21 @@ def test_zi_mi_offdiagonal_relationship():
 def _lazy_check_diagonal(label, lazy_P):
     # Sample 200 diagonal positions uniformly
     n = lazy_P.shape[0]
+    diag = lazy_P.diagonal()
     sample_indices = jnp.linspace(0, n-1, 200, dtype=int)
     
     for i in sample_indices:
         i = int(i)
         e_i = jnp.zeros(n)
         e_i = e_i.at[i].set(1.0)
-        
-        # matvec: P @ e_i gives column i
-        col_i = lazy_P.matvec(e_i)
-        assert col_i[i] > 0.0, f"Lazy {label} matvec diagonal[{i}] must be positive"
-        
+                
         # rmatvec: e_i^T @ P gives row i  
-        row_i = lazy_P.rmatvec(e_i)
+        row_i = e_i @ lazy_P
+
         assert row_i[i] > 0.0, f"Lazy {label} rmatvec diagonal[{i}] must be positive"
 
         # matvec and rmatvec values for [i,i] should match
-        diff_in_eps = round(abs(col_i[i] -row_i[i])/EPSILON)
+        diff_in_eps = round(abs(diag[i] -row_i[i])/EPSILON)
         assert diff_in_eps<= 2, f"Lazy {label} matvec and rmatvec values for [{i},{i}] should match (diff_in_eps={diff_in_eps})"
 
 
@@ -121,15 +119,7 @@ def test_lazy_mi_diagonal_is_positive():
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
     
-    # Create lazy representation
-    lazy_P = LazyTransitionMatrix(
-        utility_functions=model_mi.model.utility_functions,
-        majority=model_mi.majority,
-        zi=False,
-        number_of_feasible_alternatives=model_mi.model.number_of_feasible_alternatives
-    )
-
-    _lazy_check_diagonal("MI", lazy_P)
+    _lazy_check_diagonal("MI", model_mi.model.transition_matrix())
     
     
 
@@ -140,16 +130,79 @@ def test_lazy_zi_diagonal_is_positive():
     """
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
     
-    # Create lazy representation
-    lazy_P = LazyTransitionMatrix(
-        utility_functions=model_zi.model.utility_functions,
-        majority=model_zi.majority,
-        zi=True,
-        number_of_feasible_alternatives=model_zi.model.number_of_feasible_alternatives
-    )
-    
-    _lazy_check_diagonal("ZI", lazy_P)
+    _lazy_check_diagonal("ZI", model_zi.model.transition_matrix())
+
+
+def _finalize_transition_matrix(vm: gv.VotingModel, cV):
+    """Shared logic to convert winner matrix cV to transition matrix cP"""
+    nfa = vm.number_of_feasible_alternatives
+    zi = vm.zi
+    cV_sum_of_row = cV.sum(axis=1)  # number of winning alternatives for each SQ
         
+    # set up the ZI and MI transition matrices
+    if zi:
+        # ZI: Uniform random over ALL alternatives.
+        # If ch beats sq: move to ch (prob 1/N)
+        # If ch loses to sq: stay at sq
+        # Plus picked sq itself: stay at sq
+        # So prob(move i->j) = 1/N if j beats i
+        # prob(stay i) = (1/N) * (count(j that lose to i) + 1)
+        #              = (1/N) * ((N - count(win) - 1) + 1)
+        #              = (N - row_sum)/N
+        # logic in code: cV + diag(N - row_sum) / N
+        cP = jnp.divide(
+            jnp.add(cV, jnp.diag(jnp.subtract(nfa, cV_sum_of_row))), 
+            nfa
+            )
+    else:
+        # MI: Uniform random over Winning Set(i) U {i}
+        # Size of set = row_sum + 1
+        # Prob(move i->j) = 1/(row_sum+1) if j beats i
+        # Prob(stay i) = 1/(row_sum+1)
+        # logic in code: (cV + I) / (1 + row_sum)
+        cP = jnp.divide(
+            jnp.add(cV, jnp.eye(nfa)), 
+            (1 + cV_sum_of_row)[:, jnp.newaxis]
+            )
+    return cP
+
+def _get_transition_matrix_vectorized(vm: gv.VotingModel):
+    """adapted from v0.9.1:  Original fully vectorized implementation. O(V * N^2) memory."""
+    utility_functions = vm.utility_functions
+    majority = vm.majority
+    cU = jnp.asarray(utility_functions) 
+    
+    # Vectorized computation: compare all alternatives at once
+    # cU shape: (n_voters, nfa)
+    # cU[:, :, jnp.newaxis] shape: (n_voters, nfa, 1) to broadcast vs challengers (rows)
+    # cU[:, jnp.newaxis, :] shape: (n_voters, 1, nfa) to broadcast vs status quo (cols) 
+    # Note: Previous implementation comment had axes swapped in explanation but logic was correct for outcome.
+    # Let's align with the standard logic:
+    # P[i, j] is prob of moving i -> j.
+    # i is Status Quo (SQ), j is Challenger (CH).
+    # We need votes for CH against SQ.
+    # Utility for SQ: cU[:, i] (column i)
+    # Utility for CH: cU[:, j] (column j)
+    # pref = u(CH) > u(SQ)
+    
+    # In the original code:
+    # preferences = jnp.greater(cU[:, jnp.newaxis, :], cU[:, :, jnp.newaxis])
+    # LHS: cU[:, 1, N] -> varying last dim is COLUMNS (CH)
+    # RHS: cU[:, N, 1] -> varying middle dim is ROWS (SQ)
+    # Result: (V, SQ, CH).  [v, i, j] is "does v prefer j over i?"
+    # Correct.
+    
+    preferences = jnp.greater(cU[:, jnp.newaxis, :], cU[:, :, jnp.newaxis])
+    
+    # Sum votes across voters: shape (nfa, nfa) -> (SQ, CH)
+    total_votes = preferences.astype("int32").sum(axis=0)
+    
+    # Determine winners: 1 if challenger gets majority, 0 otherwise
+    # cV[i, j] = 1 if j beats i
+    cV = jnp.greater_equal(total_votes, majority)
+    
+    return _finalize_transition_matrix(vm,cV)
+
 
 def test_lazy_matches_dense():
     """Validate lazy representation matches dense for both ZI and MI.
@@ -158,73 +211,40 @@ def test_lazy_matches_dense():
     """
     # Test MI
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
-    P_mi_dense = model_mi.model._get_transition_matrix()
+    P_mi_dense = _get_transition_matrix_vectorized(model_mi.model)
     
-    lazy_P_mi = LazyTransitionMatrix(
-        utility_functions=model_mi.model.utility_functions,
-        majority=model_mi.majority,
-        zi=False,
-        number_of_feasible_alternatives=model_mi.model.number_of_feasible_alternatives
-    )
+    lazy_P_mi = model_mi.model.transition_matrix()
     
     # Test ZI
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_zi_dense = model_zi.model._get_transition_matrix()
+    P_zi_dense = _get_transition_matrix_vectorized(model_zi.model)
     
-    lazy_P_zi = LazyTransitionMatrix(
-        utility_functions=model_zi.model.utility_functions,
-        majority=model_zi.majority,
-        zi=True,
-        number_of_feasible_alternatives=model_zi.model.number_of_feasible_alternatives
-    )
+    lazy_P_zi = model_zi.model.transition_matrix()
     
     # Test with random vector
     n = P_mi_dense.shape[0]
     rng = jax.random.PRNGKey(42)
     v = jax.random.normal(rng, (n,))
     
-    # MI: lazy matvec matches dense
-    result_dense_mi = P_mi_dense @ v
-    result_lazy_matvec_mi = lazy_P_mi.matvec(v)
-    assert jnp.allclose(result_dense_mi, result_lazy_matvec_mi, atol=1e-6, rtol=1e-4), \
-        "Lazy MI matvec must match dense"
+    # MI: lazy evolution matches dense
+    result_dense_evolution_mi = v@P_mi_dense
+    result_lazy_evolution_mi = v@lazy_P_mi
+    assert jnp.allclose(result_dense_evolution_mi, result_lazy_evolution_mi, atol=1e-6, rtol=1e-4), \
+        "Lazy MI evolution must match dense"
     
-    # MI: lazy rmatvec matches dense
-    result_dense_rmatvec_mi = P_mi_dense.T @ v
-    result_lazy_rmatvec_mi = lazy_P_mi.rmatvec(v)
-    assert jnp.allclose(result_dense_rmatvec_mi, result_lazy_rmatvec_mi, atol=1e-6, rtol=1e-4), \
-        "Lazy MI rmatvec must match dense"
+    # ZI: lazy evolution matches dense
+    result_dense_evolution_zi = v@P_zi_dense
+    result_lazy_evolution_zi = v@lazy_P_zi
+    assert jnp.allclose(result_dense_evolution_zi, result_lazy_evolution_zi, atol=1e-6, rtol=1e-4), \
+        "Lazy ZI evolution must match dense"
     
-    # ZI: lazy matvec matches dense
-    result_dense_zi = P_zi_dense @ v
-    result_lazy_matvec_zi = lazy_P_zi.matvec(v)
-    assert jnp.allclose(result_dense_zi, result_lazy_matvec_zi, atol=1e-6, rtol=1e-4), \
-        "Lazy ZI matvec must match dense"
-    
-    # ZI: lazy rmatvec matches dense
-    result_dense_rmatvec_zi = P_zi_dense.T @ v
-    result_lazy_rmatvec_zi = lazy_P_zi.rmatvec(v)
-    assert jnp.allclose(result_dense_rmatvec_zi, result_lazy_rmatvec_zi, atol=1e-6, rtol=1e-4), \
-        "Lazy ZI rmatvec must match dense"
-    
-    # Direct comparison: lazy MI vs lazy ZI (off-diagonal relationship)
-    # Remove diagonal contributions
-    P_mi_offdiag = P_mi_dense - jnp.diag(jnp.diag(P_mi_dense))
-    P_zi_offdiag = P_zi_dense - jnp.diag(jnp.diag(P_zi_dense))
-    
-    # Compute off-diagonal contributions to matvec
-    result_mi_offdiag = P_mi_offdiag @ v
-    result_zi_offdiag = P_zi_offdiag @ v
-    
-    # Lazy versions (subtract diagonal contribution)
-    result_lazy_mi_offdiag = result_lazy_matvec_mi - jnp.diag(P_mi_dense) * v
-    result_lazy_zi_offdiag = result_lazy_matvec_zi - jnp.diag(P_zi_dense) * v
-    
-    # Verify lazy off-diagonal matches dense off-diagonal
-    assert jnp.allclose(result_lazy_mi_offdiag, result_mi_offdiag, atol=1e-6, rtol=1e-4), \
-        "Lazy MI off-diagonal must match dense"
-    assert jnp.allclose(result_lazy_zi_offdiag, result_zi_offdiag, atol=1e-6, rtol=1e-4), \
-        "Lazy ZI off-diagonal must match dense"
+    # test dense vs densified lazy MI
+    assert jnp.allclose(P_mi_dense, lazy_P_mi.to_dense(), atol=1e-6, rtol=1e-4), \
+        "Lazy MI must match dense"
+
+    # test dense vs densified lazy ZI
+    assert jnp.allclose(P_zi_dense, lazy_P_zi.to_dense(), atol=1e-6, rtol=1e-4), \
+        "Lazy ZI must match dense"
 
 
 def test_row_sums_stochastic():
@@ -233,10 +253,11 @@ def test_row_sums_stochastic():
     Expected error scales with number of alternatives due to accumulation.
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
-    P_mi = model_mi.model._get_transition_matrix()
+    P_mi = model_mi.model.transition_matrix()
     
     n = P_mi.shape[0]
-    row_sums = jnp.sum(P_mi, axis=1)
+    ones = jnp.ones(n)
+    row_sums = P_mi.to_dense() @ ones
     
     # Expected error from floating point arithmetic
     # Error ~ n * eps where we're summing n terms of ~1/n magnitude
@@ -249,8 +270,8 @@ def test_row_sums_stochastic():
     
     # Also test for ZI
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_zi = model_zi.model._get_transition_matrix()
-    row_sums_zi = jnp.sum(P_zi, axis=1)
+    P_zi = model_zi.model.transition_matrix()
+    row_sums_zi = P_zi.to_dense() @ ones
     assert jnp.allclose(row_sums_zi, 1.0, atol=expected_error * 10), \
         f"ZI row sums deviate from 1.0 beyond expected floating-point error"
 
@@ -262,8 +283,8 @@ def test_probability_bounds():
     """
     model_mi = gv.bjm_spatial_triangle(g=20, zi=False)
     model_zi = gv.bjm_spatial_triangle(g=20, zi=True)
-    P_mi = model_mi.model._get_transition_matrix()
-    P_zi = model_zi.model._get_transition_matrix()
+    P_mi = model_mi.model.transition_matrix().to_dense()
+    P_zi = model_zi.model.transition_matrix().to_dense()
     
     # Test MI
     assert jnp.all(P_mi >= 0.0), "All MI elements must be >= 0"
@@ -279,9 +300,9 @@ if __name__ == "__main__":
     test_mi_diagonal_is_positive()
     print("✓ Test 1: MI diagonal is positive")
     test_zi_diagonal_is_positive()
+    print("✓ Test 2: ZI diagonal is positive")
     test_zi_diagonal_greater_than_mi()
     print("✓ Test 3: ZI diagonal >= MI diagonal")
-    print("✓ Test 2: ZI diagonal is positive")
     test_zi_mi_offdiagonal_relationship()
     print("✓ Test 4: ZI/MI off-diagonal relationship (MI >= ZI)")
     test_lazy_mi_diagonal_is_positive()

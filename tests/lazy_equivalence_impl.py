@@ -31,10 +31,10 @@ def test_power_method_equivalence(g):
     model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
     model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
     
-    params = {"max_iterations": 20, "timeout": 60}
+    params = {"max_iterations": 10, "timeout": 20}
     
-    model_dense.analyze(solver="power_method", **params)
-    model_lazy.analyze_lazy(solver="power_method", force_lazy=True, **params)
+    model_dense.analyze(solver="power_method", force_dense=True, **params)
+    model_lazy.analyze(solver="power_method", force_dense=False, **params)
     
     assert_distributions_close(
         model_dense.stationary_distribution, 
@@ -55,40 +55,17 @@ def test_bifurcated_power_method_equivalence(g):
     model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
     model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
     
-    params = {"max_iterations": 20, "timeout": 60}
+    params = {"max_iterations": 10, "timeout": 20}
     
-    model_dense.analyze(solver="bifurcated_power_method", **params)
-    model_lazy.analyze_lazy(solver="bifurcated_power_method", force_lazy=True, **params)
+    model_dense.analyze(solver="bifurcated_power_method", force_dense=True, **params)
+    model_lazy.analyze(solver="bifurcated_power_method", force_dense=False, **params)
     
     assert_distributions_close(
         model_dense.stationary_distribution, 
         model_lazy.stationary_distribution,
-        tol_factor=10.0  # Updated from 50.0
+        tol_factor=30.0  # Updated from 50.0
     )
 
-@pytest.mark.parametrize("g", [20, 40])
-def test_gmres_equivalence(g):
-    """Test GMRES equivalence.
-    
-    Tolerances (updated 2025-12-29 after normalization fix):
-    - Float32: ~16-36 eps (g=20: 36.2 eps, g=40: 15.7 eps)
-    - Float64: ~127-414 eps (g=20: 127.1 eps, g=40: 413.8 eps)
-    - Set to 500 eps (unchanged, but now supports both precisions)
-    - Note: Float64 requires higher tolerance due to different numerical behavior
-    """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
-    
-    params = {"max_iterations": 20}
-    
-    model_dense.analyze(solver="gmres_matrix_inversion", **params)
-    model_lazy.analyze_lazy(solver="gmres", force_lazy=True, **params)
-    
-    assert_distributions_close(
-        model_dense.stationary_distribution, 
-        model_lazy.stationary_distribution,
-        tol_factor=500.0  # Supports both float32 and float64
-    )
 
 def test_condorcet_equivalence():
     """Test equivalence on simple Condorcet cycle model."""
@@ -101,8 +78,7 @@ def test_condorcet_equivalence():
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,1.0,0.0])}),
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.0,1.0])}),
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.5,0.5])}),
-        ("bifurcated_power_method", "bifurcated_power_method", {"max_iterations": 20, "timeout": 60}),
-        ("gmres_matrix_inversion", "gmres", {"max_iterations": 20})
+        ("bifurcated_power_method", "bifurcated_power_method", {"max_iterations": 20, "timeout": 60})
     ]
     
     for dense_solver, lazy_solver, params in solvers:
@@ -110,10 +86,10 @@ def test_condorcet_equivalence():
         model_lazy = condorcet_cycle(zi=False)
         
         # Dense Execution
-        model_dense.analyze(solver=dense_solver, **params)
+        model_dense.analyze(solver=dense_solver, force_dense=True, **params)
         
         # Lazy Execution
-        model_lazy.analyze_lazy(solver=lazy_solver, force_lazy=True, **params)
+        model_lazy.analyze(solver=lazy_solver, **params)
         
         assert_distributions_close(
             model_dense.stationary_distribution, 

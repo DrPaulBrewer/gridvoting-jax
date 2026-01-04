@@ -198,11 +198,7 @@ class VotingModel:
             1.0/(0.0+self.number_of_feasible_alternatives),
             (1.0/(1.0+number_of_winners))
         )
-        row = jnp.where(
-            winner_mask,
-            challenger_value,
-            0.0
-        )
+        row = jnp.multiply(challenger_value, winner_mask)
         row = row.at[i].set(status_quo_value)
         return row
 
