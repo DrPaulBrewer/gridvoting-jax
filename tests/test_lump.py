@@ -190,9 +190,9 @@ def test_unlump_invalid_size():
         unlump(lumped_pi, partition)
 
 
-def test_condorcet_cycle_symmetry_mi():
+def test_condorcet_cycle_symmetry_mi(condorcet_mi):
     """Test CondorcetCycle MI has cyclic symmetry."""
-    model = condorcet_cycle(zi=False)
+    model = condorcet_mi
     model.analyze()  # This creates MarkovChain
     mc = model.MarkovChain
     
@@ -207,9 +207,9 @@ def test_condorcet_cycle_symmetry_mi():
     assert is_lumpable(mc, partition_full)
 
 
-def test_condorcet_cycle_symmetry_zi():
+def test_condorcet_cycle_symmetry_zi(condorcet_zi):
     """Test CondorcetCycle ZI has symmetry."""
-    model = condorcet_cycle(zi=True)
+    model = condorcet_zi
     model.analyze()  # This creates MarkovChain
     mc = model.MarkovChain
     

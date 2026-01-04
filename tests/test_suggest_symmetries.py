@@ -54,9 +54,10 @@ def test_suggest_symmetries_square_rotation():
                 found_90 = True
     assert found_90
 
-def test_bjm_spatial_triangle_symmetry():
+def test_bjm_spatial_triangle_symmetry(bmj_g20_mi):
+    """Test symmetry detection for BMJ spatial triangle."""
     # BJM points: (-15, -9), (0, 17), (15, -9)
-    model = gv.bjm_spatial_triangle(g=20)
+    model = bmj_g20_mi
     points = model.voter_ideal_points
     syms = gv.suggest_symmetries(points)
     

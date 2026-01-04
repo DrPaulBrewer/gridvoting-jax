@@ -27,7 +27,7 @@ def force_float32():
     jax.config.update('jax_enable_x64', original_value)
 
 
-def test_gmres_respects_initial_guess():
+def test_gmres_respects_initial_guess(bmj_g20_zi):
     """
     Test 1: Output Differentiation
     
@@ -37,7 +37,7 @@ def test_gmres_respects_initial_guess():
     Uses BJM spatial triangle (g=20, zi=True) as canonical example.
     """
     # Create model
-    model = gv.bjm_spatial_triangle(g=20, zi=True)
+    model = bmj_g20_zi
     
     # Get uniform initial guess
     n = model.model.number_of_feasible_alternatives
@@ -47,7 +47,7 @@ def test_gmres_respects_initial_guess():
     concentrated_guess = jnp.zeros(n).at[0].set(1.0)
     
     # Run GMRES with uniform initial guess
-    model_uniform = gv.bjm_spatial_triangle(g=20, zi=True)
+    model_uniform = bmj_g20_zi
     model_uniform.model.analyze(
         solver="gmres_matrix_inversion",
         initial_guess=uniform_guess,
@@ -56,7 +56,7 @@ def test_gmres_respects_initial_guess():
     dist_uniform = model_uniform.stationary_distribution
     
     # Run GMRES with concentrated initial guess
-    model_concentrated = gv.bjm_spatial_triangle(g=20, zi=True)
+    model_concentrated = bmj_g20_zi
     model_concentrated.model.analyze(
         solver="gmres_matrix_inversion",
         initial_guess=concentrated_guess,

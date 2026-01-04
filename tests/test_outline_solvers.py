@@ -66,9 +66,9 @@ class TestOutlineSolvers:
         "outline_and_power",
         "outline_and_gmres"
     ])
-    def test_solver_completes(self, solver):
+    def test_solver_completes(self, solver, bmj_g20_mi):
         """Test that each solver completes successfully."""
-        model = gv.bjm_spatial_triangle(g=20, zi=False)
+        model = bmj_g20_mi
         model.analyze(solver=solver, tolerance=1e-6, max_iterations=5000)
         
         assert model.analyzed, f"{solver} did not mark model as analyzed"
@@ -76,18 +76,18 @@ class TestOutlineSolvers:
         assert abs(model.stationary_distribution.sum() - 1.0) < 1e-4, \
             f"{solver} distribution doesn't sum to 1.0"
     
-    def test_outline_and_fill_no_refinement(self):
+    def test_outline_and_fill_no_refinement(self, bmj_g20_mi):
         """Test that outline_and_fill returns raw interpolated solution."""
-        model = gv.bjm_spatial_triangle(g=20, zi=False)
+        model = bmj_g20_mi
         model.analyze(solver="outline_and_fill")
         
         # Should complete quickly (no refinement)
         assert model.analyzed
         assert model.stationary_distribution.sum() > 0.99
     
-    def test_interpolation_matrix_parameter(self):
+    def test_interpolation_matrix_parameter(self, bmj_g20_mi):
         """Test that pre-computed interpolation matrix can be passed."""
-        model = gv.bjm_spatial_triangle(g=20, zi=False)
+        model = bmj_g20_mi
         
         # Pre-compute matrix
         coarse_grid = Grid(

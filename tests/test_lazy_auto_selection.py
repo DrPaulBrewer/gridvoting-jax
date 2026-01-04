@@ -22,15 +22,18 @@ def test_auto_selection_mechanism():
     model_small.analyze_lazy(solver="auto")
     assert model_small.analyzed
     
-    # Medium grid - should work with auto
-    model_medium = gv.bjm_spatial_triangle(g=20, zi=False)
+
+
+def test_auto_selection_medium(bmj_g20_mi):
+    """Test auto-selection works for medium grid."""
+    model_medium = bmj_g20_mi
     model_medium.analyze_lazy(solver="auto")
     assert model_medium.analyzed
 
 
-def test_force_lazy_small_grid():
+def test_force_lazy_small_grid(bmj_g10_mi):
     """Test that force_lazy works even on small grids."""
-    model = gv.bjm_spatial_triangle(g=10, zi=False)
+    model = bmj_g10_mi
     model.analyze_lazy(force_lazy=True, solver="gmres")
     
     assert model.analyzed
@@ -78,7 +81,7 @@ def test_lazy_vs_dense_memory_usage():
     model_dense.analyze(solver="full_matrix_inversion")
     
     # Lazy on same grid
-    model_lazy = gv.bjm_spatial_triangle(g=20, zi=False)
+    model_lazy = bmj_g20_mi
     model_lazy.analyze_lazy(force_lazy=True, solver="gmres")
     
     # Both should work

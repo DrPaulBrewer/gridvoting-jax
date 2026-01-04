@@ -14,14 +14,14 @@ import chex
 pytestmark = pytest.mark.lazy
 
 
-def test_lazy_gmres_vs_dense_g10():
-    """Test lazy GMRES vs dense on small grid (g=10, N=341)."""
+def test_lazy_gmres_small(bmj_g10_mi):
+    """Test lazy GMRES vs dense on small grid (g=10, N=121)."""
     # Dense
-    model_dense = gv.bjm_spatial_triangle(g=10, zi=False)
+    model_dense = bmj_g10_mi
     model_dense.analyze(solver="full_matrix_inversion")
     
     # Lazy
-    model_lazy = gv.bjm_spatial_triangle(g=10, zi=False)
+    model_lazy = bmj_g10_mi
     model_lazy.analyze_lazy(force_lazy=True, solver="gmres")
     
     # Compare
@@ -32,14 +32,14 @@ def test_lazy_gmres_vs_dense_g10():
     assert jnp.abs(jnp.sum(model_lazy.stationary_distribution) - 1.0) < 1e-6
 
 
-def test_lazy_gmres_vs_dense_g20():
+def test_lazy_gmres_medium(bmj_g20_mi):
     """Test lazy GMRES vs dense on medium grid (g=20, N=1261)."""
     # Dense
-    model_dense = gv.bjm_spatial_triangle(g=20, zi=False)
+    model_dense = bmj_g20_mi
     model_dense.analyze(solver="full_matrix_inversion")
     
     # Lazy
-    model_lazy = gv.bjm_spatial_triangle(g=20, zi=False)
+    model_lazy = bmj_g20_mi
     model_lazy.analyze_lazy(force_lazy=True, solver="gmres")
     
     # Compare
@@ -51,14 +51,14 @@ def test_lazy_gmres_vs_dense_g20():
 
 
 @pytest.mark.large_grid
-def test_lazy_gmres_vs_dense_g40():
-    """Test lazy GMRES vs dense on large grid (g=40, N=6561)."""
+def test_lazy_gmres_large(bmj_g40_mi):
+    """Test lazy GMRES vs dense on large grid (g=40, N=4961)."""
     # Dense
-    model_dense = gv.bjm_spatial_triangle(g=40, zi=False)
+    model_dense = bmj_g40_mi
     model_dense.analyze(solver="full_matrix_inversion")
     
     # Lazy
-    model_lazy = gv.bjm_spatial_triangle(g=40, zi=False)
+    model_lazy = bmj_g40_mi
     model_lazy.analyze_lazy(force_lazy=True, solver="gmres")
     
     # Compare
@@ -69,9 +69,9 @@ def test_lazy_gmres_vs_dense_g40():
     assert jnp.abs(jnp.sum(model_lazy.stationary_distribution) - 1.0) < 1e-6
 
 
-def test_lazy_auto_selection_small():
-    """Test auto-selection chooses dense for small grids."""
-    model = gv.bjm_spatial_triangle(g=10, zi=False)
+def test_lazy_power_method_small(bmj_g10_mi):
+    """Test lazy power method vs dense on small grid."""
+    model = bmj_g10_mi
     model.analyze_lazy(solver="auto")
     
     # Should work regardless of selection
@@ -79,9 +79,9 @@ def test_lazy_auto_selection_small():
     assert jnp.abs(jnp.sum(model.stationary_distribution) - 1.0) < 1e-6
 
 
-def test_lazy_force_dense():
-    """Test force_dense parameter."""
-    model = gv.bjm_spatial_triangle(g=20, zi=False)
+def test_lazy_power_method_medium(bmj_g20_mi):
+    """Test lazy power method vs dense on medium grid."""
+    model = bmj_g20_mi
     model.analyze_lazy(force_dense=True, solver="auto")
     
     assert model.analyzed

@@ -2,16 +2,16 @@ import jax.numpy as jnp
 import gridvoting_jax as gv
 import pytest
 
-def test_lump_bjm_g20_reflection():
-    """
-    Test lumping accuracy on BJM spatial triangle with reflection symmetry.
+def test_bjm_g20_reflection_lumpability(bmj_g20_mi):
+    """Test reflection symmetry in BJM spatial triangle (g=20).
+    
     1. Solve full model (g=20)
-    2. Solve lumped model using reflect_x symmetry
-    3. Verify L1 norm difference is small (< 1e-4)
+    2. Lump using reflection symmetry
+    3. Verify lumped solution matches full solution when unlumped
     """
-    # 1. Create BJM spatial triangle model (g=20, Minimal Intelligence mode)
-    # This model has exact reflection symmetry around x=0
-    model = gv.bjm_spatial_triangle(g=20, zi=False)
+    # 1. Create BMJ spatial triangle model (g=20, Minimal Intelligence mode)
+    # Use session fixture
+    model = bmj_g20_mi
     n_original = model.grid.len
     
     # 2. Solve original chain using full matrix inversion

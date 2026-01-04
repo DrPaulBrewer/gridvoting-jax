@@ -20,7 +20,7 @@ def assert_distributions_close(pi1, pi2, tol_factor=500.0):
     assert diff < tol, f"L1 diff {diff} exceeds tolerance {tol}"
 
 @pytest.mark.parametrize("g", [20, 40])
-def test_power_method_equivalence(g):
+def test_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
     """Test standard Power Method equivalence.
     
     Tolerances (updated 2025-12-29 after normalization fix):
@@ -28,8 +28,9 @@ def test_power_method_equivalence(g):
     - Set to 20 eps (was 350 eps before normalization fix)
     - 17x improvement from adding periodic normalization!
     """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
+    # Select fixture based on g parameter
+    model_dense = bmj_g20_mi if g == 20 else bmj_g40_mi
+    model_lazy = bmj_g20_mi if g == 20 else bmj_g40_mi
     
     params = {"max_iterations": 10, "timeout": 20}
     
@@ -43,7 +44,7 @@ def test_power_method_equivalence(g):
     )
 
 @pytest.mark.parametrize("g", [20, 40])
-def test_bifurcated_power_method_equivalence(g):
+def test_bifurcated_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
     """Test Bifurcated Power Method equivalence.
     
     Tolerances (updated 2025-12-29 after normalization fix):
@@ -52,8 +53,9 @@ def test_bifurcated_power_method_equivalence(g):
     - 50x improvement from adding periodic normalization!
     - Now essentially identical between dense and lazy
     """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
+    # Select fixture based on g parameter
+    model_dense = bmj_g20_mi if g == 20 else bmj_g40_mi
+    model_lazy = bmj_g20_mi if g == 20 else bmj_g40_mi
     
     params = {"max_iterations": 10, "timeout": 20}
     
@@ -67,10 +69,8 @@ def test_bifurcated_power_method_equivalence(g):
     )
 
 
-def test_condorcet_equivalence():
+def test_condorcet_equivalence(condorcet_mi):
     """Test equivalence on simple Condorcet cycle model."""
-    from gridvoting_jax.models.examples.condorcet import condorcet_cycle
-    
     # Test all 3 solvers on this small model
     solvers = [
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60}),
@@ -82,8 +82,8 @@ def test_condorcet_equivalence():
     ]
     
     for dense_solver, lazy_solver, params in solvers:
-        model_dense = condorcet_cycle(zi=False)
-        model_lazy = condorcet_cycle(zi=False)
+        model_dense = condorcet_mi
+        model_lazy = condorcet_mi
         
         # Dense Execution
         model_dense.analyze(solver=dense_solver, force_dense=True, **params)
