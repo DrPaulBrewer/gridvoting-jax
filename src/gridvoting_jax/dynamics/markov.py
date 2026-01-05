@@ -219,7 +219,7 @@ class MarkovChain:
         return self
 
     def L1_step_norm(self, x):
-        return jnp.linalg.norm((x @ self.P ) - x, ord=1)
+        return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
     def control_iteration(self, * solver=iterate_power_method, time_per_digit=1.0):
         """
