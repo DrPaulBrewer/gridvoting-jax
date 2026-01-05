@@ -18,14 +18,186 @@ from ..core import (
     matrix_is_dense,
 )
 
+def _Q_matrix(P, dense=False):
+    n = P.shape[0]
+    if (dense) or (matrix_is_dense(P)):
+        Q = P.T - jnp.eye(n)
+        Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
+    else:
+        def Q_get_col(i):
+            P_T_minus_I = P.get_row(i).at[i].add(-1.0)
+            Q_col_i = P_T_minus_I.at[0].set(1.0)
+            return Q_col_i
+        Q = LazyRightGVMatrix(n=n, get_col = Q_get_col)
+    
+    return Q
+
+def _correct_minor_negative_probabilities(x):
+    min_component = float(x.min())
+    # Use extracted constant from core for negative checks
+    if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
+        x = _move_neg_prob_to_max(x)
+        min_component = float(x.min())
+    
+    if (min_component < 0.0):
+        neg_msg = "(negative components: "+str(min_component)+" )"
+        raise RuntimeError(neg_msg)
+
+    return x
+
+def dense_matrix_inversion(*, P=None, Q=None):
+    """This is another way to potentially find the stationary distribution,
+    but can suffer from numerical irregularities like negative entries.
+    Assumes eigenvalue of 1.0 exists and solves for the eigenvector by
+    considering a related matrix equation Q v = b, where:
+    Q is P transpose minus the identity matrix I, with the first row
+    replaced by all ones for the vector scaling requirement;
+    v is the eigenvector of eigenvalue 1 to be found; and
+    b is the first basis vector, where b[0]=1 and 0 elsewhere."""
+    if (Q is None):
+        raise ValueError("Q matrix must be provided")    
+    n = Q.shape[0]
+    error_unable_msg = "unable to find unique unit eigenvector 
+    try:
+        unit_eigenvector = jnp.linalg.solve(
+            # if Q is lazy, construct a dense Q matrix
+            Q if matrix_is_dense(Q) else Q.to_dense(),
+            jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
+        )
+    except Exception as err:
+        warn(str(err)) # print the original exception lest it be lost for debugging purposes
+        raise RuntimeError(error_unable_msg+"(dense_solve)")
+
+    if jnp.isnan(unit_eigenvector.sum()):
+        raise RuntimeError(error_unable_msg+"(nan)")
+    
+    unit_eigenvector = _correct_minor_negative_probabilities(unit_eigenvector)
+    unit_eigenvector = normalize_if_needed(unit_eigenvector)
+
+    return unit_eigenvector
+
+
+def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
+    """
+        Note:
+            GMRES always uses dense Q matrix because JAX's GMRES implementation
+            uses automatic differentiation internally, which is not compatible
+            with our lazy matrix implementation.
+    """
+    if Q is None:
+        raise ValueError("Q matrix must be provided")
+    if initial_guess is None:
+        initial_guess = jnp.ones(Q.shape[0], dtype=DTYPE_FLOAT)/Q.shape[0]
+    # Use JAX's GMRES
+    # tol in gmres is residual tolerance, roughly related to error
+    v, info = jax.scipy.sparse.linalg.gmres(
+        Q if matrix_is_dense(Q) else Q.to_dense(), 
+        jnp.zeros(Q.shape[0], dtype=DTYPE_FLOAT).at[0].set(1.0),
+        x0=initial_guess,
+        tol=TOLERANCE, 
+        maxiter=iterations,
+        solve_method='incremental'
+    )    
+    # Enforce non-negativity and normalization (numerical artifacts)
+    # GMRES can have larger deviations, so always normalize
+    v = _move_neg_prob_to_max(v)
+    v = normalize_if_needed(v)
+    return v
+
+def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
+    """
+    Single-path power method with uniform initial guess.
+    
+    This is the standard power method implementation that matches lazy power method behavior.
+    Starts from uniform distribution and iterates until convergence.
+    
+    Args:
+        P: Transition matrix
+        Q: Ignored
+        iterations: number of iterations
+        initial_guess: Optional initial distribution (if None, uses uniform)
+    
+    Returns:
+        Stationary distribution vector
+    """
+    if P is None:
+        raise ValueError("P matrix must be provided")
+    if initial_guess is None:
+        initial_guess = jnp.ones(P.shape[0], dtype=DTYPE_FLOAT)/P.shape[0]
+
+    v = normalize_if_needed(initial_guess)
+    
+    if matrix_is_dense(P):
+        # Use lax.fori_loop for compiled batched evolution
+        def evolve_step(_, carry):
+            vec, P = carry
+            return (normalize_if_needed(vec @ P), P)
+        v, _ = jax.lax.fori_loop(0, iterations, evolve_step, (v, P))
+    else:
+        # manual loop for lazy matrix 
+        for _ in range(iterations):
+            v = normalize_if_needed(v @ P)         
+    return v
+
+def entropy_based_guess_pair(*, P):
+    """
+    Returns a pair of initial guesses based on the entropy of each row.
+    """
+    n = P.shape[0]
+    row_entropies = jax.vmap(entropy_in_bits)(P)
+    max_entropy_idx = jnp.argmax(row_entropies).item()
+    min_entropy_idx = jnp.argmin(row_entropies).item()
+    v1 = jnp.zeros(n).at[max_entropy_idx].set(1.0)
+    v2 = jnp.zeros(n).at[min_entropy_idx].set(1.0)
+    return jnp.stack([v1, v2], axis=0)
+
+def geometry_based_guess_pair(*, P):
+    """
+    Returns a pair of initial guesses based on the geometry of the matrix.
+    v1 is uniform, v2 is an atomic distribution at the middle of the state space.
+    """
+    n = P.shape[0]
+    v1 = jnp.ones(n, dtype=DTYPE_FLOAT)/n
+    v2 = jnp.zeros(n, dtype=DTYPE_FLOAT)
+    return jnp.stack([v1, v2.at[n//2].set(1.0)], axis=0) # shape (2,n)
+
+def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess):
+    """
+    Bifurcated (dual-start) power method
+    
+    Starts from two different initial guesses and evolves both until they
+    converge to each other. More robust for detecting issues but more expensive
+    than single-path power method.
+    
+    Args:
+        P: Transition matrix
+        Q: Ignored
+        iterations: number of iterations
+        initial_guess: Optional initial distribution (if None, uses geometry-based guess pair)
+    
+    Returns:
+        Stationary distribution vector (average of two converged paths)
+    """
+    if P is None:
+        raise ValueError("P matrix must be provided")
+    if initial_guess is None:
+        initial_guess = geometry_based_guess_pair(P)
+    i = 0
+    V = initial_guess  # Shape: (2, n)
+    
+    def evolve_batch_step(_, carry):
+        V_state, P = carry
+        V_new = V_state @ P
+        V_new = jax.vmap(normalize_if_needed)(V_new)
+        return (V_new, P)
+    V, _ = jax.lax.fori_loop(0, iterations, evolve_batch_step, (V, P))
+    return V
+
 class MarkovChain:
-    def __init__(self, *, P, tolerance=None):
+    def __init__(self, *, P):
         """initializes a MarkovChain instance by copying in the transition
         matrix P and calculating chain properties"""
-        if tolerance is None:
-            tolerance = TOLERANCE
         self.P = P
-        self.tolerance = tolerance  # Store tolerance for later use
 
     def calculate_chain_properties(self):
         diagP = self.P.diagonal()
@@ -49,71 +221,27 @@ class MarkovChain:
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1)
 
-    def _Q_matrix(self, dense=False):
-        n = self.P.shape[0]
-        if (dense) or (matrix_is_dense(self.P)):
-            Q = self.dense_P().T - jnp.eye(n)
-            Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
-        else:
-            def Q_get_col(i):
-                P_T_minus_I = self.P.get_row(i).at[i].add(-1.0)
-                Q_col_i = P_T_minus_I.at[0].set(1.0)
-                return Q_col_i
-            Q = LazyRightGVMatrix(n=n, get_col = Q_get_col)
-        
-        return Q
+    def control_iteration(self, * solver=iterate_power_method, time_per_digit=1.0):
+        """
+        Controls the iteration of a solver by monitoring the L1 step norm and stopping 
+        if either the step norm is below THRESHOLD or the time per digit is exceeded.
 
-    def dense_solve_for_unit_eigenvector(self):
-        """This is another way to potentially find the stationary distribution,
-        but can suffer from numerical irregularities like negative entries.
-        Assumes eigenvalue of 1.0 exists and solves for the eigenvector by
-        considering a related matrix equation Q v = b, where:
-        Q is P transpose minus the identity matrix I, with the first row
-        replaced by all ones for the vector scaling requirement;
-        v is the eigenvector of eigenvalue 1 to be found; and
-        b is the first basis vector, where b[0]=1 and 0 elsewhere."""
-        n = self.P.shape[0]
-        Q = self._Q_matrix(dense=True)
-        b = jnp.zeros(n)
-        b = b.at[0].set(1.0)  # JAX immutable update        
-        error_unable_msg = "unable to find unique unit eigenvector "
-        try:
-            unit_eigenvector = jnp.linalg.solve(Q, b)
-        except Exception as err:
-            warn(str(err)) # print the original exception lest it be lost for debugging purposes
-            raise RuntimeError(error_unable_msg+"(dense_solve)")
+        solver: The solver to use. Defaults to iterate_power_method.
+        time_per_digit: The time per digit to use. Defaults to 1.0.
 
-        if jnp.isnan(unit_eigenvector.sum()):
-            raise RuntimeError(error_unable_msg+"(nan)")
-        
-        min_component = float(unit_eigenvector.min())
-        # Use extracted constant from core for negative checks
-        if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
-            unit_eigenvector = _move_neg_prob_to_max(unit_eigenvector)
-            unit_eigenvector = unit_eigenvector @ self.P
-            min_component = float(unit_eigenvector.min())
-        
-        if (min_component < 0.0):
-            neg_msg = "(negative components: "+str(min_component)+" )"
-            warn(neg_msg)
-            raise RuntimeError(error_unable_msg+neg_msg)
-
-        del Q
-        del b
-
-        self.unit_eigenvector = normalize_if_needed(unit_eigenvector)
-        return self.unit_eigenvector
+        solver is expected to be a function with the following signature:
+        solver(P, Q, iterations, initial_guess)
+        """
 
 
-    def find_unique_stationary_distribution(self, *, tolerance=None, solver="full_matrix_inversion", initial_guess=None, max_iterations=2000, timeout=30.0, force_dense=False, **kwargs):
+    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None, force_dense=False):
         """
         Finds the stationary distribution for a Markov Chain.
         
         Args:
-            tolerance: Convergence tolerance (default: module TOLERANCE).
             solver: Strategy to use. Options:
-                - "full_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
-                - "gmres_matrix_inversion": Iterative linear solver (GMRES). Low memory (O(N^2) or O(N)).
+                - "dense_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
+                - "gmres_matrix_inversion": Iterative linear solver (GMRES). Lower memory (O(N^2)).
                 - "power_method": Single-path power method with uniform initial guess (O(N^2)).
                   Matches lazy power method behavior.
                 - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
@@ -165,13 +293,15 @@ class MarkovChain:
 
         # Dispatch to solver
         if solver == "full_matrix_inversion":
-            self.stationary_distribution = self._solve_full_matrix_inversion(tolerance=tolerance)
+            self.stationary_distribution = full_matrix_inversion(self)
         elif solver == "gmres_matrix_inversion":
             self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, force_dense=force_dense)
         elif solver == "power_method":
             self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout, force_dense=force_dense)
         elif solver == "bifurcated_power_method":
             self.stationary_distribution = self._solve_bifurcated_power_method(tolerance=tolerance, max_iterations=max_iterations, timeout=timeout, force_dense=force_dense)
+        elif solver == "full_matrix_inversion":
+            self.stationary_distribution = full_matrix_inversion(self)
         else:
             raise ValueError(f"Unknown solver: {solver}")
 
@@ -183,244 +313,11 @@ class MarkovChain:
             
         return self.stationary_distribution
 
-    def _solve_full_matrix_inversion(self, tolerance):
-        """Original algebraic solver using direct dense matrix inversion / linear solve."""
-        return self.dense_solve_for_unit_eigenvector()
 
-    def _solve_gmres_matrix_inversion(self, tolerance, max_iterations, force_dense=True, initial_guess=None):
-        """
-        Find stationary distribution using GMRES iterative solver.
-        Solves (P.T - I)v = 0 subject to sum(v)=1.
-        
-        Equation: vP = v  =>  P.T v.T = v.T  => (P.T - I)v = 0
-        Constraint: sum(v) = 1
-        
-        We enforce constraint by replacing the first equation (row) of the system
-        with the sum constraint (all ones).
-        
-        Args:
-            tolerance: Convergence tolerance
-            max_iterations: Maximum GMRES iterations
-            force_dense: Ignored - GMRES always uses dense Q matrix
-            initial_guess: Optional initial guess for GMRES (useful for grid upscaling)
-        
-        Note:
-            GMRES always uses dense Q matrix because JAX's GMRES implementation
-            uses automatic differentiation internally, which is not compatible
-            with our lazy matrix implementation.
-        """
-        if not force_dense:
-            raise NotImplementedError("Lazy mode is not supported for GMRES solver. Use force_dense=True instead")
-        if tolerance is None:
-            tolerance = self.tolerance
-        n = self.P.shape[0]
-        # Always use dense Q for GMRES (autodiff compatibility)
-        Q = self._Q_matrix(dense=True)
-        assert Q.shape == (n, n)
-        b = jnp.zeros(n, dtype=DTYPE_FLOAT)
-        b = b.at[0].set(1.0)
-        
-        # Prepare initial guess
-        x0 = initial_guess if initial_guess is not None else jnp.ones(n) / n
-        
-        # Use JAX's GMRES
-        # tol in gmres is residual tolerance, roughly related to error
-        v, info = jax.scipy.sparse.linalg.gmres(
-            Q, 
-            b,
-            x0=x0,
-            tol=tolerance, 
-            maxiter=max_iterations,
-            solve_method='incremental'
-        )
-        
-        if info > 0:
-            warn(f"GMRES did not converge in {max_iterations} iterations based on internal criteria.")
-        
-        # Enforce non-negativity and normalization (numerical artifacts)
-        # GMRES can have larger deviations, so always normalize
-        v = _move_neg_prob_to_max(v)
-        v = normalize_if_needed(v)
-        
-        return v
 
-    def _solve_power_method(self, *, tolerance=None, max_iterations=5000, initial_guess=None, force_dense=False, timeout=30.0):
-        """
-        Single-path power method with uniform initial guess.
-        
-        This is the standard power method implementation that matches lazy power method behavior.
-        Starts from uniform distribution and iterates until convergence.
-        
-        Args:
-            tolerance: Convergence tolerance
-            max_iterations: Maximum iterations
-            initial_guess: Optional initial distribution (if None, uses uniform)
-            force_dense: Whether to use dense matrix representation
-            timeout: Max execution time in seconds
-        
-        Returns:
-            Stationary distribution vector
-        """
-        import time
-        if tolerance is None:
-            tolerance = self.tolerance
-        n = self.P.shape[0]
-        if force_dense:
-            P = self.dense_P()
-        else:
-            P = self.P
 
-        start_time = time.time()
-        
-        # Use uniform initial guess if not provided (matches lazy behavior)
-        if initial_guess is None:
-            v = jnp.ones(n) / n
-        else:
-            v = normalize_if_needed(initial_guess)
-        
-        # Adaptive batching for time checks
-        check_interval = 10
-        next_check = check_interval
-        
-        i = 0
-        diff = 1.0e100
-        while i < max_iterations:
-            # Evolve until next check using JAX compiled loop
-            power_method_batch_end = min(next_check, max_iterations)
-            power_method_batch_size = power_method_batch_end - i
 
-            if matrix_is_dense(P):
-                # Use lax.fori_loop for compiled batched evolution
-                def evolve_step(_, carry):
-                    vec, P = carry
-                    return (normalize_if_needed(vec @ P), P)
-                v, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_step, (v, P))
-            else:
-                # manual loop for lazy matrix 
-                for _ in range(power_method_batch_size):
-                    v = normalize_if_needed(v @ P) 
-            
-            i = power_method_batch_end
-            
-            # Check convergence
-            diff = jnp.linalg.norm((v@P) - v, ord=1)
-            if diff < tolerance:
-                warn(f"Power method converged in {i} iterations. Check norm: {diff}")
-                return v
-            
-            # Check timeout
-            if (time.time() - start_time) > timeout:
-                warn(f"Power method timed out after {timeout}s (iter {i}). Check norm: {diff}")
-                return v
-            
-            # Adaptive: Increase interval
-            if check_interval < 100:
-                check_interval *= 2
-            next_check = i + check_interval
-        
-        # Final check
-        if diff >= tolerance:
-            warn(f"Power method did not converge in {max_iterations} iterations. Final diff: {diff}, tolerance:{tolerance}")
-        else:
-            warn(f"Power method converged in {i} iterations. Check norm: {diff}")
-        return v
 
-    def _solve_bifurcated_power_method(self, *, force_dense=False, tolerance=None, max_iterations=5000, timeout=30.0):
-        """
-        Bifurcated (dual-start) power method using entropy-based starting points.
-        
-        Starts from two different initial guesses (max and min entropy rows) and
-        evolves both until they converge to each other. More robust for detecting
-        issues but more expensive than single-path power method.
-        
-        This was the previous default power method implementation.
-        
-        Args:
-            force_dense: Whether to use dense matrix representation
-            tolerance: Convergence tolerance
-            max_iterations: Maximum iterations
-            timeout: Max execution time in seconds
-        
-        Returns:
-            Stationary distribution vector (average of two converged paths)
-        """
-        import time
-        n = self.P.shape[0]
-        if tolerance is None:
-            tolerance = self.tolerance
-        start_time = time.time()
-
-        if force_dense:
-            P = self.dense_P()
-        else:
-            P = self.P
-        
-        is_dense = matrix_is_dense(P)
-        
-        # Calculate row entropies
-        if is_dense:
-            row_entropies = jax.vmap(entropy_in_bits)(P)
-        else:
-            row_entropies = jax.vmap(lambda i: entropy_in_bits(P.get_row(i)))(jnp.arange(n))
-        
-        # Start 1: Max entropy (most uncertain transition)
-        idx_max = jnp.argmax(row_entropies).item()
-        v1 = jnp.zeros(n).at[idx_max].set(1.0)
-        
-        # Start 2: Min entropy (most deterministic transition)
-        idx_min = jnp.argmin(row_entropies).item()
-        v2 = jnp.zeros(n).at[idx_min].set(1.0)
-        
-        # Adaptive batching for time checks
-        check_interval = 10
-        next_check = check_interval
-        
-        # Evolve both paths
-        i = 0
-        while i < max_iterations:
-            # Evolve batch until next check
-            power_method_batch_end = min(next_check, max_iterations)
-            power_method_batch_size = power_method_batch_end - i
-            
-            if is_dense:
-                # Dense: Use lax.fori_loop for compiled batched evolution
-                V = jnp.stack([v1, v2], axis=0)  # Shape: (2, n)
-                
-                def evolve_batch_step(_, carry):
-                    V_state, P = carry
-                    V_new = V_state @ P
-                    V_new = jax.vmap(normalize_if_needed)(V_new)
-                    return (V_new, P)
-                V, _ = jax.lax.fori_loop(0, power_method_batch_size, evolve_batch_step, (V, P))
-                v1, v2 = V[0], V[1]
-            else:
-                # Lazy: Manual loop for lazy matrix
-                for _ in range(power_method_batch_size):
-                    v1 = normalize_if_needed(v1 @ P)
-                    v2 = normalize_if_needed(v2 @ P)
-            
-            i = power_method_batch_end
-            
-            # Check convergence (paths converge to each other)
-            diff = jnp.linalg.norm(v1 - v2, ord=1)
-            if diff < tolerance:
-                warn(f"Bifurcated power method converged in {i} iterations. Diff between paths: {diff}, tolerance: {tolerance}")
-                return (v1 + v2) / 2.0
-            
-            # Check timeout
-            if (time.time() - start_time) > timeout:
-                warn(f"Bifurcated power method timed out after {timeout}s (iter {i}). Diff between paths: {diff}, tolerance: {tolerance}")
-                return (v1 + v2) / 2.0
-            
-            # Adaptive: Increase interval
-            if check_interval < 100:
-                check_interval *= 2
-            next_check = i + check_interval
-        
-        # Final convergence check
-        diff = jnp.linalg.norm(v1 - v2, ord=1)
-        warn(f"Bifurcated power method did not converge in {max_iterations} iterations. Final diff between paths: {diff}, tolerance: {tolerance}")
-        return (v1 + v2) / 2.0
 
     def diagnostic_metrics(self):
         """ return Markov chain approximation metrics in mathematician-friendly format """

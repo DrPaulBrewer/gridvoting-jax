@@ -235,11 +235,11 @@ class LazyLeftGVMatrix():
 
     def __rmatmul__(self, v):
         """Compute v @ M using get_row"""
-        def body_fn(i, result):
-            return jnp.add(result, v[i]*self.get_row(i))
+        def scan_rows(carry, i):
+            return (jnp.add(carry, v[...,i]*self.get_row(i)), None)
         
-        result = jnp.zeros(self.n, dtype=v.dtype)
-        return jax.lax.fori_loop(0, self.n, body_fn, result)
+        result = jnp.zeros(v.shape, dtype=DTYPE_FLOAT)
+        return jax.lax.scan(scan_rows, result, xs=None, length=self.n)[0]
     
     def __matmul__(self, v):
         """Not supported for LazyLeftGVMatrix (use M.T @ v instead)"""
@@ -270,11 +270,12 @@ class LazyRightGVMatrix():
     
     def __matmul__(self, v):
         """Compute M @ v using get_col"""
-        def body_fn(i, result):
-            return jnp.add(result, v[i]*self.get_col(i))
+        def scan_cols(carry, i):
+            return (jnp.add(carry, self.get_col(i)*v[i,...]), None)
         
-        result = jnp.zeros(self.n, dtype=v.dtype)
-        return jax.lax.fori_loop(0, self.n, body_fn, result)
+        result = jnp.zeros(v.shape, dtype=DTYPE_FLOAT)
+        return jax.lax.scan(scan_cols, result, xs=None, length=self.n)[0]
+
     
     def __rmatmul__(self, v):
         """Not supported for LazyRightGVMatrix (use v @ M.T instead)"""
