@@ -22,7 +22,7 @@ def _Q_matrix(P, dense=False):
     n = P.shape[0]
     if (dense) or (matrix_is_dense(P)):
         Q = P.T - jnp.eye(n)
-        Q = Q.at[0].set(jnp.ones(n))  # first row of Q is all ones
+        Q = Q.at[0].set(jnp.ones(n, dtype=DTYPE_FLOAT)) # first row of Q is all ones
     else:
         def Q_get_col(i):
             P_T_minus_I = P.get_row(i).at[i].add(-1.0)
@@ -45,7 +45,7 @@ def _correct_minor_negative_probabilities(x):
 
     return x
 
-def dense_matrix_inversion(*, P=None, Q=None):
+def dense_matrix_inversion(*, Q=None):
     """This is another way to potentially find the stationary distribution,
     but can suffer from numerical irregularities like negative entries.
     Assumes eigenvalue of 1.0 exists and solves for the eigenvector by
@@ -57,7 +57,7 @@ def dense_matrix_inversion(*, P=None, Q=None):
     if (Q is None):
         raise ValueError("Q matrix must be provided")    
     n = Q.shape[0]
-    error_unable_msg = "unable to find unique unit eigenvector 
+    error_unable_msg = "unable to find unique unit eigenvector "
     try:
         unit_eigenvector = jnp.linalg.solve(
             # if Q is lazy, construct a dense Q matrix
@@ -124,17 +124,16 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
         raise ValueError("P matrix must be provided")
     if initial_guess is None:
         initial_guess = jnp.ones(P.shape[0], dtype=DTYPE_FLOAT)/P.shape[0]
-
-    v = normalize_if_needed(initial_guess)
     
     if matrix_is_dense(P):
         # Use lax.fori_loop for compiled batched evolution
         def evolve_step(_, carry):
             vec, P = carry
             return (normalize_if_needed(vec @ P), P)
-        v, _ = jax.lax.fori_loop(0, iterations, evolve_step, (v, P))
+        v, _ = jax.lax.fori_loop(0, iterations, evolve_step, (initial_guess, P))
     else:
         # manual loop for lazy matrix 
+        v = initial_guess
         for _ in range(iterations):
             v = normalize_if_needed(v @ P)         
     return v
@@ -151,15 +150,20 @@ def entropy_based_guess_pair(*, P):
     v2 = jnp.zeros(n).at[min_entropy_idx].set(1.0)
     return jnp.stack([v1, v2], axis=0)
 
-def geometry_based_guess_pair(*, P):
+def geometry_based_guess_pair(*, n, atom_idx):
     """
     Returns a pair of initial guesses based on the geometry of the matrix.
-    v1 is uniform, v2 is an atomic distribution at the middle of the state space.
+    v1 is uniform, v2 is an atomic distribution at the selected state
+    
+    Args:
+        n: Size of the state space
+        atom_idx: Index for the atomic distribution in v2
     """
-    n = P.shape[0]
+    if atom_idx is None:
+        raise ValueError("atom_idx must be provided")
     v1 = jnp.ones(n, dtype=DTYPE_FLOAT)/n
     v2 = jnp.zeros(n, dtype=DTYPE_FLOAT)
-    return jnp.stack([v1, v2.at[n//2].set(1.0)], axis=0) # shape (2,n)
+    return jnp.stack([v1, v2.at[atom_idx].set(1.0)], axis=0) # shape (2,n)
 
 def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess):
     """
@@ -180,18 +184,27 @@ def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess
     """
     if P is None:
         raise ValueError("P matrix must be provided")
+    n = P.shape[0]
     if initial_guess is None:
-        initial_guess = geometry_based_guess_pair(P)
-    i = 0
-    V = initial_guess  # Shape: (2, n)
-    
-    def evolve_batch_step(_, carry):
-        V_state, P = carry
-        V_new = V_state @ P
-        V_new = jax.vmap(normalize_if_needed)(V_new)
-        return (V_new, P)
-    V, _ = jax.lax.fori_loop(0, iterations, evolve_batch_step, (V, P))
+        initial_guess = geometry_based_guess_pair(n=n, atom_idx=n//2)
+    if matrix_is_dense(P):    
+        def evolve_batch_step(_, V_state):
+            V_new = V_state @ P
+            V_new = jax.vmap(normalize_if_needed)(V_new)
+            return V_new
+        V = jax.lax.fori_loop(0, iterations, evolve_batch_step, initial_guess)
+    else:
+        V = initial_guess
+        for _ in range(iterations):
+            V = normalize_if_needed(V @ P)
+
     return V
+
+iterative_solvers = dict(
+    power_method=iterate_power_method,
+    bifurcated_power_method=iterate_bifurcated_power_method,
+    gmres_matrix_inversion=iterate_gmres
+)   
 
 class MarkovChain:
     def __init__(self, *, P):
@@ -221,18 +234,103 @@ class MarkovChain:
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
-    def control_iteration(self, * solver=iterate_power_method, time_per_digit=1.0):
+    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=20.0, initial_guess=None, force_dense=False):
         """
         Controls the iteration of a solver by monitoring the L1 step norm and stopping 
-        if either the step norm is below THRESHOLD or the time per digit is exceeded.
+        when the norm fails to achieve exponential decay or converges below TOLERANCE.
 
-        solver: The solver to use. Defaults to iterate_power_method.
-        time_per_digit: The time per digit to use. Defaults to 1.0.
+        Args:
+            solver: The solver function to use. Defaults to iterate_power_method.
+                   Expected signature: solver(P, Q, iterations, initial_guess)
+            time_per_digit: Time budget per factor of 10 decrease in L1_step_norm. Defaults to 1.0.
+            initial_guess: Optional initial distribution. If None, solver will use its default.
 
-        solver is expected to be a function with the following signature:
-        solver(P, Q, iterations, initial_guess)
+        Returns:
+            tuple: (stationary_distribution, convergence_history)
+                - stationary_distribution: Final distribution vector
+                - convergence_history: List of [elapsed_time, total_iterations, current_norm, 
+                                               tolerance, batch_norm_goal] entries
+
+        Stopping criteria:
+            - current_norm < TOLERANCE: Successfully converged
+            - current_norm > batch_norm_goal: Failed to achieve expected exponential decay
+              where batch_norm_goal = previous_norm * pow(0.1, batch_elapsed / time_per_digit)
         """
+        import time
+        
+        # Initialize
+        current_guess = initial_guess
+        batch_size = 5
+        total_iterations = 0
+        convergence_history = []
+        start_time = time.time()
+        
+        # Compute and cache Q matrix (dense) for solvers that need it
+        # if memory is a concern, self.P will be lazy and Q will be made dense from lazy evaluation
+        Q = None
+        P = self.P  # Default: use self.P as-is
+        
+        if (solver is iterate_gmres):
+            if matrix_is_dense(self.P):
+                Q = _Q_matrix(self.P)
+            else:
+                Q = _Q_matrix(self.P).to_dense()
+        elif force_dense and not matrix_is_dense(self.P):
+            # For non-GMRES solvers, optionally force dense
+            P = self.P.to_dense()
 
+        # Get initial L1 norm
+        if current_guess is None:
+            current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=None)
+            total_iterations += batch_size
+        
+        previous_norm = self.L1_step_norm(current_guess).max()
+        elapsed_time = time.time() - start_time
+        # For initial entry, batch_norm_goal is just previous_norm (no time elapsed yet)
+        convergence_history.append([
+            float(elapsed_time), 
+            int(total_iterations), 
+            float(previous_norm),
+            float(TOLERANCE),
+            float(previous_norm)  # batch_norm_goal for first entry
+        ])
+        
+        # Main iteration loop
+        while True:
+            batch_start_time = time.time()
+            
+            # Run solver for one batch
+            current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
+            total_iterations += batch_size
+            
+            # Check convergence
+            current_norm = self.L1_step_norm(current_guess).max()
+            batch_elapsed = time.time() - batch_start_time
+            elapsed_time = time.time() - start_time
+            
+            # Calculate batch_norm_goal using exponential decay
+            batch_norm_goal = previous_norm * pow(0.1, batch_elapsed / time_per_digit)
+            
+            convergence_history.append([
+                float(elapsed_time),
+                int(total_iterations),
+                float(current_norm),
+                float(TOLERANCE),
+                float(batch_norm_goal)
+            ])
+            
+            # Stopping criteria
+            if current_norm > batch_norm_goal or current_norm < TOLERANCE:
+                break
+            
+            # Adjust batch size to target ~1 sec per batch (always adjust)
+            target_batch_time = 1.0
+            batch_size = max(1, int(batch_size * target_batch_time / batch_elapsed))
+            batch_size = min(500, batch_size)
+            
+            previous_norm = current_norm
+        
+        return (current_guess, convergence_history)
 
     def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None, force_dense=False):
         """
@@ -247,12 +345,8 @@ class MarkovChain:
                 - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
                   More robust but more expensive than power_method.
             initial_guess: Optional starting distribution for "power_method".
-            max_iterations: Maximum iterations for iterative solvers.
-            timeout: Maximum time in seconds for iterative solvers (default: 30.0).
             force_dense: Whether to force dense matrix representation for power method solvers.
         """
-        if tolerance is None:
-            tolerance = self.tolerance
             
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
@@ -293,31 +387,24 @@ class MarkovChain:
 
         # Dispatch to solver
         if solver == "full_matrix_inversion":
-            self.stationary_distribution = full_matrix_inversion(self)
-        elif solver == "gmres_matrix_inversion":
-            self.stationary_distribution = self._solve_gmres_matrix_inversion(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, force_dense=force_dense)
-        elif solver == "power_method":
-            self.stationary_distribution = self._solve_power_method(tolerance=tolerance, max_iterations=max_iterations, initial_guess=initial_guess, timeout=timeout, force_dense=force_dense)
-        elif solver == "bifurcated_power_method":
-            self.stationary_distribution = self._solve_bifurcated_power_method(tolerance=tolerance, max_iterations=max_iterations, timeout=timeout, force_dense=force_dense)
-        elif solver == "full_matrix_inversion":
-            self.stationary_distribution = full_matrix_inversion(self)
+            if matrix_is_dense(self.P):
+                Q = _Q_matrix(self.P)
+            else:
+                Q = _Q_matrix(self.P).to_dense()
+            self.convergence_history = None
+            self.stationary_distribution = dense_matrix_inversion(Q=Q)
         else:
-            raise ValueError(f"Unknown solver: {solver}")
+            # iterative solvers
+            if solver in iterative_solvers:
+                self.stationary_distribution, self.convergence_history = self.control_iteration(solver=iterative_solvers[solver], initial_guess=initial_guess, force_dense=force_dense)
+            else:
+                raise ValueError(f"Unknown solver: {solver}")
 
-        # Verification
-        self.check_norm = self.L1_step_norm(self.stationary_distribution)
-        if self.check_norm > tolerance:
-            # If iterative solvers failed to converge tightly enough but didn't raise
-            warn(f"Stationary distribution check norm {self.check_norm} exceeds tolerance {tolerance}")
-            
+        # handle 2-state case from bifurcated power method
+        if (self.stationary_distribution.shape[0]==2):
+            self.stationary_distribution = self.stationary_distribution.sum(axis=0)/2.0
+ 
         return self.stationary_distribution
-
-
-
-
-
-
 
     def diagnostic_metrics(self):
         """ return Markov chain approximation metrics in mathematician-friendly format """

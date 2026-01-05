@@ -342,9 +342,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
                 actual_solver = solver.replace(" (lazy)", "")
                 vm.analyze(
                     solver=actual_solver,
-                    force_dense=not ("lazy" in solver),
-                    tolerance=None,
-                    max_iterations=5000
+                    force_dense=not ("lazy" in solver)
                 )
                 runtime = time.time() - start_time
                 

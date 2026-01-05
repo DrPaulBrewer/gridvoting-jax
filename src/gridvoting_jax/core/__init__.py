@@ -228,6 +228,7 @@ def normalize_if_needed(v):
 class LazyLeftGVMatrix():
     def __init__(self, *, n, get_row):
         self.n = n
+        self.ndim = 2
         self.shape = (n,n)
         self.get_row = get_row
         self.dtype = DTYPE_FLOAT
@@ -235,11 +236,13 @@ class LazyLeftGVMatrix():
 
     def __rmatmul__(self, v):
         """Compute v @ M using get_row"""
-        def scan_rows(carry, i):
-            return (jnp.add(carry, v[...,i]*self.get_row(i)), None)
-        
-        result = jnp.zeros(v.shape, dtype=DTYPE_FLOAT)
-        return jax.lax.scan(scan_rows, result, xs=None, length=self.n)[0]
+
+        def body_fn_nd(i, carry):
+            v_i = v[...,i]
+            row_i = self.get_row(i)  # Shape: (n,)
+            prod = jnp.squeeze(jnp.outer(v_i, row_i))
+            return carry+prod
+        return jax.lax.fori_loop(0, self.n, body_fn_nd, jnp.zeros(v.shape, dtype=DTYPE_FLOAT))
     
     def __matmul__(self, v):
         """Not supported for LazyLeftGVMatrix (use M.T @ v instead)"""
