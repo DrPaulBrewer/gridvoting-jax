@@ -11,25 +11,13 @@ from ..core import (
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     DTYPE_FLOAT,
+    BAD_STATIONARY_TOLERANCE,
+    LazyStochasticMatrix,
     _move_neg_prob_to_max,
     normalize_if_needed,
     entropy_in_bits,
     matrix_is_dense,
 )
-
-def _Q_matrix(P, dense=False):
-    n = P.shape[0]
-    if (dense) or (matrix_is_dense(P)):
-        Q = P.T - jnp.eye(n)
-        Q = Q.at[0].set(jnp.ones(n, dtype=DTYPE_FLOAT)) # first row of Q is all ones
-    else:
-        def Q_get_col(i):
-            P_T_minus_I = P.get_row(i).at[i].add(-1.0)
-            Q_col_i = P_T_minus_I.at[0].set(1.0)
-            return Q_col_i
-        Q = LazyRightGVMatrix(n=n, get_col = Q_get_col)
-    
-    return Q
 
 def _correct_minor_negative_probabilities(x):
     min_component = float(x.min())
@@ -55,14 +43,14 @@ def dense_matrix_inversion(*, Q=None):
     b is the first basis vector, where b[0]=1 and 0 elsewhere."""
     if (Q is None):
         raise ValueError("Q matrix must be provided")
-    if (isinstance(Q, LazyQMatrix) or (isinstance(Q, LazyRightGVMatrix))):
+    if (isinstance(Q, LazyStochasticMatrix)):
+        raise ValueError("Q matrix must be either dense or type LazyQMatrix, got LazyStochasticMatrix")
+    if (isinstance(Q, LazyQMatrix)):
         Q = Q.to_dense()
     n = Q.shape[0]
     error_unable_msg = "unable to find unique unit eigenvector "
     try:
         unit_eigenvector = jnp.linalg.solve(
-            # if Q is lazy, construct a dense Q matrix
-            # Q if matrix_is_dense(Q) else Q.to_dense(),
             Q,
             jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
         )
@@ -97,11 +85,11 @@ def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
         jnp.zeros(Q.shape[0], dtype=DTYPE_FLOAT).at[0].set(1.0),
         x0=initial_guess,
         tol=TOLERANCE, 
+        restart=50,
         maxiter=iterations,
         solve_method='incremental'
     )    
     # Enforce non-negativity and normalization (numerical artifacts)
-    # GMRES can have larger deviations, so always normalize
     v = _move_neg_prob_to_max(v)
     v = normalize_if_needed(v)
     return v
@@ -120,23 +108,15 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
         initial_guess: Optional initial distribution (if None, uses uniform)
     
     Returns:
-        Stationary distribution vector
+        Improved guess at the stationary distribution (shape (2,n))
     """
     if P is None:
         raise ValueError("P matrix must be provided")
     if initial_guess is None:
         initial_guess = jnp.ones(P.shape[0], dtype=DTYPE_FLOAT)/P.shape[0]
-    
-    if True:  # matrix_is_dense(P):
-        # Use lax.fori_loop for compiled batched evolution
-        def evolve_step(_, vec):
-            return normalize_if_needed(vec @ P)
-        v = jax.lax.fori_loop(0, iterations, evolve_step, initial_guess)
-    else:
-        # manual loop for lazy matrix 
-        v = initial_guess
-        for _ in range(iterations):
-            v = normalize_if_needed(v @ P)         
+    def evolve_step(_, vec):
+        return normalize_if_needed(vec @ P)
+    v = jax.lax.fori_loop(0, iterations, evolve_step, initial_guess)
     return v
 
 def entropy_based_guess_pair(*, P):
@@ -181,7 +161,7 @@ def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess
         initial_guess: Optional initial distribution (if None, uses geometry-based guess pair)
     
     Returns:
-        Stationary distribution vector (average of two converged paths)
+        Improved guess at the stationary distribution (shape (2,n))
     """
     if P is None:
         raise ValueError("P matrix must be provided")
@@ -215,16 +195,10 @@ class MarkovChain:
         else:
             return self.P
 
-    def force_dense(self):
-        self.P = self.dense_P()
-        if not(hasattr(self, 'has_unique_stationary_distribution')):
-            self.calculate_chain_properties()
-        return self
-
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
-    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=1.0, initial_guess=None, force_dense=False):
+    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=1.0, initial_guess=None):
         """
         Controls the iteration of a solver by monitoring the L1 step norm and stopping 
         when the norm fails to achieve exponential decay or converges below TOLERANCE.
@@ -248,7 +222,9 @@ class MarkovChain:
               where batch_norm_goal = previous_norm * pow(0.1, batch_elapsed / time_per_digit)
         """
         import time
-        
+        # test if solver is callable, not simply a string
+        if not callable(solver):
+            raise ValueError("solver must be callable")
         # Initialize
         current_guess = initial_guess
         batch_size = 5
@@ -263,20 +239,13 @@ class MarkovChain:
         
         if (solver is iterate_gmres):
             Q = LazyQMatrix(self.P)
-            # if matrix_is_dense(self.P):
-            #    Q = _Q_matrix(self.P)
-            #else:
-            #    Q = _Q_matrix(self.P).to_dense()
-        elif force_dense and not matrix_is_dense(self.P):
-            # For non-GMRES solvers, optionally force dense
-            P = self.P.to_dense()
 
         # Get initial L1 norm
         if current_guess is None:
             current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
             total_iterations += batch_size
         
-        previous_norm = self.L1_step_norm(current_guess).max()
+        previous_norm = float(self.L1_step_norm(current_guess).max())
         elapsed_time = time.time() - start_time
         # For initial entry, batch_norm_goal is just previous_norm (no time elapsed yet)
         convergence_history.append({
@@ -295,8 +264,9 @@ class MarkovChain:
         while True:
             # Adjust batch size to target ~1 sec per batch (always adjust)
             target_batch_time = 1.0
+            batch_size_cap = min(500, 10*batch_size)
             batch_size = max(1, int(batch_size * target_batch_time / batch_elapsed))
-            batch_size = min(500, batch_size)
+            batch_size = min(batch_size_cap, batch_size)
             warn(f"Calculated Next Batch size: {batch_size}")
 
             batch_start_time = time.time()
@@ -308,7 +278,7 @@ class MarkovChain:
             total_iterations += batch_size
             
             # Check convergence
-            current_norm = float(self.L1_step_norm(current_guess).max())
+            current_norm = float(self.L1_step_norm(current_guess).max().block_until_ready())
             batch_elapsed = time.time() - batch_start_time
             elapsed_time = time.time() - start_time
             
@@ -333,7 +303,7 @@ class MarkovChain:
         
         return (current_guess, convergence_history)
 
-    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None, force_dense=False):
+    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None):
         """
         Finds the stationary distribution for a Markov Chain.
         
@@ -346,7 +316,6 @@ class MarkovChain:
                 - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
                   More robust but more expensive than power_method.
             initial_guess: Optional starting distribution for "power_method".
-            force_dense: Whether to force dense matrix representation for power method solvers.
         """
             
         if jnp.any(self.absorbing_points):
@@ -393,13 +362,21 @@ class MarkovChain:
         else:
             # iterative solvers
             if solver in iterative_solvers:
-                self.stationary_distribution, self.convergence_history = self.control_iteration(solver=iterative_solvers[solver], initial_guess=initial_guess, force_dense=force_dense)
+                self.stationary_distribution, self.convergence_history = self.control_iteration(
+                    solver=iterative_solvers[solver],
+                    initial_guess=initial_guess
+                    )
             else:
                 raise ValueError(f"Unknown solver: {solver}")
 
         # handle 2-state case from bifurcated power method
         if (self.stationary_distribution.shape[0]==2):
             self.stationary_distribution = self.stationary_distribution.sum(axis=0)/2.0
+
+        final_check_norm = self.L1_step_norm(self.stationary_distribution)
+        if final_check_norm > BAD_STATIONARY_TOLERANCE:
+            warn(f"Final L1 step norm {final_check_norm} exceeded {BAD_STATIONARY_TOLERANCE}")
+            raise RuntimeError("Convergence failure while finding stationary distribution")
  
         return self.stationary_distribution
 

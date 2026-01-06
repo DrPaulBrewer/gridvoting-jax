@@ -59,6 +59,9 @@ else:
     DTYPE_FLOAT = jnp.float32
     warn("GV_ENABLE_FLOAT64=0: JAX float32 enabled, default solver TOLERANCE set to 1e-4")
 
+# Bad Stationary Tolerance above which we throw a RuntimeError
+BAD_STATIONARY_TOLERANCE = 1e-3
+
 # Floating point epsilon
 EPSILON = jnp.finfo(DTYPE_FLOAT).eps
 

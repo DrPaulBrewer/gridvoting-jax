@@ -261,11 +261,8 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
     solvers = kwargs.get('solvers', [
         "power_method",
         "bifurcated_power_method",
-        "power_method (lazy)",
-        "bifurcated_power_method (lazy)",
         "outline_and_fill",
         "outline_and_power",
-        "outline_and_power (lazy)",
         "outline_and_gmres",
         "gmres_matrix_inversion",
         "full_matrix_inversion"
@@ -336,13 +333,10 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
                 start_time = time.time()
                 
                 # All solvers use analyze() method
-                # Lazy behavior is automatic via LazyLeftGVMatrix from transition_matrix()
-                # The "(lazy)" suffix in solver names is just for benchmark labeling
+                # Lazy behavior is automatic via LazyStochasticMatrix from transition_matrix()
 
-                actual_solver = solver.replace(" (lazy)", "")
                 vm.analyze(
-                    solver=actual_solver,
-                    force_dense=not ("lazy" in solver)
+                    solver=solver,
                 )
                 runtime = time.time() - start_time
                 
