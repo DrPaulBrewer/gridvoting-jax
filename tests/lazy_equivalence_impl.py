@@ -71,7 +71,7 @@ def test_bifurcated_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
 
 def test_condorcet_equivalence(condorcet_mi):
     """Test equivalence on simple Condorcet cycle model."""
-    # Test all 3 solvers on this small model
+    # Test both power_method and bifurcated_power_method solvers on this small model
     solvers = [
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60}),
         ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([1.0,0.0,0.0])}),

@@ -9,7 +9,7 @@ import pytest
 import jax
 import jax.numpy as jnp
 import gridvoting_jax as gv
-from gridvoting_jax.core import EPSILON
+from gridvoting_jax.core.constants import EPSILON
 
 pytestmark = pytest.mark.essential
 

@@ -4,7 +4,7 @@ import gridvoting_jax as gv
 import numpy as np
 pytestmark = pytest.mark.essential
 import matplotlib.pyplot as plt
-from gridvoting_jax.core import TOLERANCE
+from gridvoting_jax.core.constants import TOLERANCE
 from gridvoting_jax.spatial import Grid
 from gridvoting_jax import VotingModel, SpatialVotingModel
 from gridvoting_jax.models.examples.bjm_spatial import BJM_TRIANGLE_VOTER_IDEAL_POINTS
