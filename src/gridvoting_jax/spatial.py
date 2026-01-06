@@ -11,7 +11,7 @@ import scipy.sparse
 
 
 # Import from core
-from .core import TOLERANCE, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
+from .core.constants import TOLERANCE, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
 
 # Wait, distance functions were in __init__.py. I should move them here or core?
 # Plan said: spatial.py contains dist_sqeuclidean, dist_manhattan, _is_in_triangle_single

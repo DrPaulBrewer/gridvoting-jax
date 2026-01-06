@@ -1,5 +1,5 @@
 
-from gridvoting_jax.core import LazyQMatrix
+from gridvoting_jax.core.lazy_q import LazyQMatrix
 import jax
 import jax.lax
 import jax.numpy as jnp
@@ -68,12 +68,6 @@ def dense_matrix_inversion(*, Q=None):
 
 
 def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
-    """
-        Note:
-            GMRES always uses dense Q matrix because JAX's GMRES implementation
-            uses automatic differentiation internally, which is not compatible
-            with our lazy matrix implementation.
-    """
     if Q is None:
         raise ValueError("Q matrix must be provided")
     if initial_guess is None:

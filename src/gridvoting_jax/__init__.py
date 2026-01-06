@@ -3,7 +3,8 @@
 __version__ = "0.25.0"
 
 # Core utilities
-from .core import TOLERANCE, enable_float64, device_type, use_accelerator
+from .core.constants import TOLERANCE
+from .core.config import enable_float64, device_type, use_accelerator
 
 # Core components
 from .dynamics import MarkovChain, lump, unlump, is_lumpable, partition_from_permutation_symmetry
