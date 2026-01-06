@@ -163,13 +163,9 @@ def entropy_in_bits(v):
     return -jnp.sum(safe * jnp.log2(safe))
 
 def matrix_is_dense(M):
-    """Check if matrix is dense (JAX array) vs lazy (LazyLeftGVMatrix/LazyRightGVMatrix).
+    """Check if matrix is dense (JAX array) vs lazy (LazyStochasticMatrix, LazyQMatrix).
     
-    JAX arrays don't have get_row/get_col methods, while lazy matrices do.
-    We can't use type(M) == jnp.ndarray because JAX arrays are ArrayImpl instances.
-
-    LazyLeftGVMatrix and LazyRightGVMatrix have a to_dense method, 
-    and if a matrix has a to_dense method, it is not dense.
+    If a matrix has a to_dense method, it is not dense.
     """
     return not hasattr(M, 'to_dense')
 
@@ -228,83 +224,6 @@ def normalize_if_needed(v):
         return _normalize_row_if_needed(v)
     else:
         return jax.vmap(_normalize_row_if_needed)(v)
-
-class LazyLeftGVMatrix():
-    def __init__(self, *, n, get_row):
-        self.n = n
-        self.ndim = 2
-        self.shape = (n,n)
-        self.get_row = get_row
-        self.dtype = DTYPE_FLOAT
-        self._diagonal_cache = None
-
-    def __rmatmul__(self, v):
-        """Compute v @ M using get_row"""
-
-        def body_fn_nd(i, carry):
-            v_i = v[...,i]
-            row_i = self.get_row(i)  # Shape: (n,)
-            prod = jnp.squeeze(jnp.outer(v_i, row_i))
-            return carry+prod
-        return jax.lax.fori_loop(0, self.n, body_fn_nd, jnp.zeros(v.shape, dtype=DTYPE_FLOAT))
-    
-    def __matmul__(self, v):
-        """Not supported for LazyLeftGVMatrix (use M.T @ v instead)"""
-        return NotImplemented
-
-    def diagonal(self):
-        """Compute diagonal of matrix using get_row (memoized)"""
-        if self._diagonal_cache is None:
-            self._diagonal_cache = jax.lax.map(lambda i: self.get_row(i)[i], jnp.arange(self.n))
-        return self._diagonal_cache
-
-    def to_dense(self):
-        """Convert to dense matrix by stacking all rows"""
-        return jax.lax.map(self.get_row, jnp.arange(self.n))
-
-    @property
-    def T(self):
-        """Return transpose as LazyRightGVMatrix"""
-        return LazyRightGVMatrix(n=self.n, get_col=self.get_row)
-
-class LazyRightGVMatrix():
-    def __init__(self, *, n, get_col):
-        self.n = n
-        self.shape = (n,n)
-        self.get_col = get_col
-        self.dtype=DTYPE_FLOAT
-        self._diagonal_cache = None
-    
-    def __matmul__(self, v):
-        """Compute M @ v using get_col"""
-        def scan_cols(carry, i):
-            return (jnp.add(carry, self.get_col(i)*v[i,...]), None)
-        
-        result = jnp.zeros(v.shape, dtype=DTYPE_FLOAT)
-        return jax.lax.scan(scan_cols, result, xs=None, length=self.n)[0]
-
-    
-    def __rmatmul__(self, v):
-        """Not supported for LazyRightGVMatrix (use v @ M.T instead)"""
-        return NotImplemented
-
-    def diagonal(self):
-        """Compute diagonal of matrix using get_col (memoized)"""
-        if self._diagonal_cache is None:
-            self._diagonal_cache = jax.lax.map(lambda i: self.get_col(i)[i], jnp.arange(self.n))
-        return self._diagonal_cache
-
-    def to_dense(self):
-        """Convert to dense matrix by stacking all columns as rows, then transpose"""
-        # Get all columns and stack them as rows
-        cols_as_rows = jax.lax.map(self.get_col, jnp.arange(self.n))
-        # Transpose to get columns in correct orientation
-        return cols_as_rows.T
-    
-    @property
-    def T(self):
-        """Return transpose as LazyLeftGVMatrix"""
-        return LazyLeftGVMatrix(n=self.shape[0], get_row=self.get_col)
 
 class LazyStochasticMatrix:
     def __init__(self, mask, status_quo_values, challenger_values):

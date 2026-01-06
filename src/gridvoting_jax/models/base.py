@@ -5,8 +5,6 @@ from warnings import warn
 
 # Import from core and dynamics
 from ..core import (
-    LazyLeftGVMatrix,
-    DTYPE_FLOAT,
     LazyStochasticMatrix
 )
 from ..dynamics import MarkovChain
@@ -249,16 +247,9 @@ class VotingModel:
             'challenger_values': challenger_values
         }
 
-    def stochastic_matrix(self):
-        """Returns the a stochastic matrix for the model's Markov Chain as a LazyStochasticMatrix"""
-        return LazyStochasticMatrix(
-            **self.stochastic_matrix_parameters()
-        )
-
     def transition_matrix(self):
-        """Returns the a transition matrix for the model's Markov Chain as a LazyLeftGVMatrix"""
-        # return LazyLeftGVMatrix(n=self.number_of_feasible_alternatives, get_row=self.transition_matrix_row)
-        return self.stochastic_matrix()
+        """Returns the a transition matrix for the model's Markov Chain as a LazyStochasticMatrix"""
+        return LazyStochasticMatrix(**self.stochastic_matrix_parameters())
 
     def summarize_in_context(self,*,grid,valid=None):
         """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""

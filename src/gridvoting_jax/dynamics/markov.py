@@ -8,8 +8,6 @@ from collections import Counter
 
 # Import from core
 from ..core import (
-   LazyLeftGVMatrix,
-    LazyRightGVMatrix,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     DTYPE_FLOAT,
@@ -496,7 +494,7 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarr
     
     return P_lumped
     
-def _compute_lumped_transition_matrix_lazy(P: LazyLeftGVMatrix, inverse_indices: jnp.ndarray) -> jnp.ndarray:
+def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indices: jnp.ndarray) -> jnp.ndarray:
     n = P.shape[0]
     k = int(inverse_indices.max()) + 1
     
@@ -581,12 +579,8 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     _validate_inverse_indices(inverse_indices, n_states)
     
     # Compute lumped transition matrix
-    if (type(MC.P) is jnp.ndarray) or (n_states<=60):
-        P_lumped = _compute_lumped_transition_matrix(MC.dense_P(), inverse_indices)
-    else:
-        P_lumped = _compute_lumped_transition_matrix_lazy(MC.P, inverse_indices)
+    P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
 
-    
     # Create new MarkovChain instance
     # Preserve tolerance if available
     tolerance = getattr(MC, 'tolerance', None)
