@@ -16,7 +16,7 @@ from .core import TOLERANCE, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
 # Wait, distance functions were in __init__.py. I should move them here or core?
 # Plan said: spatial.py contains dist_sqeuclidean, dist_manhattan, _is_in_triangle_single
 
-@jax.jit
+
 def dist_sqeuclidean(XA, XB):
     """JAX-based squared Euclidean pairwise distance calculation.
     
@@ -34,7 +34,7 @@ def dist_sqeuclidean(XA, XB):
     XB_sq = jnp.sum(XB**2, axis=1, keepdims=True)
     return XA_sq + XB_sq.T - 2 * jnp.dot(XA, XB.T)
 
-@jax.jit
+
 def dist_manhattan(XA, XB):
     """JAX-based Manhattan pairwise distance calculation.
     
@@ -50,7 +50,7 @@ def dist_manhattan(XA, XB):
     # Manhattan distance: sum(|a-b|)
     return jnp.sum(jnp.abs(XA[:, None, :] - XB[None, :, :]), axis=2)
 
-@jax.jit
+
 def _is_in_triangle_single(p, a, b, c):
     """
     Returns True if point p is in triangle (a, b, c).

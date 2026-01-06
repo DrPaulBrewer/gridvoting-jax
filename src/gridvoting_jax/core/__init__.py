@@ -51,11 +51,11 @@ import chex
 # This allows JAX to start in float64 mode and sets tighter tolerances
 if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64") in ["1", "True", "true"]:
     jax.config.update("jax_enable_x64", True)
-    TOLERANCE = 1e-8
+    TOLERANCE = 1e-10
     DTYPE_FLOAT = jnp.float64
     warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, default solver TOLERANCE set to 1e-8")
 else:
-    TOLERANCE = 1e-4
+    TOLERANCE = 1e-5
     DTYPE_FLOAT = jnp.float32
     warn("GV_ENABLE_FLOAT64=0: JAX float32 enabled, default solver TOLERANCE set to 1e-4")
 
@@ -173,8 +173,8 @@ def matrix_is_dense(M):
     """
     return not hasattr(M, 'to_dense')
 
-def normalize_if_needed(v):
-    """Normalize probability vector only if sum deviates beyond accumulation error.
+def _normalize_row_if_needed(v):
+    """Normalize probability vector(s) only if sum deviates beyond accumulation error.
     
     This function attempts to renormalize to v to have a sum closer to 1.0.
     If it fails to do so, it returns the original vector.
@@ -203,7 +203,6 @@ def normalize_if_needed(v):
     big_sum = jnp.sum(jnp.where(v>=2*EPSILON, v, 0.0))
     little_sum = jnp.sum(jnp.where(v<2*EPSILON, v, 0.0))
     s = big_sum + little_sum
-    # sum is in s
     sinv = 1.0/s
     deviation = jnp.abs(s - 1.0)
     n = v.shape[0]
@@ -213,17 +212,22 @@ def normalize_if_needed(v):
         v * sinv,
         v
     )
-    # again we need big and little sums to get around machine epsilon
     renorm_big_sum = jnp.sum(jnp.where(v_renorm>=2*EPSILON, v_renorm, 0.0))
     renorm_little_sum = jnp.sum(jnp.where(v_renorm<2*EPSILON, v_renorm, 0.0))
     renorm_s = renorm_big_sum + renorm_little_sum
-    # sum is in renorm_s
     renorm_deviation = jnp.abs(renorm_s - 1.0)
-    return jnp.where(
+    v_final = jnp.where(
         renorm_deviation < deviation,
         v_renorm,
         v
     )
+    return v_final
+
+def normalize_if_needed(v):
+    if jnp.ndim(v) == 1:
+        return _normalize_row_if_needed(v)
+    else:
+        return jax.vmap(_normalize_row_if_needed)(v)
 
 class LazyLeftGVMatrix():
     def __init__(self, *, n, get_row):

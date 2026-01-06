@@ -125,12 +125,11 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
     if initial_guess is None:
         initial_guess = jnp.ones(P.shape[0], dtype=DTYPE_FLOAT)/P.shape[0]
     
-    if matrix_is_dense(P):
+    if True:  # matrix_is_dense(P):
         # Use lax.fori_loop for compiled batched evolution
-        def evolve_step(_, carry):
-            vec, P = carry
-            return (normalize_if_needed(vec @ P), P)
-        v, _ = jax.lax.fori_loop(0, iterations, evolve_step, (initial_guess, P))
+        def evolve_step(_, vec):
+            return normalize_if_needed(vec @ P)
+        v = jax.lax.fori_loop(0, iterations, evolve_step, initial_guess)
     else:
         # manual loop for lazy matrix 
         v = initial_guess
@@ -187,18 +186,7 @@ def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess
     n = P.shape[0]
     if initial_guess is None:
         initial_guess = geometry_based_guess_pair(n=n, atom_idx=n//2)
-    if matrix_is_dense(P):    
-        def evolve_batch_step(_, V_state):
-            V_new = V_state @ P
-            V_new = jax.vmap(normalize_if_needed)(V_new)
-            return V_new
-        V = jax.lax.fori_loop(0, iterations, evolve_batch_step, initial_guess)
-    else:
-        V = initial_guess
-        for _ in range(iterations):
-            V = normalize_if_needed(V @ P)
-
-    return V
+    return iterate_power_method(P=P, Q=None, iterations=iterations, initial_guess=initial_guess)
 
 iterative_solvers = dict(
     power_method=iterate_power_method,
@@ -234,7 +222,7 @@ class MarkovChain:
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
-    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=20.0, initial_guess=None, force_dense=False):
+    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=0.5, initial_guess=None, force_dense=False):
         """
         Controls the iteration of a solver by monitoring the L1 step norm and stopping 
         when the norm fails to achieve exponential decay or converges below TOLERANCE.
