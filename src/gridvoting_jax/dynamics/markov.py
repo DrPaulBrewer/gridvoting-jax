@@ -1,4 +1,5 @@
 
+from gridvoting_jax.core import LazyQMatrix
 import jax
 import jax.lax
 import jax.numpy as jnp
@@ -55,13 +56,16 @@ def dense_matrix_inversion(*, Q=None):
     v is the eigenvector of eigenvalue 1 to be found; and
     b is the first basis vector, where b[0]=1 and 0 elsewhere."""
     if (Q is None):
-        raise ValueError("Q matrix must be provided")    
+        raise ValueError("Q matrix must be provided")
+    if (isinstance(Q, LazyQMatrix) or (isinstance(Q, LazyRightGVMatrix))):
+        Q = Q.to_dense()
     n = Q.shape[0]
     error_unable_msg = "unable to find unique unit eigenvector "
     try:
         unit_eigenvector = jnp.linalg.solve(
             # if Q is lazy, construct a dense Q matrix
-            Q if matrix_is_dense(Q) else Q.to_dense(),
+            # Q if matrix_is_dense(Q) else Q.to_dense(),
+            Q,
             jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
         )
     except Exception as err:
@@ -91,7 +95,7 @@ def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
     # Use JAX's GMRES
     # tol in gmres is residual tolerance, roughly related to error
     v, info = jax.scipy.sparse.linalg.gmres(
-        Q if matrix_is_dense(Q) else Q.to_dense(), 
+        Q, 
         jnp.zeros(Q.shape[0], dtype=DTYPE_FLOAT).at[0].set(1.0),
         x0=initial_guess,
         tol=TOLERANCE, 
@@ -222,7 +226,7 @@ class MarkovChain:
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
-    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=0.5, initial_guess=None, force_dense=False):
+    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=1.0, initial_guess=None, force_dense=False):
         """
         Controls the iteration of a solver by monitoring the L1 step norm and stopping 
         when the norm fails to achieve exponential decay or converges below TOLERANCE.
@@ -236,8 +240,9 @@ class MarkovChain:
         Returns:
             tuple: (stationary_distribution, convergence_history)
                 - stationary_distribution: Final distribution vector
-                - convergence_history: List of [elapsed_time, total_iterations, current_norm, 
-                                               tolerance, batch_norm_goal] entries
+                - convergence_history: List of dicts with keys: 'elapsed_time', 
+                                       'total_iterations', 'current_norm', 'tolerance', 
+                                       'batch_norm_goal'
 
         Stopping criteria:
             - current_norm < TOLERANCE: Successfully converged
@@ -259,63 +264,73 @@ class MarkovChain:
         P = self.P  # Default: use self.P as-is
         
         if (solver is iterate_gmres):
-            if matrix_is_dense(self.P):
-                Q = _Q_matrix(self.P)
-            else:
-                Q = _Q_matrix(self.P).to_dense()
+            Q = LazyQMatrix(self.P)
+            # if matrix_is_dense(self.P):
+            #    Q = _Q_matrix(self.P)
+            #else:
+            #    Q = _Q_matrix(self.P).to_dense()
         elif force_dense and not matrix_is_dense(self.P):
             # For non-GMRES solvers, optionally force dense
             P = self.P.to_dense()
 
         # Get initial L1 norm
         if current_guess is None:
-            current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=None)
+            current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
             total_iterations += batch_size
         
         previous_norm = self.L1_step_norm(current_guess).max()
         elapsed_time = time.time() - start_time
         # For initial entry, batch_norm_goal is just previous_norm (no time elapsed yet)
-        convergence_history.append([
-            float(elapsed_time), 
-            int(total_iterations), 
-            float(previous_norm),
-            float(TOLERANCE),
-            float(previous_norm)  # batch_norm_goal for first entry
-        ])
+        convergence_history.append({
+            'elapsed_time': float(elapsed_time), 
+            'total_iterations': float(total_iterations), 
+            'batch_time': float(elapsed_time),
+            'batch_iterations': float(batch_size),
+            'current_norm': float(previous_norm),
+            'tolerance': float(TOLERANCE),
+            'batch_norm_goal': float(previous_norm)  # batch_norm_goal for first entry
+        })
+
+        batch_elapsed = elapsed_time
         
         # Main iteration loop
         while True:
+            # Adjust batch size to target ~1 sec per batch (always adjust)
+            target_batch_time = 1.0
+            batch_size = max(1, int(batch_size * target_batch_time / batch_elapsed))
+            batch_size = min(500, batch_size)
+            warn(f"Calculated Next Batch size: {batch_size}")
+
             batch_start_time = time.time()
-            
+
+            warn(f"Running with Batch size: {batch_size}")
+
             # Run solver for one batch
             current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
             total_iterations += batch_size
             
             # Check convergence
-            current_norm = self.L1_step_norm(current_guess).max()
+            current_norm = float(self.L1_step_norm(current_guess).max())
             batch_elapsed = time.time() - batch_start_time
             elapsed_time = time.time() - start_time
             
             # Calculate batch_norm_goal using exponential decay
             batch_norm_goal = previous_norm * pow(0.1, batch_elapsed / time_per_digit)
             
-            convergence_history.append([
-                float(elapsed_time),
-                int(total_iterations),
-                float(current_norm),
-                float(TOLERANCE),
-                float(batch_norm_goal)
-            ])
+            convergence_history.append({
+                'elapsed_time': float(elapsed_time),
+                'total_iterations': float(total_iterations),
+                'batch_time': float(batch_elapsed),
+                'batch_iterations': float(batch_size),
+                'current_norm': float(current_norm),
+                'tolerance': float(TOLERANCE),
+                'batch_norm_goal': float(batch_norm_goal)
+            })
             
             # Stopping criteria
             if current_norm > batch_norm_goal or current_norm < TOLERANCE:
                 break
-            
-            # Adjust batch size to target ~1 sec per batch (always adjust)
-            target_batch_time = 1.0
-            batch_size = max(1, int(batch_size * target_batch_time / batch_elapsed))
-            batch_size = min(500, batch_size)
-            
+                        
             previous_norm = current_norm
         
         return (current_guess, convergence_history)
@@ -375,12 +390,8 @@ class MarkovChain:
 
         # Dispatch to solver
         if solver == "full_matrix_inversion":
-            if matrix_is_dense(self.P):
-                Q = _Q_matrix(self.P)
-            else:
-                Q = _Q_matrix(self.P).to_dense()
             self.convergence_history = None
-            self.stationary_distribution = dense_matrix_inversion(Q=Q)
+            self.stationary_distribution = dense_matrix_inversion(Q=LazyQMatrix(self.P).to_dense())
         else:
             # iterative solvers
             if solver in iterative_solvers:

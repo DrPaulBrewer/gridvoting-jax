@@ -1,0 +1,13 @@
+import jax
+import jax.numpy as jnp
+import gridvoting_jax as gv
+mi20 = gv.models.examples.bjm_spatial_triangle(g=20,zi=False)
+zi20 = gv.models.examples.bjm_spatial_triangle(g=20,zi=True)
+mi40 = gv.models.examples.bjm_spatial_triangle(g=40,zi=False)
+zi40 = gv.models.examples.bjm_spatial_triangle(g=40,zi=True)
+mi60 = gv.models.examples.bjm_spatial_triangle(g=60,zi=False)
+zi60 = gv.models.examples.bjm_spatial_triangle(g=60,zi=True)
+mi80 = gv.models.examples.bjm_spatial_triangle(g=80,zi=False)
+zi80 = gv.models.examples.bjm_spatial_triangle(g=80,zi=True)
+mi100 = gv.models.examples.bjm_spatial_triangle(g=100,zi=False)
+zi100 = gv.models.examples.bjm_spatial_triangle(g=100,zi=True)

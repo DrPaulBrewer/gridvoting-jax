@@ -306,6 +306,215 @@ class LazyRightGVMatrix():
         """Return transpose as LazyLeftGVMatrix"""
         return LazyLeftGVMatrix(n=self.shape[0], get_row=self.get_col)
 
+class LazyStochasticMatrix:
+    def __init__(self, mask, status_quo_values, challenger_values):
+        """
+        Initializes a LazyStochasticMatrix with a mask, status quo values, and challenger values.
+
+        The code represents a matrix M with the following properties:
+        - M is square
+        - the diagonal emtries M[i,i] are given by status_quo_values[i]
+        - the off-diagonal entries M[i,j] (i!=j) are given by mask[i,j]*challenger_values[i]
+
+        Args:
+            mask: A 2D square boolean array
+            status_quo_values: A 1D array of array diagonal values
+            challenger_values: A 1D array of array off-diagonal values, constant for each row, if mask is True
+        """
+        self.mask = mask
+        self.status_quo_values = jnp.asarray(status_quo_values, dtype=DTYPE_FLOAT)
+        self.challenger_values = jnp.asarray(challenger_values, dtype=DTYPE_FLOAT)
+        self.ndim = 2
+        self.shape = mask.shape
+        self.dtype = DTYPE_FLOAT
+
+    def __matmul__(self, other):
+        """Right multiplication: self @ other (M * v or M * V)"""
+        other = jnp.asarray(other, dtype=self.dtype)
+        if other.ndim == 1:
+            return self.status_quo_values * other + self.challenger_values * (self.mask @ other)
+        else:
+            # batch of column vectors (n, k)
+            return self.status_quo_values[:, None] * other + self.challenger_values[:, None] * (self.mask @ other)
+
+    def __rmatmul__(self, other):
+        """Left multiplication: other @ self (v * M or V * M)"""
+        other = jnp.asarray(other, dtype=self.dtype)
+        # broadcasting works correctly for (n,) * (n,) or (k, n) * (n,)
+        weighted_other = other * self.challenger_values
+        return other * self.status_quo_values + (weighted_other @ self.mask)
+
+    def __getitem__(self, key):
+        """Element access and basic slicing. Does NOT support advanced indexing."""
+        if isinstance(key, tuple) and len(key) == 2:
+            i, j = key
+            if isinstance(i, int) and isinstance(j, int):
+                # Scalar access
+                if i == j:
+                    return self.status_quo_values[i]
+                else:
+                    return self.mask[i, j] * self.challenger_values[i]
+            
+            # Row access M[i, :]
+            if isinstance(i, int) and isinstance(j, slice) and j == slice(None):
+                row = self.mask[i, :] * self.challenger_values[i]
+                return row.at[i].set(self.status_quo_values[i])
+            
+            # Column access M[:, j]
+            if isinstance(i, slice) and i == slice(None) and isinstance(j, int):
+                col = self.mask[:, j] * self.challenger_values
+                return col.at[j].set(self.status_quo_values[j])
+
+        raise NotImplementedError("Advanced indexing/slicing not supported for LazyStochasticMatrix")
+
+    @property
+    def T(self):
+        """Returns the transpose of the matrix as a LazyStochasticMatrixTranspose wrapper."""
+        return LazyStochasticMatrixTranspose(self)
+
+    def diagonal(self):
+        """Returns the diagonal elements S_i."""
+        return self.status_quo_values
+    
+    def to_dense(self):
+        """Materializes the full matrix."""
+        # diag(S) + diag(C) * mask
+        return jnp.diag(self.status_quo_values) + self.challenger_values[:, None] * self.mask
+
+class LazyStochasticMatrixTranspose:
+    """A wrapper for the transpose of a LazyStochasticMatrix."""
+    def __init__(self, original):
+        self.original = original
+        self.shape = (original.shape[1], original.shape[0])
+        self.ndim = original.ndim
+        self.dtype = original.dtype
+
+    def __matmul__(self, other):
+        # (M^T) @ v = (v^T @ M)^T
+        return self.original.__rmatmul__(other.T).T if other.ndim > 1 else self.original.__rmatmul__(other)
+
+    def __rmatmul__(self, other):
+        # v @ (M^T) = (M @ v^T)^T
+        return self.original.__matmul__(other.T).T if other.ndim > 1 else self.original.__matmul__(other)
+
+    @property
+    def T(self):
+        return self.original
+
+    def diagonal(self):
+        return self.original.diagonal()
+
+    def to_dense(self):
+        return self.original.to_dense().T
+
+class LazyQMatrix:
+    def __init__(self, P: LazyStochasticMatrix):
+        """
+        LazyQMatrix represents a matrix Q with the following properties:
+          - Q is square, with Q.shape=P.shape = (n,n)
+          - the entire first row Q[0,:] is 1.0
+          - the diagonal from 1 to (n-1) is P.diagonal-1.0
+          - the non-diagonal elements (except for row 0) are given by P.T
+        """
+        self.P = P
+        self.shape = P.shape
+        self.ndim = P.ndim
+        self.dtype = P.dtype
+
+    def __matmul__(self, other):
+        """Right multiplication: self @ other (Q * v or Q * V)"""
+        other = jnp.asarray(other, dtype=self.dtype)
+        # Q[1:, :] is (P.T - I)[1:, :]
+        # (P.T - I) @ other = (other.T @ (P - I)).T = (other.T @ P).T - other
+        res = (other.T @ self.P).T - other
+        # Replace row 0 with sum(other)
+        if other.ndim == 1:
+            return res.at[0].set(jnp.sum(other))
+        else:
+            return res.at[0, :].set(jnp.sum(other, axis=0))
+
+    def __rmatmul__(self, other):
+        """Left multiplication: other @ self (v * Q or V * Q)"""
+        other = jnp.asarray(other, dtype=self.dtype)
+        # v @ Q = v[0] * row_0(Q) + sum_{i>0} v[i] * row_i(Q)
+        # Row 0 of Q is all ones. Row i > 0 is Row i of (P^T - I).
+        # v @ Q = v[0] * ones + v_prime @ (P^T - I)  where v_prime = [0, v1, v2, ...]
+        # v_prime @ P^T = (P @ v_prime.T).T
+        v_prime = other.at[..., 0].set(0.0)
+        if other.ndim == 1:
+            res = (self.P @ v_prime) - v_prime
+            return res + other[0]
+        else:
+            res = (self.P @ v_prime.T).T - v_prime
+            return res + other[..., 0:1]
+
+    def __getitem__(self, key):
+        """Element access and basic slicing. Does NOT support advanced indexing."""
+        if isinstance(key, tuple) and len(key) == 2:
+            i, j = key
+            if isinstance(i, int) and isinstance(j, int):
+                if i == 0:
+                    return jnp.array(1.0, dtype=self.dtype)
+                if i == j:
+                    return self.P.status_quo_values[i] - 1.0
+                return self.P[j, i] # Q[i, j] = P^T[i, j] = P[j, i]
+            
+            # Row access Q[i, :]
+            if isinstance(i, int) and isinstance(j, slice) and j == slice(None):
+                if i == 0:
+                    return jnp.ones(self.shape[0], dtype=self.dtype)
+                # Row i of P^T - I is Column i of P - I
+                return self.P[:, i].at[i].add(-1.0)
+            
+            # Column access Q[:, j]
+            if isinstance(i, slice) and i == slice(None) and isinstance(j, int):
+                # Column j of Q is Row j of P, with Q[0,j]=1 and diagonal shift
+                return self.P[j, :].at[j].add(-1.0).at[0].set(1.0)
+
+        raise NotImplementedError("Advanced indexing/slicing not supported for LazyQMatrix")
+
+    def diagonal(self):
+        """Returns the diagonal elements of Q."""
+        diagP = self.P.diagonal()
+        return diagP.at[0].set(1.0).at[1:].add(-1.0)
+
+    def to_dense(self):
+        """Materializes the full Q matrix."""
+        n = self.shape[0]
+        # P.T - I
+        Q = self.P.to_dense().T - jnp.eye(n, dtype=self.dtype)
+        # overwrite first row
+        return Q.at[0, :].set(1.0)
+
+    @property
+    def T(self):
+        """Returns the transpose of the matrix as a LazyQMatrixTranspose wrapper."""
+        return LazyQMatrixTranspose(self)
+
+class LazyQMatrixTranspose:
+    """A wrapper for the transpose of a LazyQMatrix."""
+    def __init__(self, original):
+        self.original = original
+        self.shape = original.shape
+        self.ndim = original.ndim
+        self.dtype = original.dtype
+
+    def __matmul__(self, other):
+        return self.original.__rmatmul__(other.T).T if other.ndim > 1 else self.original.__rmatmul__(other)
+
+    def __rmatmul__(self, other):
+        return self.original.__matmul__(other.T).T if other.ndim > 1 else self.original.__matmul__(other)
+
+    @property
+    def T(self):
+        return self.original
+
+    def diagonal(self):
+        return self.original.diagonal()
+
+    def to_dense(self):
+        return self.original.to_dense().T
+        
 
 def get_available_memory_bytes():
     """ Estimate available memory in bytes on the active device.
