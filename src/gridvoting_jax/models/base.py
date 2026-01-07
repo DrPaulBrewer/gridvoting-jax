@@ -182,42 +182,6 @@ class VotingModel:
         
         return i_beats
 
-    def zi_stochastic_parameters(self, *, number_of_winning_alternatives):
-        """
-        the zi stochastic parameters are to weigh status quo by the number of losing alternatives
-        and each winning alternative by 1.0/number_of_feasible_alternatives
-        """      
-        number_of_losing_alternatives = self.number_of_feasible_alternatives - number_of_winning_alternatives
-        status_quo_transition_probability = number_of_losing_alternatives/(0.0+self.number_of_feasible_alternatives)
-        challenger_transition_probability = 1.0/(0.0+self.number_of_feasible_alternatives)
-        return status_quo_transition_probability, challenger_transition_probability
-
-    def mi_stochastic_parameters(self, *, number_of_winning_alternatives):
-        """
-        the mi stochastic parameters are the same for status quo and each winning alternative
-        at 1.0/(1.0+number_of_winning_alternatives)
-        """
-        status_quo_transition_probability = 1.0/(1.0+number_of_winning_alternatives)
-        challenger_transition_probability = 1.0/(1.0+number_of_winning_alternatives)
-        return status_quo_transition_probability, challenger_transition_probability
-
-    def transition_matrix_row(self, i:int):
-        """Returns row i of transition matrix"""
-        
-        winner_mask = self.what_beats(i=i)
-        number_of_winning_alternatives = winner_mask.sum()
-        if self.zi:
-            status_quo_value, challenger_value = self.zi_stochastic_parameters(
-                number_of_winning_alternatives=number_of_winning_alternatives
-            )
-        else:
-            status_quo_value, challenger_value = self.mi_stochastic_parameters(
-                number_of_winning_alternatives=number_of_winning_alternatives
-            )
-        row = jnp.multiply(challenger_value, winner_mask)
-        row = row.at[i].set(status_quo_value)
-        return row
-
     def stochastic_matrix_parameters(self):
         ### 
         # Calculates the parameters needed by class LazyStochasticMatrix
@@ -226,26 +190,17 @@ class VotingModel:
         #  mask: a boolean mask of size (number_of_feasible_alternatives, number_of_feasible_alternatives)
         #     mask[i,j] is true is alternative j wins a vote over alternative i with majority self.majority
         #     status_quo_values 
-        #       zi=True:  
-        #       zi=False:
-        #     challenger_values
         ###
         winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
         number_of_winning_alternatives = winner_mask.sum(axis=1)
         if self.zi:
-            status_quo_values, challenger_values = \
-              jnp.vectorize(
-                lambda n:self.zi_stochastic_parameters(number_of_winning_alternatives=n)
-                )(number_of_winning_alternatives)
+            number_of_losing_alternatives = self.number_of_feasible_alternatives - number_of_winning_alternatives
+            status_quo_values = number_of_losing_alternatives/(0.0+self.number_of_feasible_alternatives)
         else:
-            status_quo_values, challenger_values = \
-                jnp.vectorize(lambda n:self.mi_stochastic_parameters(number_of_winning_alternatives=n)
-                )(number_of_winning_alternatives)
+            status_quo_values = 1.0/(1.0+number_of_winning_alternatives)
         return {
             'mask': winner_mask,
-            'status_quo_values': status_quo_values,
-            'challenger_values': challenger_values
-        }
+            'status_quo_values': status_quo_values        }
 
     def transition_matrix(self):
         """Returns the a transition matrix for the model's Markov Chain as a LazyStochasticMatrix"""

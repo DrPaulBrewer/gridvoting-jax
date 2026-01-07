@@ -34,19 +34,25 @@ class LazyStochasticMatrix:
     def __init__(
         self, 
         mask: Array, 
-        status_quo_values: Array, 
-        challenger_values: Array
+        status_quo_values: Array
     ) -> None:
         """Initialize a LazyStochasticMatrix.
 
         Args:
             mask: 2D square boolean array defining non-zero off-diagonal positions
             status_quo_values: 1D array of diagonal values
-            challenger_values: 1D array of off-diagonal values (constant per row if mask is True)
         """
         self.mask = mask
-        self.status_quo_values = jnp.asarray(status_quo_values, dtype=DTYPE_FLOAT)
-        self.challenger_values = jnp.asarray(challenger_values, dtype=DTYPE_FLOAT)
+        self.status_quo_values = status_quo_values
+        assert mask.shape[0] == mask.shape[1], "Mask must be square"
+        assert mask.shape[0] == status_quo_values.shape[0], "Mask and status quo values must have same shape"
+        assert jnp.all(status_quo_values>=0.0) & jnp.all(status_quo_values<=1.0), "Status quo values must be in [0,1]"
+        assert jnp.all(jnp.logical_not(jnp.diagonal(mask))), "Mask diagonal must be all False"
+        winners_per_row = jnp.sum(mask, axis=1)
+        assert not jnp.any(jnp.where(winners_per_row==0, status_quo_values!=1.0, False)), "No winners in row but non-1 status quo value"
+        safe_inverse_winners_per_row = jnp.where(winners_per_row == 0, 0.0, 1.0 / winners_per_row)
+        # challenger values are constant per row, dividing remaining probability by number of winners
+        self.challenger_values = (1.0-status_quo_values) * safe_inverse_winners_per_row
         self.ndim = 2
         self.shape = mask.shape
         self.dtype = DTYPE_FLOAT

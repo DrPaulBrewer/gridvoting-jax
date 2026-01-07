@@ -118,7 +118,7 @@ def entropy_based_guess_pair(*, P):
     Returns a pair of initial guesses based on the entropy of each row.
     """
     n = P.shape[0]
-    row_entropies = jax.vmap(entropy_in_bits)(P)
+    row_entropies = entropy_in_bits(P)
     max_entropy_idx = jnp.argmax(row_entropies).item()
     min_entropy_idx = jnp.argmin(row_entropies).item()
     v1 = jnp.zeros(n).at[max_entropy_idx].set(1.0)

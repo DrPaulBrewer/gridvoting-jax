@@ -64,7 +64,7 @@ def entropy_in_bits(v: Array) -> float:
         v: Probability vector (should sum to 1.0)
         
     Returns:
-        Entropy in bits (using log base 2)
+        Entropy in bits (using log base 2) per row
         
     Example:
         >>> v = jnp.array([0.5, 0.5])
@@ -72,7 +72,7 @@ def entropy_in_bits(v: Array) -> float:
         1.0
     """
     safe = jnp.where(v > 0, v, 1.0)
-    return float(-jnp.sum(safe * jnp.log2(safe)))
+    return -jnp.sum(safe * jnp.log2(safe), axis=-1)
 
 
 def matrix_is_dense(M) -> bool:

@@ -266,7 +266,7 @@ class SpatialVotingModel:
         result = interpolation_matrix @ coarse_model.stationary_distribution
         
         # Task 6: Normalize
-        result = normalize_if_needed(result)
+        result = normalize_if_needed(result).block_until_ready()
         
         # Set on underlying model
         self.model.stationary_distribution = result
