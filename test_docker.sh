@@ -14,6 +14,7 @@ set -e
 MODE="dev"  # dev or release
 VERSION="latest"
 CUDA_TYPE="cpu"
+DOCKER_ARGS=""
 # Default pytest args start empty, user args will be appended
 PYTEST_ARGS_LIST=()
 COMMAND=""
@@ -42,7 +43,7 @@ while [[ $# -gt 0 ]]; do
                 if [[ "$CUDA_VER" == "12" ]]; then
                     CUDA_TYPE="cuda12"
                 elif [[ "$CUDA_VER" == "13" ]]; then
-                    CUDA_TYPE="cuda13"
+                    CUDA_TYPE="cuda12"
                 else
                     echo "Warning: Unknown CUDA version $CUDA_VER, defaulting to cuda12"
                     CUDA_TYPE="cuda12"
@@ -59,6 +60,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --command=*)
             COMMAND="${1#*=}"
+            shift
+            ;;
+
+        --it)
+            DOCKER_ARGS="-it $DOCKER_ARGS"
             shift
             ;;
 
@@ -86,7 +92,8 @@ if [ "$MODE" == "dev" ]; then
         # Pull latest dev image
         docker pull "$IMAGE"
     fi
-    DOCKER_ARGS="-v $(pwd):/workspace"
+    DOCKER_ARGS="$DOCKER_ARGS -v $(pwd):/workspace:ro -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONUNBUFFERED=1"
+
 else
     # Release mode
     IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
@@ -114,7 +121,7 @@ else
     ARGS_STR="${ARGS_STR#"${ARGS_STR%%[![:space:]]*}"}"
     ARGS_STR="${ARGS_STR%"${ARGS_STR##*[![:space:]]}"}"
     
-    FINAL_CMD="python3 -m pytest $ARGS_STR"
+    FINAL_CMD="python3 -B -m pytest $ARGS_STR"
 fi
 
 # Run container

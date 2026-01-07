@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
                 if [[ "$CUDA_VER" == "12" ]]; then
                     CUDA_TYPE="cuda12"
                 elif [[ "$CUDA_VER" == "13" ]]; then
-                    CUDA_TYPE="cuda13"
+                    CUDA_TYPE="cuda12"
                 else
                     CUDA_TYPE="cuda12"
                 fi
@@ -78,7 +78,7 @@ if [ "$MODE" == "dev" ]; then
     echo "Pulling dev image: $IMAGE"
     docker pull "$IMAGE"
     
-    DOCKER_ARGS="-v $(pwd):/workspace"
+    DOCKER_ARGS="-v $(pwd):/workspace:ro"
 else
     IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
     echo "Pulling release image: $IMAGE"
@@ -107,7 +107,7 @@ if [ "$EXTENDED" == "true" ]; then
 fi
 
 # Construct Environment Variables
-ENV_VARS="-e PYTHONUNBUFFERED=1"
+ENV_VARS="-e PYTHONUNBUFFERED=1 -e PYTHONDONTWRITEBYTECODE=1"
 if [ "$PRECISION" == "float64" ]; then
     ENV_VARS="$ENV_VARS -e GV_ENABLE_FLOAT64=1"
 fi
