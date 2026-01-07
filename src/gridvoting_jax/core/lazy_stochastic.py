@@ -6,6 +6,8 @@ where diagonal and off-diagonal elements follow a specific pattern.
 The LazyStochasticMatrix represents a matrix M where:
 - M[i,i] = status_quo_values[i] (diagonal)
 - M[i,j] = mask[i,j] * challenger_values[i] (off-diagonal, i≠j)
+
+where challenger_values[i] is calculated as (1-status_quo_values[i]) / number_of_winners_in_row[i]
 """
 
 from typing import Union, Tuple
@@ -25,7 +27,7 @@ class LazyStochasticMatrix:
     Attributes:
         mask: 2D boolean array defining which off-diagonal elements are non-zero
         status_quo_values: 1D array of diagonal values M[i,i]
-        challenger_values: 1D array of off-diagonal values (constant per row)
+        challenger_values: computed 1D array of off-diagonal values (constant per row)
         shape: Tuple of matrix dimensions (n, n)
         ndim: Number of dimensions (always 2)
         dtype: Data type of matrix elements
