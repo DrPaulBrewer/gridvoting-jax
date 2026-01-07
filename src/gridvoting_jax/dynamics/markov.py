@@ -1,33 +1,33 @@
-
-from gridvoting_jax.core.lazy_q import LazyQMatrix
 import jax
 import jax.lax
 import jax.numpy as jnp
 from warnings import warn
-from collections import Counter
 
 # Import from core
 from ..core import (
+    EPSILON,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     DTYPE_FLOAT,
     BAD_STATIONARY_TOLERANCE,
     LazyStochasticMatrix,
+    LazyQMatrix,
+    get_available_memory_bytes,
     _move_neg_prob_to_max,
     normalize_if_needed,
-    entropy_in_bits,
-    matrix_is_dense,
+    entropy_in_bits
 )
 
+
 def _correct_minor_negative_probabilities(x):
-    min_component = float(x.min())
+    min_component = x.min().item()
     # Use extracted constant from core for negative checks
     if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
         x = _move_neg_prob_to_max(x)
-        min_component = float(x.min())
+        min_component = x.min().item()
     
     if (min_component < 0.0):
-        neg_msg = "(negative components: "+str(min_component)+" )"
+        neg_msg = "(negative components in probability vector: "+str(min_component)+" )"
         raise RuntimeError(neg_msg)
 
     return x
@@ -175,6 +175,7 @@ class MarkovChain:
         """initializes a MarkovChain instance by copying in the transition
         matrix P and calculating chain properties"""
         self.P = P
+        self.N = P.shape[0]
 
     def calculate_chain_properties(self):
         diagP = self.P.diagonal()
@@ -261,11 +262,8 @@ class MarkovChain:
             batch_size_cap = min(500, 10*batch_size)
             batch_size = max(1, int(batch_size * target_batch_time / batch_elapsed))
             batch_size = min(batch_size_cap, batch_size)
-            warn(f"Calculated Next Batch size: {batch_size}")
 
             batch_start_time = time.time()
-
-            warn(f"Running with Batch size: {batch_size}")
 
             # Run solver for one batch
             current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
@@ -318,23 +316,22 @@ class MarkovChain:
             
         # Memory Check
         try:
-            from ..core import get_available_memory_bytes
             available_mem = get_available_memory_bytes()
             
             if available_mem is not None:
                 n = self.P.shape[0]
                 # Determine element size (float32=4, float64=8)
-                item_size = jnp.dtype(DTYPE_FLOAT).itemsize
-                
+                item_size = jnp.dtype(DTYPE_FLOAT).itemsize                
                 estimated_needed = 0
                 if solver == "full_matrix_inversion":
-                    # P(N^2) + Q(N^2) + Result(N^2) + Overhead
-                    estimated_needed = 3 * (n**2) * item_size
-                elif solver == "gmres_matrix_inversion":
-                     # Matrix-vector product based (often doesn't materialize full matrix if sparse, 
-                     # but here explicit P is used). 
-                     # P(N^2) + Vectors(k*N)
-                    estimated_needed = (n**2) * item_size + (max_iterations * n * item_size)
+                    # Q(N^2) + Result(N^2) all float
+                    estimated_needed = 2 * (n**2) * item_size
+                elif solver in iterative_solvers:
+                     # Matrix-vector product based 
+                     # ~ 10 Vectors(k*N) float
+                    estimated_needed = (10 * n * item_size)
+                else:
+                    estimated_needed = (n**2) * item_size
                 
                 # Safety margin (allow using up to 90% of available)
                 if estimated_needed > available_mem * 0.9:
@@ -367,10 +364,13 @@ class MarkovChain:
         if (self.stationary_distribution.shape[0]==2):
             self.stationary_distribution = self.stationary_distribution.sum(axis=0)/2.0
 
-        final_check_norm = self.L1_step_norm(self.stationary_distribution)
+        check_sum = self.stationary_distribution.sum().block_until_ready()
+        if jnp.abs(check_sum-1.0) > (2.0*EPSILON*self.N):
+            raise RuntimeError(f"Markov chain checksum failure with solver={solver}: {check_sum}")
+
+        final_check_norm = self.L1_step_norm(self.stationary_distribution).block_until_ready()
         if final_check_norm > BAD_STATIONARY_TOLERANCE:
-            warn(f"Final L1 step norm {final_check_norm} exceeded {BAD_STATIONARY_TOLERANCE}")
-            raise RuntimeError("Convergence failure while finding stationary distribution")
+            raise RuntimeError(f"Markov chain convergence failure with solver={solver}: {final_check_norm}")   
  
         return self.stationary_distribution
 
