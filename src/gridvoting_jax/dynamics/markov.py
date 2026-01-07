@@ -366,11 +366,11 @@ class MarkovChain:
 
         check_sum = self.stationary_distribution.sum().block_until_ready()
         if jnp.abs(check_sum-1.0) > (2.0*EPSILON*self.N):
-            raise RuntimeError(f"Markov chain checksum failure with solver={solver}: {check_sum}")
+            raise RuntimeError(f"Markov chain check sum=1 failure with solver={solver}: sum={check_sum}")
 
         final_check_norm = self.L1_step_norm(self.stationary_distribution).block_until_ready()
         if final_check_norm > BAD_STATIONARY_TOLERANCE:
-            raise RuntimeError(f"Markov chain convergence failure with solver={solver}: {final_check_norm}")   
+            raise RuntimeError(f"Markov chain convergence failure with solver={solver}")
  
         return self.stationary_distribution
 
