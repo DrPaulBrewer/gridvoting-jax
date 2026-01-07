@@ -193,7 +193,7 @@ class MarkovChain:
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
-    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=1.0, initial_guess=None):
+    def control_iteration(self, *, solver=iterate_power_method, time_per_digit=None, initial_guess=None):
         """
         Controls the iteration of a solver by monitoring the L1 step norm and stopping 
         when the norm fails to achieve exponential decay or converges below TOLERANCE.
@@ -217,15 +217,11 @@ class MarkovChain:
               where batch_norm_goal = previous_norm * pow(0.1, batch_elapsed / time_per_digit)
         """
         import time
+        if time_per_digit is None:
+            raise ValueError("time_per_digit must be specified")
         # test if solver is callable, not simply a string
         if not callable(solver):
             raise ValueError("solver must be callable")
-        # Initialize
-        current_guess = initial_guess
-        batch_size = 5
-        total_iterations = 0
-        convergence_history = []
-        start_time = time.time()
         
         # Compute and cache Q matrix (dense) for solvers that need it
         # if memory is a concern, self.P will be lazy and Q will be made dense from lazy evaluation
@@ -235,12 +231,51 @@ class MarkovChain:
         if (solver is iterate_gmres):
             Q = LazyQMatrix(self.P)
 
-        # Get initial L1 norm
+        # Initialize
+        current_guess = initial_guess
+        total_iterations = 0
+        convergence_history = []
+        # For initial entry, batch_norm_goal is 1.01*current_norm (no time elapsed yet)
+        # if current guess is None, use a uniform distribution to start the covergence_history
+        # the individual solvers can choose their own default initial guess but we cannot access it here
         if current_guess is None:
-            current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
-            total_iterations += batch_size
-        
-        previous_norm = float(self.L1_step_norm(current_guess).max())
+            current_norm = float(self.L1_step_norm(jnp.ones(self.N)/self.N).max().block_until_ready())
+        else:
+            current_norm = float(self.L1_step_norm(current_guess).max().block_until_ready())
+        convergence_history.append({
+            'elapsed_time': 0.0, 
+            'total_iterations': 0, 
+            'batch_time': float('nan'),
+            'batch_iterations': 0,
+            'current_norm': float(current_norm),
+            'tolerance': float(TOLERANCE),
+            'batch_norm_goal': float(current_norm * 1.01) # batch_norm_goal for first entry
+        })
+
+        # For second entry, run 1 iteration not on the clock (because JAX compilation startup costs)
+        previous_norm = current_norm
+        current_guess = solver(P=P, Q=Q, iterations=1, initial_guess=current_guess)
+        total_iterations += 1
+        current_norm = float(self.L1_step_norm(current_guess).max().block_until_ready())
+
+        convergence_history.append({
+            'elapsed_time': 1e-6, 
+            'total_iterations': 1, 
+            'batch_time': float('nan'),
+            'batch_iterations': 1,
+            'current_norm': current_norm,
+            'tolerance': float(TOLERANCE),
+            'batch_norm_goal': float(previous_norm) 
+        })
+
+        # now start the clock and run the first batch
+
+        start_time = time.time()
+        batch_size = 20 if self.N < 10000 else 10
+        previous_norm = current_norm
+        current_guess = solver(P=P, Q=Q, iterations=batch_size, initial_guess=current_guess)
+        total_iterations += batch_size
+        current_norm = float(self.L1_step_norm(current_guess).max().block_until_ready())
         elapsed_time = time.time() - start_time
         # For initial entry, batch_norm_goal is just previous_norm (no time elapsed yet)
         convergence_history.append({
@@ -248,9 +283,9 @@ class MarkovChain:
             'total_iterations': float(total_iterations), 
             'batch_time': float(elapsed_time),
             'batch_iterations': float(batch_size),
-            'current_norm': float(previous_norm),
+            'current_norm': float(current_norm),
             'tolerance': float(TOLERANCE),
-            'batch_norm_goal': float(previous_norm)  # batch_norm_goal for first entry
+            'batch_norm_goal': float(previous_norm)
         })
 
         batch_elapsed = elapsed_time
@@ -295,7 +330,7 @@ class MarkovChain:
         
         return (current_guess, convergence_history)
 
-    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None):
+    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None, time_per_digit=1.0):
         """
         Finds the stationary distribution for a Markov Chain.
         
@@ -308,6 +343,7 @@ class MarkovChain:
                 - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
                   More robust but more expensive than power_method.
             initial_guess: Optional starting distribution for "power_method".
+            time_per_digit: Time in seconds to wait for each digit of precision in the L1 step norm.
         """
             
         if jnp.any(self.absorbing_points):
@@ -355,7 +391,8 @@ class MarkovChain:
             if solver in iterative_solvers:
                 self.stationary_distribution, self.convergence_history = self.control_iteration(
                     solver=iterative_solvers[solver],
-                    initial_guess=initial_guess
+                    initial_guess=initial_guess,
+                    time_per_digit=time_per_digit,
                     )
             else:
                 raise ValueError(f"Unknown solver: {solver}")

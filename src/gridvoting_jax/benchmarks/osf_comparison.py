@@ -310,16 +310,6 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
         # Setup Model (Once per config)
         try:
-            # Create SpatialVotingModel (v0.8.0 API)
-            # This works for all solvers including grid_upscaling
-            # vm = gv.SpatialVotingModel(
-            #     voter_ideal_points=voter_ideal_points,
-            #     grid=grid,
-            #     number_of_voters=3,
-            #     majority=2,
-            #     zi=zi,
-            #     distance_measure='sqeuclidean'
-            # )
             vm = bjm_spatial_triangle(g=g, zi=zi)
         except Exception as e:
             print(f"  ✗ Error setting up model: {e}")
@@ -329,7 +319,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
 
 
             print(f"\n  Running {solver}...")
-            try:
+            try:                    
                 start_time = time.time()
                 
                 # All solvers use analyze() method
