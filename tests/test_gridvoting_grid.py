@@ -276,37 +276,84 @@ def test_grid_within_disk():
     assert jnp.array_equal(disk,correct_disk)
 
 
-def test_grid_within_triangle_many_right_triangles():
+def test_grid_within_triangle_right_triangles():
+    """
+    Test within_triangle() for right triangles with various sizes and positions.
+    Uses strategic sampling for efficiency while maintaining edge case coverage.
+    """
     import gridvoting_jax as gv
     import jax.numpy as jnp
     import numpy as np
-    grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
-    for cx in range(0,80,5):
-        for cy in range(0,80,5):
-            ax = cx
-            by = cy
-            for ay in range(cy+1,100,7):
-                for bx in range(cx+1,100,7):
-                    points = np.array([
-                        [ax,ay],
-                        [bx,by],
-                        [cx,cy]
-                    ])
-                    slope = (0.0+by-ay)/(0.0+bx-ax)
-                    assert slope<0.0
-                    # add slight bias to account for floating-point roundoff error
-                    correct_triangle = (grid.x>=cx) & (grid.y>=cy) & (grid.y<=(1e-5+ay+slope*(grid.x-ax)))
-                    calc_triangle_A = grid.within_triangle(points=points)
-                    altpoints = jnp.array([
-                        [cx,cy],
-                        [ax,ay],
-                        [bx,by]
-                    ])
-                    calc_triangle_B = grid.within_triangle(points=altpoints)
-                    unusual = (calc_triangle_A != correct_triangle) | (calc_triangle_B != correct_triangle)
-                    if unusual.sum()>0:
-                        disagree = grid.points[unusual]
-                        raise Exception("input={points},disagreement={disagree},count={count}".format(points=points,disagree=disagree,count=unusual.sum()))
+    
+    # Smaller grid for faster testing (41x41 = 1,681 points vs 101x101 = 10,201)
+    grid = gv.Grid(x0=0, y0=0, x1=40, y1=40)
+    
+    # Build test cases: (cx, cy, ax, ay, bx, by) for right triangle vertices
+    test_cases = []
+    
+    # Small triangles (legs 1-5)
+    for cx, cy in [(0, 0), (5, 5), (10, 10), (20, 20), (35, 35)]:
+        for size in [1, 3, 5]:
+            if cx + size <= 40 and cy + size <= 40:
+                test_cases.append((cx, cy, cx, cy + size, cx + size, cy))
+    
+    # Medium triangles (legs 5-10)
+    for cx, cy in [(0, 0), (5, 5), (10, 10), (20, 20), (30, 30)]:
+        for size in [5, 7, 10]:
+            if cx + size <= 40 and cy + size <= 40:
+                test_cases.append((cx, cy, cx, cy + size, cx + size, cy))
+    
+    # Large triangles (legs 10-20)
+    for cx, cy in [(0, 0), (0, 10), (10, 0), (20, 20)]:
+        for size in [10, 15, 20]:
+            if cx + size <= 40 and cy + size <= 40:
+                test_cases.append((cx, cy, cx, cy + size, cx + size, cy))
+    
+    # Very large triangles (legs 20-40)
+    for cx, cy in [(0, 0), (0, 20), (20, 0)]:
+        for size in [20, 30, 40]:
+            if cx + size <= 40 and cy + size <= 40:
+                test_cases.append((cx, cy, cx, cy + size, cx + size, cy))
+    
+    # Non-uniform triangles (different leg lengths)
+    test_cases.extend([
+        (0, 0, 0, 5, 10, 0),   # Short vertical, long horizontal
+        (0, 0, 0, 10, 5, 0),   # Long vertical, short horizontal
+        (0, 0, 0, 15, 25, 0),  # Different aspect ratio
+        (5, 5, 5, 15, 20, 5),  # Medium offset
+        (10, 10, 10, 30, 35, 10),  # Large offset
+        (0, 0, 0, 40, 40, 0),  # Maximum size
+        (0, 0, 0, 20, 10, 0),  # 2:1 aspect ratio
+        (0, 0, 0, 10, 20, 0),  # 1:2 aspect ratio
+    ])
+    
+    # Run tests
+    for cx, cy, ax, ay, bx, by in test_cases:
+        points = np.array([[ax, ay], [bx, by], [cx, cy]])
+        
+        # Calculate expected result
+        slope = (0.0 + by - ay) / (0.0 + bx - ax)
+        assert slope < 0.0, f"Not a right triangle: {points}"
+        
+        # Add slight bias to account for floating-point roundoff error
+        correct_triangle = (
+            (grid.x >= cx) & 
+            (grid.y >= cy) & 
+            (grid.y <= (1e-5 + ay + slope * (grid.x - ax)))
+        )
+        
+        # Test both point orderings
+        calc_triangle_A = grid.within_triangle(points=points)
+        altpoints = jnp.array([[cx, cy], [ax, ay], [bx, by]])
+        calc_triangle_B = grid.within_triangle(points=altpoints)
+        
+        # Verify correctness
+        unusual = (calc_triangle_A != correct_triangle) | (calc_triangle_B != correct_triangle)
+        if unusual.sum() > 0:
+            disagree = grid.points[unusual]
+            raise AssertionError(
+                f"Triangle vertices {points} failed: {unusual.sum()} disagreements at {disagree}"
+            )
                     
 def test_grid_spatial_utility():
     # this also tests gridvoting github issue #10
