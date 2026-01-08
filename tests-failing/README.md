@@ -9,18 +9,6 @@ Successfully moved 12 failing test files from `tests/` to `tests-failing/` subdi
 
 ## Organization by Category
 
-### api-missing-tolerance/ (4 files)
-Tests failing due to `tolerance` parameter not accepted by `MarkovChain.find_unique_stationary_distribution()`:
-- `test_budget_voting.py`
-- `test_gmres_initial_guess.py`
-- `test_outline_solvers.py`
-- `test_solvers.py`
-
-### lazy-P/ (2 files)
-Tests failing due to missing `lazy_P` attribute on `SpatialVotingModel`:
-- `test_lazy_auto_selection.py`
-- `test_lazy_consistency.py`
-
 ### MarkovChain-constructor/ (1 file)
 Tests failing due to incorrect `MarkovChain()` constructor calls:
 - `test_lump.py` (also has NotImplementedError for advanced indexing)
