@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --local-data)
-            MODE="local-data"
+            LOCAL_DATA="true"
             shift
             ;;
         --version=*)
@@ -92,7 +92,7 @@ else
     DOCKER_ARGS=""
 fi
 
-if [ "$MODE" == "local-data" ]; then
+if [ "$LOCAL_DATA" == "true" ]; then
     DOCKER_ARGS="$DOCKER_ARGS -v $(pwd):/workspace:ro -v /tmp/gridvoting_bjm_cache:/tmp/gridvoting_bjm_cache"
 fi
 
