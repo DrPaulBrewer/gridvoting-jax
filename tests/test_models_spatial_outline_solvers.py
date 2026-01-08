@@ -69,7 +69,7 @@ class TestOutlineSolvers:
     def test_solver_completes(self, solver, bmj_g20_mi):
         """Test that each solver completes successfully."""
         model = bmj_g20_mi
-        model.analyze(solver=solver, tolerance=1e-6, max_iterations=5000)
+        model.analyze(solver=solver)
         
         assert model.analyzed, f"{solver} did not mark model as analyzed"
         assert model.stationary_distribution is not None
