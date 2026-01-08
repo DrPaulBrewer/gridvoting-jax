@@ -99,12 +99,12 @@ def test_budget_voting_zi_modes():
     # Test only the first one found by argmax
     argmax_mi_item = jnp.argmax(model_mi.stationary_distribution).item()
     x_mi, y_mi = model_mi.u1[argmax_mi_item], model_mi.u2[argmax_mi_item]
-    
+    z_mi = model_mi.u3[argmax_mi_item]
     # MI should favor 2-way splits where one voter gets 0
     # Check that at least one coordinate is small (< 5)
     # This allows for various 2-way split configurations
-    assert (x_mi < 5 or y_mi < 5), \
-        f"MI argmax at ({x_mi},{y_mi}), expected a 2-way split with one voter getting ~0"
+    assert (x_mi < 2 or y_mi < 2 or z_mi < 2), \
+        f"MI argmax at ({x_mi},{y_mi},{z_mi}), expected a 2-way split with one voter getting ~0"
 
 
 def test_voter_utility_distribution():
