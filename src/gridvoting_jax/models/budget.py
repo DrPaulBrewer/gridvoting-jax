@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from .base import VotingModel
-from ..spatial import Grid
+from ..geometry import Grid
 
 
 class BudgetVotingModel:

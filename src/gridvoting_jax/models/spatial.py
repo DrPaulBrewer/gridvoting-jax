@@ -4,7 +4,7 @@ from jax.experimental import sparse
 from warnings import warn
 
 from .base import VotingModel
-from ..spatial import Grid
+from ..geometry import Grid
 from ..stochastic import normalize_if_needed
 
 

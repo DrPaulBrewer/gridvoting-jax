@@ -10,7 +10,7 @@ sys.path.insert(0, '/home/paul/gridvoting-jax/gridvoting-jax/src')
 
 import gridvoting_jax as gv
 from gridvoting_jax.models.spatial import create_outline_interpolation_matrix
-from gridvoting_jax.spatial import Grid
+from gridvoting_jax.geometry import Grid
 
 
 class TestOutlineInterpolationMatrix:

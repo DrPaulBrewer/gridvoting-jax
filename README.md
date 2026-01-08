@@ -218,7 +218,7 @@ Centralized configuration and constants.
 - **`gv.device_type`**: Current device type ('gpu', 'tpu', or 'cpu')
 - **`gv.use_accelerator`**: Boolean indicating if GPU/TPU is available
 
-### Spatial Components (`gv.spatial`)
+### Spatial Components (`gv.geometry`)
 
 #### `class Grid`
 
