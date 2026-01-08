@@ -1,7 +1,8 @@
 #!/bin/bash
-# OSF validation test script with Docker support
+# Test gridvoting-jax Models & Solvers by replicating
+# Brewer, Juybari & Moberly (2024) spatial voting model examples
 # Usage:
-#   ./test_docker_osf.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--quick|--extended] [--float64]
+#   ./test_docker_bjm.sh [--dev|--version=vX.Y.Z] [--cpu|--gpu] [--quick|--extended] [--float64]
 
 set -e
 
@@ -17,6 +18,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --dev)
             MODE="dev"
+            shift
+            ;;
+        --local-data)
+            MODE="local-data"
             shift
             ;;
         --version=*)
@@ -63,7 +68,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "========================================="
-echo "OSF Validation - Docker"
+echo "BJM Validation - Docker"
 echo "========================================="
 echo "Mode: $MODE"
 echo "CUDA: $CUDA_TYPE"
@@ -78,7 +83,7 @@ if [ "$MODE" == "dev" ]; then
     echo "Pulling dev image: $IMAGE"
     docker pull "$IMAGE"
     
-    DOCKER_ARGS="-v $(pwd):/workspace:ro"
+    DOCKER_ARGS="-v $(pwd):/workspace:ro "
 else
     IMAGE="${REGISTRY}/${CUDA_TYPE}:${VERSION}"
     echo "Pulling release image: $IMAGE"
@@ -87,13 +92,17 @@ else
     DOCKER_ARGS=""
 fi
 
+if [ "$MODE" == "local-data" ]; then
+    DOCKER_ARGS="$DOCKER_ARGS -v $(pwd):/workspace:ro -v /tmp/gridvoting_bjm_cache:/tmp/gridvoting_bjm_cache"
+fi
+
 # Add GPU support if needed
 if [ "$CUDA_TYPE" != "cpu" ]; then
     DOCKER_ARGS="$DOCKER_ARGS --gpus all"
 fi
 
 # Run tests
-echo "Running OSF Comparison Report..."
+echo "Running BJM Comparison Report..."
 
 # Construct Arguments
 PY_ARGS=""
@@ -118,13 +127,13 @@ docker run --rm \
     $ENV_VARS \
     ${CUDA_TYPE:+$([ "$CUDA_TYPE" != "cpu" ] && echo "--gpus all")} \
     "$IMAGE" \
-    python3 -m gridvoting_jax.benchmarks.osf_comparison $PY_ARGS
+    python3 -m gridvoting_jax.benchmarks.bjm_comparison $PY_ARGS
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✅ OSF validation completed successfully!"
+    echo "✅ BJM replication completed successfully!"
 else
     echo ""
-    echo "❌ OSF validation failed!"
+    echo "❌ BJM replication failed!"
     exit 1
 fi
