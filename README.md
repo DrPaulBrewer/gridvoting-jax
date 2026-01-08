@@ -96,7 +96,7 @@ GV_FORCE_CPU=1 python your_script.py
 > The new Docker infrastructure is still being tested and may not work correctly in all environments. Images should be finalized after a few patches (v0.10.1, v0.10.2, etc.). Please report any issues on GitHub.
 
 The project uses a multi-tier Docker image system hosted on GitHub Container Registry (GHCR):
-- **Base Images**: JAX + CUDA + OSF data (built once)
+- **Base Images**: JAX + CUDA + BJM data (built once)
 - **Release Images**: Versioned releases from PyPI (~30s builds)
 - **Dev Images**: Local development with mounted source code
 
@@ -114,8 +114,8 @@ The project uses a multi-tier Docker image system hosted on GitHub Container Reg
 # Test a specific release
 ./test_docker.sh --version=v0.9.1 --gpu
 
-# Run OSF validation
-./test_docker_osf.sh --dev --gpu --quick
+# Run BJM validation
+./test_docker_bjm.sh --dev --gpu --quick
 ```
 
 **Detailed Documentation:**  
@@ -426,7 +426,7 @@ Examples from published research:
 > Brewer, P., Juybari, J. & Moberly, R. (2023). A comparison of zero- and minimal-intelligence agendas in majority-rule voting models. *Journal of Economic Interaction and Coordination*. https://doi.org/10.1007/s11403-023-00387-8
 
 ```python
-# Spatial voting (Triangle 1 from OSF)
+# Spatial voting (Triangle 1 from BJM research)
 model = gv.bjm_spatial_triangle(g=20, zi=False)
 
 # Budget voting
@@ -576,7 +576,7 @@ model.analyze(solver="outline_and_power")  # Recommended for large grids
 
 ### Datasets (`gv.datasets`)
 
-- **`gv.datasets.fetch_osf_spatial_voting_2022_a100()`**: Downloads OSF reference dataset
+- **`gv.datasets.fetch_bjm_spatial_voting_2022_a100()`**: Downloads BJM reference dataset
 
 ---
 
@@ -588,16 +588,16 @@ Run performance benchmarks to test solver speed across different grid sizes:
 import gridvoting_jax as gv
 
 # Print formatted benchmark results
-gv.benchmarks.run_osf_comparison()
+gv.benchmarks.run_comparison_report()
 
 # run the full suite of benchmarks
 gv.benchmarks.performance()
 
 # download the reference dataset
-gv.datasets.fetch_osf_spatial_voting_2022_a100()
+gv.datasets.fetch_bjm_spatial_voting_2022_a100()
 
 # compare your computed results to the published scientific record using L1 norm
-gv.benchmarks.run_osf_comparison()
+gv.benchmarks.run_comparison_report()
 
 # Get results as dictionary for programmatic use
 results = gv.benchmarks.performance(dict=True)
@@ -614,15 +614,15 @@ for test in results['results']:
 
 ---
 
-## Replication & Verification against OSF Data
+## Replication & Verification against BJM Data
 
-You can automatically verify the library's output against the original A100 GPU replication data deposited on OSF. This benchmark downloads the reference data and compares stationary distributions using the L1 norm.
+You can automatically verify the library's output against the original A100 GPU replication data from the BJM research. This benchmark downloads the reference data and compares stationary distributions using the L1 norm.
 
 ```python
-from gridvoting_jax.benchmarks.osf_comparison import run_comparison_report
+from gridvoting_jax.benchmarks.bjm_comparison import run_comparison_report
 
 # Run complete comparison report
-# Automatically downloads reference data to /tmp/gridvoting_osf_cache
+# Automatically downloads reference data to /tmp/gridvoting_bjm_cache
 report = run_comparison_report()
 
 # Or test specific configurations
@@ -636,7 +636,7 @@ In a Colab notebook, you can run the full verification suite in a single cell:
 ```python
 !pip install gridvoting-jax
 
-from gridvoting_jax.benchmarks.osf_comparison import run_comparison_report
+from gridvoting_jax.benchmarks.bjm_comparison import run_comparison_report
 
 # Run all 8 replication configurations (g=20, 40, 60, 80)
 report = run_comparison_report()
@@ -671,7 +671,7 @@ pytest tests/ --cov=gridvoting_jax -m "not slow"
 - Budget voting: 7 tests (symmetry, ZI/MI modes, distributions)
 - Plott's theorem examples: 3 tests (core existence/absence)
 - Shapes: 4 tests (random triangles, rings)
-- BJM examples: 3 tests (OSF validation)
+- BJM examples: 3 tests (BJM validation)
 - Core functionality: 26 tests (grid, voting, solvers)
 
 **Test Markers**:

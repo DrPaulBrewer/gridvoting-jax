@@ -239,7 +239,7 @@ def run_comparison_report(configs: Optional[List[Tuple[int, bool]]] = None, **kw
     try:
         import gridvoting_jax as gv
         import jax
-        from ..datasets import bjm_CACHE_DIR
+        from ..datasets import BJM_CACHE_DIR
     except ImportError:
         return {
             'error': 'gridvoting_jax or jax not available',
