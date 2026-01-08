@@ -244,15 +244,3 @@ def test_is_lumpable_invalid():
     # States 0,2 have different transitions (invalid lumping)
     partition = jnp.array([0, 1, 0])
     assert not is_lumpable(mc, partition)
-
-
-
-
-def test_lump_preserves_tolerance():
-    """Test that lumped chain preserves tolerance from original."""
-    P = jnp.array([[0.5, 0.5], [0.3, 0.7]])
-    mc = MarkovChain(P=P, tolerance=1e-8)
-    
-    lumped = lump(mc, jnp.array([0, 1]))
-    
-    assert lumped.tolerance == 1e-8

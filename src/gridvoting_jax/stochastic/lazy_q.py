@@ -12,7 +12,7 @@ The LazyQMatrix represents a matrix Q derived from a transition matrix P where:
 from typing import Union, Tuple
 import jax.numpy as jnp
 from jax import Array
-
+from .utils import matrix_is_dense
 from .lazy_stochastic import LazyStochasticMatrix
 
 
@@ -142,7 +142,10 @@ class LazyQMatrix:
         """
         n = self.shape[0]
         # P.T - I
-        Q = self.P.to_dense().T - jnp.eye(n, dtype=self.dtype)
+        if matrix_is_dense(self.P):
+            Q = self.P.T - jnp.eye(n, dtype=self.dtype)
+        else:
+            Q = self.P.to_dense().T - jnp.eye(n, dtype=self.dtype)
         # overwrite first row
         return Q.at[0, :].set(1.0)
 

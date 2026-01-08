@@ -9,10 +9,6 @@ Successfully moved 12 failing test files from `tests/` to `tests-failing/` subdi
 
 ## Organization by Category
 
-### MarkovChain-constructor/ (1 file)
-Tests failing due to incorrect `MarkovChain()` constructor calls:
-- `test_lump.py` (also has NotImplementedError for advanced indexing)
-
 ### assertion-failures/ (3 files)
 Tests with assertion failures and numerical precision issues:
 - `test_gridvoting_condorcet_cycle.py`

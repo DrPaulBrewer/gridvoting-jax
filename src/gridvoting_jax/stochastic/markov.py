@@ -176,8 +176,7 @@ iterative_solvers = dict(
 
 class MarkovChain:
     def __init__(self, *, P):
-        """initializes a MarkovChain instance by copying in the transition
-        matrix P and calculating chain properties"""
+        """initializes a MarkovChain instance by copying in the transition matrix P"""
         self.P = P
         self.N = P.shape[0]
 
@@ -334,9 +333,14 @@ class MarkovChain:
         
         return (current_guess, convergence_history)
 
-    def find_unique_stationary_distribution(self, *, solver="dense_matrix_inversion", initial_guess=None, time_per_digit=1.0):
+    def find_unique_stationary_distribution(self, *, solver="full_matrix_inversion", initial_guess=None, time_per_digit=1.0):
         """
         Finds the stationary distribution for a Markov Chain.
+
+        Note:  This function does not check for multiple connected components.  
+        If the Markov Chain contains multiple connected components, some solvers may
+        fail as there may be multiple stationary distributions.  The test for 
+        connected components can be time-consuming for large chains and is not implemented.  
         
         Args:
             solver: Strategy to use. Options:
@@ -349,7 +353,8 @@ class MarkovChain:
             initial_guess: Optional starting distribution for "power_method".
             time_per_digit: Time in seconds to wait for each digit of precision in the L1 step norm.
         """
-            
+        if not hasattr(self,'absorbing_points'):
+            self.calculate_chain_properties()
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
             return None
@@ -401,9 +406,10 @@ class MarkovChain:
             else:
                 raise ValueError(f"Unknown solver: {solver}")
 
-        # handle 2-state case from bifurcated power method
-        if (self.stationary_distribution.shape[0]==2):
-            self.stationary_distribution = self.stationary_distribution.sum(axis=0)/2.0
+        # handle 2D result from bifurcated power method (shape (2,n) needs averaging)
+        # Note: for 2-state chains with other solvers, shape is (n,) which is already correct
+        if solver == "bifurcated_power_method" and self.stationary_distribution.ndim == 2:
+            self.stationary_distribution = self.stationary_distribution.mean(axis=0)
 
         check_sum = self.stationary_distribution.sum().block_until_ready()
         if jnp.abs(check_sum-1.0) > (2.0*EPSILON*self.N):
@@ -498,11 +504,8 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarr
     P_lumped = jax.ops.segment_sum(P_lumped.T, inverse_indices, num_segments=k).T  # (k×k)
     
     # Divide by group sizes to get average (uniform weighting)
+    # This already produces properly normalized rows when input P is stochastic
     P_lumped = P_lumped / group_sizes[:, jnp.newaxis]
-    
-    # Renormalize rows
-    row_sums = jnp.sum(P_lumped, axis=1, keepdims=True)
-    P_lumped = P_lumped / row_sums
     
     return P_lumped
     
@@ -594,9 +597,7 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
 
     # Create new MarkovChain instance
-    # Preserve tolerance if available
-    tolerance = getattr(MC, 'tolerance', None)
-    return MarkovChain(P=P_lumped, tolerance=tolerance)
+    return MarkovChain(P=P_lumped)
 
 
 def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jnp.ndarray:
@@ -667,25 +668,40 @@ def is_lumpable(MC: MarkovChain, inverse_indices: jnp.ndarray, tolerance: float 
         >>> is_lumpable(mc, jnp.array([0, 1, 0]))  # False
     
     Notes:
-        - This is a dense matrix operation: O(n²k) where n=states, k=aggregates
-        - For large chains, this may be expensive
+        - Uses vectorized matrix operations for efficiency (compatible with lazy matrices)
+        - Complexity: O(nk + n²k) where n=states, k=aggregates
+        - Creates indicator matrix and uses matrix-vector products to compute transition sums
     """
     _validate_inverse_indices(inverse_indices, MC.P.shape[0])
     
+    n = MC.P.shape[0]
     k = int(inverse_indices.max()) + 1
     
-    # For each pair of aggregates (i, j)
+    # Create indicator matrix using vectorized operations
+    # indicator[i, s] = True if state s is in group i, else False
+    indicator = jax.vmap(lambda i: inverse_indices == i)(jnp.arange(k))
+    
+    # For each pair of groups (i, j), compute transition probabilities
+    # P_to_j[s] = sum of P[s, t] for all t in group j
+    # This is equivalent to: P @ indicator[j].T
+    # Shape: (n,) for each j
+    
     for i in range(k):
+        # If group is empty, skip (shouldn't happen with validation)
+        if indicator[i].sum() == 0:
+            continue
+        
         for j in range(k):
-            # Get states in each group
-            group_i_mask = (inverse_indices == i)
-            group_j_mask = (inverse_indices == j)
+            # Compute transition probability from each state to group j
+            # indicator[j] is a vector with True for states in group j
+            # P @ indicator[j] gives the sum of transitions to group j for each state
+            probs_to_j = MC.P @ indicator[j]
             
-            # Compute total transition probability from each state in group_i to group_j
-            probs_to_j = jnp.sum(MC.P[:, group_j_mask], axis=1)[group_i_mask]
+            # Extract probabilities for states in group i using indicator[i] as mask
+            probs_in_group_i = probs_to_j[indicator[i]]
             
-            # Check if all states in group_i have same transition probability to group_j
-            if not jnp.allclose(probs_to_j, probs_to_j[0], atol=tolerance):
+            # Check if all states in group i have the same probability to group j
+            if not jnp.allclose(probs_in_group_i, probs_in_group_i[0], atol=tolerance):
                 return False
     
     return True
