@@ -3,16 +3,20 @@ import jax.lax
 import jax.numpy as jnp
 from warnings import warn
 
-# Import from core
+# Import constants from core
 from ..core import (
     EPSILON,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
     DTYPE_FLOAT,
     BAD_STATIONARY_TOLERANCE,
-    LazyStochasticMatrix,
-    LazyQMatrix,
     get_available_memory_bytes,
+)
+
+# Import utilities and lazy classes from local stochastic modules
+from .lazy_stochastic import LazyStochasticMatrix
+from .lazy_q import LazyQMatrix
+from .utils import (
     _move_neg_prob_to_max,
     normalize_if_needed,
     entropy_in_bits

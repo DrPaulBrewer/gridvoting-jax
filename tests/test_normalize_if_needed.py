@@ -2,7 +2,7 @@
 
 import jax.numpy as jnp
 import pytest
-from gridvoting_jax.core.utils import normalize_if_needed
+from gridvoting_jax.stochastic.utils import normalize_if_needed
 
 
 def test_normalize_if_needed_no_op():

@@ -5,7 +5,7 @@ from warnings import warn
 
 from .base import VotingModel
 from ..spatial import Grid
-from ..core import normalize_if_needed
+from ..stochastic import normalize_if_needed
 
 
 def create_outline_interpolation_matrix(fine_grid, coarse_grid):

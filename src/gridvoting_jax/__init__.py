@@ -7,7 +7,7 @@ from .core.constants import TOLERANCE
 from .core.config import enable_float64, device_type, use_accelerator
 
 # Core components
-from .dynamics import MarkovChain, lump, unlump, is_lumpable, partition_from_permutation_symmetry
+from .stochastic import MarkovChain, lump, unlump, is_lumpable, partition_from_permutation_symmetry
 from .symmetry import suggest_symmetries
 from .spatial import Grid, dist_sqeuclidean, dist_manhattan
 

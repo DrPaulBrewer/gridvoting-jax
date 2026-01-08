@@ -14,7 +14,7 @@ from typing import Union, Tuple
 import jax.numpy as jnp
 from jax import Array
 
-from .constants import DTYPE_FLOAT
+from ..core.constants import DTYPE_FLOAT
 
 
 class LazyStochasticMatrix:

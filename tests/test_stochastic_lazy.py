@@ -1,11 +1,11 @@
-"""Test core lazy classes"""
+"""Test stochastic lazy classes"""
 import pytest
 import jax.numpy as jnp
 from gridvoting_jax.core.constants import EPSILON
-from gridvoting_jax.core.lazy_stochastic import LazyStochasticMatrix
-from gridvoting_jax.core.lazy_stochastic import LazyStochasticMatrixTranspose
-from gridvoting_jax.core.lazy_q import LazyQMatrix
-from gridvoting_jax.core.lazy_q import LazyQMatrixTranspose
+from gridvoting_jax.stochastic.lazy_stochastic import LazyStochasticMatrix
+from gridvoting_jax.stochastic.lazy_stochastic import LazyStochasticMatrixTranspose
+from gridvoting_jax.stochastic.lazy_q import LazyQMatrix
+from gridvoting_jax.stochastic.lazy_q import LazyQMatrixTranspose
 
 M1 =dict(
     mask=jnp.array(

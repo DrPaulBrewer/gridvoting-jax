@@ -238,7 +238,7 @@ class BudgetVotingModel:
             - Permutation (0,1,2) rotates voter 1 → 2 → 3 → 1
             - Default S3 means all (x,y,budget-x-y) permutations are equivalent
         """
-        from ..dynamics import partition_from_permutation_symmetry
+        from ..stochastic import partition_from_permutation_symmetry
         
         # Default: Full S3 symmetry (all voters interchangeable)
         if permutation_group is None:

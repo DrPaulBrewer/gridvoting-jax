@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from .constants import TOLERANCE, EPSILON
+from ..core.constants import TOLERANCE, EPSILON
 
 
 def _move_neg_prob_to_max(pvector: Array) -> Array:

@@ -433,7 +433,7 @@ model = gv.bjm_spatial_triangle(g=20, zi=False)
 model = gv.bjm_budget_triangle(budget=100, zi=False)
 ```
 
-### Markov Chain (`gv.dynamics`)
+### Markov Chain (`gv.stochastic`)
 
 #### `class MarkovChain`
 
@@ -531,7 +531,7 @@ model2.analyze(solver="outline_and_fill", interpolation_matrix=C)
 Memory-efficient Markov chain for large grids (g=80, g=100).
 
 ```python
-from gridvoting_jax.dynamics.lazy import LazyMarkovChain, LazyTransitionMatrix
+from gridvoting_jax.stochastic.lazy import LazyMarkovChain, LazyTransitionMatrix
 
 lazy_P = LazyTransitionMatrix(utility_functions, majority, zi, number_of_feasible_alternatives)
 mc = LazyMarkovChain(lazy_P=lazy_P)

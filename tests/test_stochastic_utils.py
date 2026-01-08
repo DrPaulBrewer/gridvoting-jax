@@ -1,8 +1,8 @@
-"""Test core/utils.py functions"""
+"""Test stochastic/utils.py functions"""
 from gridvoting_jax.core.constants import EPSILON
 import pytest
 import jax.numpy as jnp
-from gridvoting_jax.core.utils import _move_neg_prob_to_max, entropy_in_bits, normalize_if_needed
+from gridvoting_jax.stochastic.utils import _move_neg_prob_to_max, entropy_in_bits, normalize_if_needed
 
 def test_move_neg_prob_to_max():
     pvector = jnp.array([0.5, -0.01, 0.51])

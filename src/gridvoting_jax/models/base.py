@@ -3,11 +3,11 @@ import jax.numpy as jnp
 import copy
 from warnings import warn
 
-# Import from core and dynamics
-from ..core import (
-    LazyStochasticMatrix
+# Import from stochastic
+from ..stochastic import (
+    LazyStochasticMatrix,
+    MarkovChain
 )
-from ..dynamics import MarkovChain
 
 
 
