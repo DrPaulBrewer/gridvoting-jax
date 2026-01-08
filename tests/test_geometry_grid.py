@@ -4,7 +4,6 @@ import chex
 def test_grid_init():
     import gridvoting_jax
     import jax.numpy as jnp
-    import numpy as np
     grid = gridvoting_jax.Grid(x0=-5,x1=5,y0=-7,y1=7)
     assert grid.x0 == -5
     assert grid.x1 == 5
@@ -80,7 +79,6 @@ def test_grid_init():
 def test_grid_as_xy_vectors():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    import numpy as np
     grid = gv.Grid(x0=-3,x1=3,y0=-5,y1=5)
     correct_vectors = jnp.array([
        [-3,  5],
@@ -180,7 +178,6 @@ def test_grid_shape(x0,x1,xstep,y0,y1,ystep,correct):
 def test_grid_embedding():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    import numpy as np
     grid = gv.Grid(x0=-5,x1=5,y0=-7,y1=7)
     triangle = (grid.x>=0) & (grid.y>=0) & ((grid.x+grid.y)<=4)
     correct_triangle = jnp.array([
@@ -253,7 +250,7 @@ def test_grid_embedding():
 def test_grid_within_box():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    import numpy as np
+    
     grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
     box = grid.within_box(x0=20,y0=20,x1=30,y1=40)
     assert box.shape == (grid.len,)
@@ -266,7 +263,7 @@ def test_grid_within_box():
 def test_grid_within_disk():
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    import numpy as np
+    
     grid = gv.Grid(x0=0,y0=0,x1=100,y1=100)
     disk = grid.within_disk(x0=30,y0=40,r=50)
     assert grid.x[disk][0] == 30
@@ -283,7 +280,7 @@ def test_grid_within_triangle_right_triangles():
     """
     import gridvoting_jax as gv
     import jax.numpy as jnp
-    import numpy as np
+    
     
     # Smaller grid for faster testing (41x41 = 1,681 points vs 101x101 = 10,201)
     grid = gv.Grid(x0=0, y0=0, x1=40, y1=40)
@@ -329,7 +326,7 @@ def test_grid_within_triangle_right_triangles():
     
     # Run tests
     for cx, cy, ax, ay, bx, by in test_cases:
-        points = np.array([[ax, ay], [bx, by], [cx, cy]])
+        points = jnp.array([[ax, ay], [bx, by], [cx, cy]])
         
         # Calculate expected result
         slope = (0.0 + by - ay) / (0.0 + bx - ax)
@@ -358,12 +355,12 @@ def test_grid_within_triangle_right_triangles():
 def test_grid_spatial_utility():
     # this also tests gridvoting github issue #10
     import gridvoting_jax as gv
-    import numpy as np
+    import jax.numpy as jnp
     grid = gv.Grid(x0=-5,x1=5,y0=-7,y1=7)
     assert grid.gshape == (15,11)
     u = grid.spatial_utilities(voter_ideal_points=[[0,1]]).reshape(grid.gshape)
 # this reshaped output is correct, the dependence on the squared distance from the ideal point is clear
-    correct_u = np.array([
+    correct_u = jnp.array([
            [-61., -52., -45., -40., -37., -36., -37., -40., -45., -52., -61.],
            [-50., -41., -34., -29., -26., -25., -26., -29., -34., -41., -50.],
            [-41., -32., -25., -20., -17., -16., -17., -20., -25., -32., -41.],

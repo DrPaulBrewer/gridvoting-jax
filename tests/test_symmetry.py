@@ -1,6 +1,5 @@
 import pytest
 import jax.numpy as jnp
-import numpy as np
 
 pytestmark = pytest.mark.lumping
 import gridvoting_jax as gv

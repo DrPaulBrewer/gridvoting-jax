@@ -19,7 +19,6 @@ pytestmark = pytest.mark.benchmarks
 ])
 def test_replicate_spatial_voting_analysis(params, correct):
     import gridvoting_jax as gv
-    import numpy as np
     g = params['g']
     zi = params['zi']
     vm = gv.models.examples.bjm_spatial.bjm_spatial_triangle(g=g, zi=zi)
@@ -54,7 +53,6 @@ def test_replicate_spatial_voting_analysis(params, correct):
 ])
 def test_replicate_core_Plott_theorem_example(params,correct):
     import gridvoting_jax as gv
-    import numpy as np
     g = params['g']
     zi = params['zi']
     grid = gv.Grid(x0=-g,x1=g,y0=-g,y1=g)
