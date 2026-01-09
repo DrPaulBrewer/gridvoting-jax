@@ -412,6 +412,9 @@ class MarkovChain:
         # handle 2D result from bifurcated power method (shape (2,n) needs averaging)
         # Note: for 2-state chains with other solvers, shape is (n,) which is already correct
         if solver == "bifurcated_power_method" and self.stationary_distribution.ndim == 2:
+            # require stationary distributions to be similar within BAD_STATIONARY_TOLERANCE
+            if jnp.linalg.norm(self.stationary_distribution[0] - self.stationary_distribution[1], ord=1) > BAD_STATIONARY_TOLERANCE:
+                raise RuntimeError("Markov chain convergence failure with solver='bifurcated_power_method': stationary distributions are not similar")
             self.stationary_distribution = self.stationary_distribution.mean(axis=0)
 
         check_sum = self.stationary_distribution.sum().block_until_ready()

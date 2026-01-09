@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 @pytest.mark.parametrize("zi,correct_P", [
     (True, [
-        [2./3.,1.,1./3.],
+        [2./3.,0.,1./3.],
         [1./3.,2./3.,0.],
         [0., 1./3., 2./3.]
     ]),
@@ -35,7 +35,7 @@ def test_condorcet(zi, correct_P):
         rtol=0
     )
     mc=condorcet_model.MarkovChain
-    alt = mc.solve_for_unit_eigenvector()
+    alt = mc.find_unique_stationary_distribution()
     chex.assert_trees_all_close(
         alt,
         jnp.array([1.0/3.0, 1.0/3.0, 1.0/3.0]),
