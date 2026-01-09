@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 @pytest.mark.parametrize("zi,correct_P", [
     (True, [
-        [2./3.,0.,1./3.],
+        [2./3.,1.,1./3.],
         [1./3.,2./3.,0.],
         [0., 1./3., 2./3.]
     ]),
@@ -17,7 +17,6 @@ import jax.numpy as jnp
 ])
 def test_condorcet(zi, correct_P):
     import gridvoting_jax as gv
-    import numpy as np
     condorcet_model =  gv.CondorcetCycle(zi=zi)
     assert not condorcet_model.analyzed
     condorcet_model.analyze()
