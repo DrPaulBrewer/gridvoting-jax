@@ -12,7 +12,7 @@ def double_cycle_mc():
     [0,0,0,1/2,1/2,0],
     [0,0,0,0,1/2,1/2],
     [0,0,0,1/2,0,1/2]
-  ])
+  ], dtype=DTYPE_FLOAT)
   mc = gv.MarkovChain(P=double_cycle_P)
   return mc
   
