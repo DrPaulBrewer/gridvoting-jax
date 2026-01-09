@@ -19,7 +19,7 @@ This project is derived from the original `gridvoting` module, which was develop
 **Migration to JAX**: The computational backend was refactored from NumPy/CuPy to JAX using Google's Antigravity AI assistant. This migration provides:
 - ✨ Unified CPU/GPU/TPU support through JAX
 - 🚀 Improved performance through JIT compilation  
-- 💾 Float32 precision for efficiency
+- 💾 choice of Float32 or Float64 precision
 - 🔗 Better compatibility with modern ML/AI workflows
 
 **Original Project**: https://github.com/drpaulbrewer/gridvoting
@@ -28,13 +28,32 @@ This project is derived from the original `gridvoting` module, which was develop
 
 ## Quick Start
 
+Open a new window at https://colab.google
+
+### Installation in Google Colab
+To install, add these line at the top of the first cell:
+```
+!pip install gridvoting-jax
+import gridvoting_jax as gv
+```
+
+Note: the pip line uses a dash '-' but the import line uses an underscore '_'
+
+####**Float64 Precision**
+By default, JAX uses 32-bit floats for faster GPU performance. To enable 64-bit precision for higher accuracy:
+```python
+import gridvoting_jax as gv
+gv.enable_float64()
+#### All subsequent JAX operations will use float64
+```
+
 ### Spatial Voting Example
 
 ```python
 import gridvoting_jax as gv
 
 # Use a pre-built example or create your own
-# Triangle 1 from Brewer, Juybari & Moberly (2023)
+# from Brewer, Juybari & Moberly (2023)
 # Voter ideal points: [[-15, -9], [0, 17], [15, -9]]
 # https://doi.org/10.1007/s11403-023-00387-8
 model = gv.bjm_spatial_triangle(g=20, zi=False)
@@ -69,15 +88,23 @@ gini_values, gini_probs = model.giniss_distribution(granularity=0.10)
 ## Installation
 
 ### Google Colab (Recommended)
-All dependencies are pre-installed! Just run:
-```python
+To install into Google Colab, add these lines at the top of the first cell:
+```
 !pip install gridvoting-jax
+import gridvoting_jax as gv
 ```
 
 ### Local Installation
+If you are using your own computer, not Google Colab, then you need to install the gridvoting-jax python module.
+
 ```bash
 pip install gridvoting-jax
 ```
+
+Pip may work; it may not.  If pip issues an error about another system managing the python packages on your computer, then
+it may be wise to create a python virtual environment so as not to create conflicts among the python packages.
+
+### Device support
 
 **GPU Support**: JAX automatically detects and uses NVIDIA GPUs (CUDA) when available. An Nvidia A100 works well if you have one, but even an old 2017 gaming Nvidia 1080Ti will run some models.
 
@@ -92,11 +119,8 @@ GV_FORCE_CPU=1 python your_script.py
 
 ### Docker Usage
 
-> **⚠️ EXPERIMENTAL - Docker Images Under Development**  
-> The new Docker infrastructure is still being tested and may not work correctly in all environments. Images should be finalized after a few patches (v0.10.1, v0.10.2, etc.). Please report any issues on GitHub.
-
 The project uses a multi-tier Docker image system hosted on GitHub Container Registry (GHCR):
-- **Base Images**: JAX + CUDA + BJM data (built once)
+- **Base Images**: JAX + CUDA
 - **Release Images**: Versioned releases from PyPI (~30s builds)
 - **Dev Images**: Local development with mounted source code
 
@@ -134,13 +158,6 @@ docker build -f Dockerfiles/base/Dockerfile.jax-cpu -t base/cpu:local .
 docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t dev/cpu:local .
 ```
 
-**Float64 Precision**: By default, JAX uses 32-bit floats for better GPU performance. To enable 64-bit precision for higher accuracy:
-```python
-import gridvoting_jax as gv
-gv.enable_float64()
-# All subsequent JAX operations will use float64
-```
-
 ---
 
 ## Requirements
@@ -171,12 +188,12 @@ This JAX version differs from the original in several ways:
 |---------|---------------------|----------------|
 | **Backend** | NumPy/CuPy | JAX |
 | **Precision** | Float64 | Float32 (default)<br>Float64 (available) |
-| **Solver** | Power + Algebraic | Algebraic only |
-| **Tolerance** | 1e-10 | 5e-5 |
+| **Solver** | Power (Matrix) + Algebraic | Power (vector) + Algebraic |
+| **Tolerance** | 1e-10 | variable, up to 1e-10 for float64 |
 | **Device Detection** | GPU/CPU | TPU/GPU/CPU |
 | **Import** | `import gridvoting` | `import gridvoting_jax` |
 
-**Numerical Accuracy**: Float32 provides ~7 decimal digits of precision, which is sufficient for many spatial voting simulations. 
+**Numerical Accuracy**: Float32 provides ~7 decimal digits of precision, which can be sufficient for some spatial voting simulations. 
 
 ---
 
@@ -189,7 +206,7 @@ A simulation consists of:
 - A finite feasible set of alternatives **F**
 - A set of voters who have preferences over the alternatives and vote truthfully
 - A rule for voting and selecting challengers
-- A mapping of the set of alternatives **F** into a 2D grid
+- In a Spatial Voting Simulatoin, a mapping of the set of alternatives **F** into a 2D grid (x,y coordinates)
 
 The active or status quo alternative at time t is called `f[t]`.
 
@@ -201,7 +218,7 @@ At each t, there is a majority-rule vote between alternative `f[t]` and a challe
 
 ---
 
-## API Documentation (v0.9.0)
+## API Documentation (v0.30.0)
 
 The package is organized into submodules, but the public API is exposed at the top level for convenience.
 
@@ -214,11 +231,10 @@ import gridvoting_jax as gv
 Centralized configuration and constants.
 
 - **`gv.enable_float64()`**: Enable 64-bit floating point precision globally for JAX
-- **`gv.TOLERANCE`**: Default tolerance for floating-point comparisons (5e-5 for float32)
 - **`gv.device_type`**: Current device type ('gpu', 'tpu', or 'cpu')
 - **`gv.use_accelerator`**: Boolean indicating if GPU/TPU is available
 
-### Spatial Components (`gv.geometry`)
+### Geometric Components (`gv.geometry`)
 
 #### `class Grid`
 
@@ -241,7 +257,7 @@ Constructs a 2D grid for spatial voting models.
 - **`embedding(valid)`**: Create embedding function for plotting subsets
 - **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib
 
-### 6. Symmetry & Dimension Reduction
+### Symmetry & Dimension Reduction
 Reduce computational cost by exploiting spatial symmetries.
 
 Known issue: Practicality.  Time currently required to calculate symmetries and lumping is typically higher than solution time
@@ -273,17 +289,17 @@ lumped_pi = lumped_mc.find_unique_stationary_distribution()
 # Map results back to full grid
 stationary_distribution = gv.unlump(lumped_pi, partition)
 
-# 5. Verify Lumpability (optional)
+# Verify Lumpability (optional)
 # Check if partition preserves Markov property
 is_valid = gv.is_lumpable(model.MarkovChain, partition)
 print(f"Strongly lumpable: {is_valid}")
 ```
 
-**Partition Format** *(Changed in v0.24.0)*:
-- Partitions are now represented as **inverse indices** (JAX arrays)
+**Partition Format** :
+- Partitions are represented as **inverse indices** (JAX arrays)
 - Format: `jnp.ndarray` of shape `(N,)` where `partition[i]` is the group ID for state `i`
 - Example: `jnp.array([0, 0, 1, 1])` means states 0,1 are in group 0; states 2,3 are in group 1
-- Migration helper: `gv.list_partition_to_inverse(old_partition, n_states)` converts from old format
+- Migration helper: `gv.list_partition_to_inverse(old_partition, n_states)` converts from list-based partition format to inverse indices
 
 **Symmetry Types**:
 - `'reflect_x'`: Reflection across x=0 (vertical line)
@@ -294,16 +310,16 @@ print(f"Strongly lumpable: {is_valid}")
 - `('rotate', cx, cy, angle)`: Rotation by `angle` degrees around `(cx, cy)`
 
 **Performance**:
-- Singleton symmetries (single symmetry) use optimized fast path (3-5x faster)
+- Singleton symmetries (single symmetry) use optimized fast path
 - Multiple symmetries use general connected components algorithm
-- Lumping uses fully vectorized JAX operations (5-10x faster than v0.23.0)
+- Lumping uses fully vectorized JAX operations)
 ```
 
-### 7. Pareto Efficiency
+### Pareto Efficiency
 Analyze the Pareto Optimal set (points where no other point is unanimously preferred).
 
 ```python
-# Get boolean mask of Pareto set
+# Get a boolean mask for Pareto set
 pareto_mask = model.Pareto
 
 # Visualize
@@ -354,13 +370,10 @@ model = gv.SpatialVotingModel(
 
 **Additional Methods:**
 - **`plot_stationary_distribution(**kwargs)`**: Visualize results on grid
-- **`analyze_lazy(solver="auto", force_lazy=False, force_dense=False, **kwargs)`** *(New in v0.10.0)*: 
-  - Analyze using lazy matrix construction for large grids (g=80, g=100)
-  - Auto-selects dense or lazy based on memory
-  - Solvers: `"auto"`, `"gmres"`, `"power_method"`
-  - Example: `model.analyze_lazy(force_lazy=True)` for g=80+
+- **`analyze(solver="power_method", sec_per_digit=1.0, **kwargs)`** *(New in v0.10.0)*: 
+  - Solvers: `"full_matrix_inversion"`, `"gmres_matrix_inversion"`, `"power_method"`, `"bifurcated_power_method"`
 
-#### `class BudgetVotingModel` *(New in v0.9.0)*
+#### `class BudgetVotingModel`
 
 Budget allocation voting model for dividing a fixed budget among 3 voters.
 
@@ -387,11 +400,11 @@ model = gv.BudgetVotingModel(budget=100, zi=False)
 - `GiniSS`: Gini-like inequality index for each alternative
 - `stationary_distribution`: Probability distribution over allocations
 
-### Example Models *(New in v0.9.0)*
+### Example Models
 
 #### Plott's Theorem Examples
 
-Demonstrate core existence conditions from Plott's median voter theorem:
+Demonstrate core existence conditions from Plott's median-in-all-directions voter theorem:
 
 > Plott, C. R. (1967). A notion of equilibrium and its possibility under majority rule. *American Economic Review*, 57(4), 787-806.
 
@@ -404,7 +417,7 @@ model = gv.core4(g=20, zi=False)  # 4 corners + center
 model = gv.ring_with_central_core(g=20, r=10, voters=7)  # Ring + center
 
 # No-core example
-model = gv.nocore_triangle(g=20, zi=False)  # Equilateral triangle (cycling)
+model = gv.nocore_triangle(g=20, zi=False)  # (cycling)
 ```
 
 #### Shapes Submodule
@@ -421,7 +434,7 @@ model = gv.shapes.ring(g=20, r=10, voters=5, round_ideal_points=True)
 
 #### BJM Research Examples
 
-Examples from published research:
+Examples from:
 
 > Brewer, P., Juybari, J. & Moberly, R. (2023). A comparison of zero- and minimal-intelligence agendas in majority-rule voting models. *Journal of Economic Interaction and Coordination*. https://doi.org/10.1007/s11403-023-00387-8
 
@@ -442,7 +455,7 @@ mc = gv.MarkovChain(P, tolerance=5e-5)
 mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 ```
 
-**Dense Solvers** (construct full transition matrix):
+**Dense Solvers** (constructs full transition matrix):
 - **`"full_matrix_inversion"`** (default): Direct matrix inversion
   - Fastest for small grids (g≤40)
   - Memory: O(N²) where N = grid.len
@@ -525,44 +538,6 @@ C = create_outline_interpolation_matrix(model.grid, coarse_grid)
 model1.analyze(solver="outline_and_fill", interpolation_matrix=C)
 model2.analyze(solver="outline_and_fill", interpolation_matrix=C)
 ```
-
-#### `class LazyMarkovChain` *(New in v0.10.0)*
-
-Memory-efficient Markov chain for large grids (g=80, g=100).
-
-```python
-from gridvoting_jax.stochastic.lazy import LazyMarkovChain, LazyTransitionMatrix
-
-lazy_P = LazyTransitionMatrix(utility_functions, majority, zi, number_of_feasible_alternatives)
-mc = LazyMarkovChain(lazy_P=lazy_P)
-mc.find_unique_stationary_distribution(solver="gmres")
-```
-
-**Solvers:** `"gmres"` (default), `"power_method"`
-
-**Methods:**
-- `find_unique_stationary_distribution(solver, initial_guess, tolerance, max_iterations, timeout)`
-- `stationary_distribution`, `analyzed` (properties)
-
-#### `class LazyTransitionMatrix` *(New in v0.10.0)*
-
-**Methods:**
-- `rmatvec(v)`: P.T @ v (non-batched, for GMRES)
-- `rmatvec_batched(v)`: P.T @ v (batched, for power method)
-- `matvec(v)`: P @ v
-- `todense()`: Materialize full matrix
-
-#### `class FlexMarkovChain` *(New in v0.10.0)*
-
-Auto-selects dense or lazy based on memory.
-
-```python
-from gridvoting_jax.dynamics.lazy import FlexMarkovChain
-
-mc = FlexMarkovChain.from_voting_model(model)
-mc.find_unique_stationary_distribution(solver="auto")
-```
-
 ### Large Grid Support *(New in v0.10.0)*
 
 - **g=80**: Validated (L1 ~1e-08)
@@ -572,8 +547,6 @@ mc.find_unique_stationary_distribution(solver="auto")
 model = gv.bjm_spatial_triangle(g=100, zi=False)
 model.analyze(solver="outline_and_power")  # Recommended for large grids
 ```
-
-
 ### Datasets (`gv.datasets`)
 
 - **`gv.datasets.fetch_bjm_spatial_voting_2022_a100()`**: Downloads BJM reference dataset
@@ -589,9 +562,6 @@ import gridvoting_jax as gv
 
 # Print formatted benchmark results
 gv.benchmarks.run_comparison_report()
-
-# run the full suite of benchmarks
-gv.benchmarks.performance()
 
 # download the reference dataset
 gv.datasets.fetch_bjm_spatial_voting_2022_a100()
