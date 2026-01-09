@@ -19,7 +19,8 @@ from .lazy_q import LazyQMatrix
 from .utils import (
     _move_neg_prob_to_max,
     normalize_if_needed,
-    entropy_in_bits
+    entropy_in_bits,
+    matrix_is_dense
 )
 
 
@@ -188,10 +189,10 @@ class MarkovChain:
 
     def dense_P(self):
         """Materialize the transition matrix if it is a lazy matrix."""
-        if (hasattr(self.P, 'to_dense') and callable(self.P.to_dense)):
-            return self.P.to_dense()
-        else:
+        if matrix_is_dense(self.P):
             return self.P
+        else:
+            return self.P.to_dense()
 
     def L1_step_norm(self, x):
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
@@ -521,13 +522,13 @@ def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indi
     
     # For each row in original matrix
     def process_row(i, P_lumped_carry):
-        row_i = P[i]  # Get row i
+        row_i = jnp.zeros(n, dtype=P.dtype).at[i].set(1.0) @ P  # Get row i from Lazy P
         src_group = inverse_indices[i]  # Which group does state i belong to?
         
         # For each destination group j, sum transitions to states in that group
         def add_to_group(j, carry):
             dest_mask = (inverse_indices == j)  # States in group j
-            transition_sum = jnp.sum(row_i[dest_mask])  # Sum P[i, t] for t in Sj
+            transition_sum = jnp.sum(row_i*dest_mask)  # Sum P[i, t] for t in Sj
             return carry.at[src_group, j].add(transition_sum)
         
         return jax.lax.fori_loop(0, k, add_to_group, P_lumped_carry)
@@ -594,7 +595,10 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     _validate_inverse_indices(inverse_indices, n_states)
     
     # Compute lumped transition matrix
-    P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
+    if matrix_is_dense(MC.P):
+        P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
+    else:
+        P_lumped = _compute_lumped_transition_matrix_lazy(MC.P, inverse_indices)
 
     # Create new MarkovChain instance
     return MarkovChain(P=P_lumped)

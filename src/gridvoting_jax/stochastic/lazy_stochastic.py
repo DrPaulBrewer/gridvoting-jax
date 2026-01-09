@@ -122,8 +122,12 @@ class LazyStochasticMatrix:
             if isinstance(i, slice) and i == slice(None) and isinstance(j, int):
                 col = self.mask[:, j] * self.challenger_values
                 return col.at[j].set(self.status_quo_values[j])
+        elif isinstance(key, int):
+            # row access M[i]
+            row = self.mask[key, :] * self.challenger_values[key]
+            return row.at[key].set(self.status_quo_values[key])
 
-        raise NotImplementedError("Advanced indexing/slicing not supported for LazyStochasticMatrix")
+        raise NotImplementedError("Advanced indexing/slicing not supported for LazyStochasticMatrix, got:"+str(type(key))+' '+str(key))
 
     @property
     def T(self) -> 'LazyStochasticMatrixTranspose':

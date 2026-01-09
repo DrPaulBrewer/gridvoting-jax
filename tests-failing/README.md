@@ -18,7 +18,6 @@ Tests with assertion failures and numerical precision issues:
 ### other/ (2 files)
 Tests with various other errors:
 - `test_gridvoting_topcycle.py` (TracerArrayConversionError)
-- `test_lump_bjm_g20_reflection.py` (multiple issues)
 
 ## Next Steps
 
