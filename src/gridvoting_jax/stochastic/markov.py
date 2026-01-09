@@ -340,10 +340,15 @@ class MarkovChain:
         """
         Finds the stationary distribution for a Markov Chain.
 
+        In the context of voting models, this distribution is also likely to be unique, because
+        the Markov Chain will usually have only one connected component. 
+
         Note:  This function does not check for multiple connected components.  
         If the Markov Chain contains multiple connected components, some solvers may
-        fail as there may be multiple stationary distributions.  The test for 
+        fail due to numerical issues associated with multiple stationary distributions. A test for 
         connected components can be time-consuming for large chains and is not implemented.  
+        See tests/test_markov_double_cycle.py for an example of a Markov Chain with multiple
+        connected components.
         
         Args:
             solver: Strategy to use. Options:
