@@ -358,6 +358,8 @@ class MarkovChain:
         """
         if not hasattr(self,'absorbing_points'):
             self.calculate_chain_properties()
+        if hasattr(self,'stationary_distribution'):
+            del self.stationary_distribution
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
             return None
