@@ -226,6 +226,8 @@ class MarkovChain:
         # test if solver is callable, not simply a string
         if not callable(solver):
             raise ValueError("solver must be callable")
+        if initial_guess is not None:
+            initial_guess = jnp.array(initial_guess, dtype=DTYPE_FLOAT)
         
         # Compute and cache Q matrix (dense) for solvers that need it
         # if memory is a concern, self.P will be lazy and Q will be made dense from lazy evaluation
@@ -402,7 +404,7 @@ class MarkovChain:
                 self.stationary_distribution, self.convergence_history = self.control_iteration(
                     solver=iterative_solvers[solver],
                     initial_guess=initial_guess,
-                    time_per_digit=time_per_digit,
+                    time_per_digit=time_per_digit
                     )
             else:
                 raise ValueError(f"Unknown solver: {solver}")
@@ -540,8 +542,7 @@ def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indi
     P_lumped = P_lumped / group_sizes[:, jnp.newaxis]
     
     # Renormalize rows
-    row_sums = jnp.sum(P_lumped, axis=1, keepdims=True)
-    P_lumped = P_lumped / row_sums
+    P_lumped = normalize_if_needed(P_lumped)
     
     return P_lumped
     
