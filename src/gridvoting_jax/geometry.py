@@ -11,10 +11,7 @@ import scipy.sparse
 
 
 # Import from core
-from .core.constants import TOLERANCE, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
-
-# Wait, distance functions were in __init__.py. I should move them here or core?
-# Plan said: spatial.py contains dist_sqeuclidean, dist_manhattan, _is_in_triangle_single
+from .core.constants import TOLERANCE, EPSILON, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
 
 
 def dist_sqeuclidean(XA, XB):
@@ -27,8 +24,8 @@ def dist_sqeuclidean(XA, XB):
     Returns:
         Distance matrix of shape (m, p)
     """
-    XA = jnp.asarray(XA)
-    XB = jnp.asarray(XB)
+    XA = jnp.asarray(XA, dtype=DTYPE_FLOAT)
+    XB = jnp.asarray(XB, dtype=DTYPE_FLOAT)
     # Squared Euclidean: ||a-b||^2 = ||a||^2 + ||b||^2 - 2*a·b
     XA_sq = jnp.sum(XA**2, axis=1, keepdims=True)
     XB_sq = jnp.sum(XB**2, axis=1, keepdims=True)
@@ -45,8 +42,8 @@ def dist_manhattan(XA, XB):
     Returns:
         Distance matrix of shape (m, p)
     """
-    XA = jnp.asarray(XA)
-    XB = jnp.asarray(XB)
+    XA = jnp.asarray(XA, dtype=DTYPE_FLOAT)
+    XB = jnp.asarray(XB, dtype=DTYPE_FLOAT)
     # Manhattan distance: sum(|a-b|)
     return jnp.sum(jnp.abs(XA[:, None, :] - XB[None, :, :]), axis=2)
 
@@ -219,15 +216,32 @@ class Grid:
         return efunc
 
     def extremes(self, z, *, valid=None):
+        """
+        Returns the minimum and maximum values of z, along with point arrays for argmin and argmax
+        
+        Args:
+            z: Array of values of size self.len or valid.len
+            valid: Boolean array indicating which grid points are valid
+        
+        Returns: tuple (min_z, min_z_points, max_z, max_z_points)
+            min_z: Minimum value of z
+            min_z_points: Array of points where z is equal to min_z
+            max_z: Maximum value of z
+            max_z_points: Array of points where z is equal to max_z
+
+        Note: The relative tolerance for min and max is 2*EPSILON, where 
+        EPSILON is the machine epsilon set for float32 or float64 in core/constants.py
+
+        Note: uses dynamic indexing, so cannot be used in jax.jit
+        """
         # if valid is None return unrestricted min,points_min,max,points_max
         # if valid is a boolean array, return constrained min,points_min,max,points_max
         # note that min/max is always calculated over all of z, it is the points that must be restricted
         # because valid indicates that z came from a subset of the points
         min_z = float(z.min())
-        # Use GEOMETRY_EPSILON from core for consistency with strict tolerance checks
-        min_z_mask = jnp.abs(z-min_z) < GEOMETRY_EPSILON
+        min_z_mask = jnp.abs(z-min_z) <= 2*EPSILON*jnp.abs(min_z)
         max_z = float(z.max())
-        max_z_mask = jnp.abs(z-max_z) < GEOMETRY_EPSILON
+        max_z_mask = jnp.abs(z-max_z) <= 2*EPSILON*jnp.abs(max_z)
         if valid is None:
            return (min_z,self.points[min_z_mask],max_z,self.points[max_z_mask]) 
         return (min_z,self.points[valid][min_z_mask],max_z,self.points[valid][max_z_mask])
@@ -236,7 +250,7 @@ class Grid:
         self, *, voter_ideal_points, metric="sqeuclidean", scale=-1
     ):
         """returns utility function values for each voter at each grid point"""
-        voter_ideal_points = jnp.asarray(voter_ideal_points)
+        voter_ideal_points = jnp.asarray(voter_ideal_points, dtype=DTYPE_FLOAT)
         
         if metric == "sqeuclidean":
             distances = dist_sqeuclidean(voter_ideal_points, self.points)
@@ -308,18 +322,34 @@ class Grid:
 
     def parts_from_linear_discriminator(self, center=(0,0), d1=(0,0), d2=(0,0), d3=(0,0)) -> jnp.ndarray:
         """
+        Generate partition using linear discriminant function.
+    
+        Creates partition by evaluating a discriminant function at each grid point:
+        f(p) = (p-center)·d1 + |(p-center)|·d2 + |(p-center)·d3|
+    
+        Points with equal discriminant values are grouped together.
+    
+        Args:
+            center: Center point for discriminant (default: (0,0))
+            d1: Linear term direction vector (default: (0,0))
+            d2: Absolute value term direction vector (default: (0,0))
+            d3: Absolute dot product direction vector (default: (0,0))
         
+        Returns:
+            Inverse indices array grouping points by discriminant value
+        
+        Notes:
+            - Used internally for efficient symmetry partitioning
+            - Optimized for reflection symmetries on regular grids
         """
         center = jnp.array(center)
         d1 = jnp.array(d1)
         d2 = jnp.array(d2)
         d3 = jnp.array(d3)
         centered = self.points - center
-        values = jnp.dot(centered, d1) + jnp.dot(jnp.abs(centered), d2) + jnp.abs(jnp.dot(centered, d3))
-        inverse_indices = jnp.unique(values, return_inverse=True)[1]
+        discriminant_values = jnp.dot(centered, d1) + jnp.dot(jnp.abs(centered), d2) + jnp.abs(jnp.dot(centered, d3))
+        inverse_indices = jnp.unique(discriminant_values, return_inverse=True)[1]
         return inverse_indices
-        
-
 
     def partition_from_symmetry(
         self,

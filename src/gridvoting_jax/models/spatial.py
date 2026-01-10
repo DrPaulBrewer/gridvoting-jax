@@ -8,132 +8,6 @@ from ..geometry import Grid
 from ..stochastic import normalize_if_needed
 
 
-def create_outline_interpolation_matrix(fine_grid, coarse_grid):
-    """
-    Create sparse interpolation matrix for outline-based solvers.
-    
-    Uses pattern-based approach with row/column parity to eliminate coordinate lookups.
-    For grids where coarse has 2x spacing of fine (same boundaries), this creates a
-    sparse BCOO matrix that maps coarse grid probabilities to fine grid via interpolation.
-    
-    Args:
-        fine_grid: Grid instance with finer spacing
-        coarse_grid: Grid instance with 2x spacing of fine_grid
-    
-    Returns:
-        jax.experimental.sparse.BCOO: Sparse interpolation matrix of shape (n_fine, n_coarse)
-    
-    Pattern:
-        - (even_row, even_col): Direct copy from coarse[row//2, col//2]
-        - (even_row, odd_col): Average of left-right neighbors
-        - (odd_row, even_col): Average of up-down neighbors
-        - (odd_row, odd_col): Average of 4 diagonal neighbors
-    
-    Example:
-        >>> fine_grid = Grid(x0=0, x1=10, xstep=1, y0=0, y1=10, ystep=1)
-        >>> coarse_grid = Grid(x0=0, x1=10, xstep=2, y0=0, y1=10, ystep=2)
-        >>> C = create_outline_interpolation_matrix(fine_grid, coarse_grid)
-        >>> # Use C @ coarse_dist to interpolate to fine grid
-    """
-    # Get grid shapes
-    n_rows_fine, n_cols_fine = fine_grid.shape()
-    n_rows_coarse, n_cols_coarse = coarse_grid.shape()
-    
-    # Build sparse matrix data as coordinate lists
-    rows = []
-    cols = []
-    data = []
-    
-    for row_f in range(n_rows_fine):
-        for col_f in range(n_cols_fine):
-            # Fine grid 1D index
-            idx_f = row_f * n_cols_fine + col_f
-            
-            # Determine parity
-            row_even = (row_f % 2 == 0)
-            col_even = (col_f % 2 == 0)
-            
-            if row_even and col_even:
-                # Direct copy from coarse grid
-                row_c = row_f // 2
-                col_c = col_f // 2
-                idx_c = row_c * n_cols_coarse + col_c
-                rows.append(idx_f)
-                cols.append(idx_c)
-                data.append(1.0)
-                
-            elif row_even and not col_even:
-                # Left-right interpolation
-                row_c = row_f // 2
-                col_c_left = col_f // 2
-                col_c_right = col_c_left + 1
-                
-                # Collect valid neighbors
-                neighbors = []
-                if col_c_left < n_cols_coarse:
-                    neighbors.append(row_c * n_cols_coarse + col_c_left)
-                if col_c_right < n_cols_coarse:
-                    neighbors.append(row_c * n_cols_coarse + col_c_right)
-                
-                # Average neighbors
-                weight = 1.0 / len(neighbors)
-                for idx_c in neighbors:
-                    rows.append(idx_f)
-                    cols.append(idx_c)
-                    data.append(weight)
-                    
-            elif not row_even and col_even:
-                # Up-down interpolation
-                col_c = col_f // 2
-                row_c_up = row_f // 2
-                row_c_down = row_c_up + 1
-                
-                # Collect valid neighbors
-                neighbors = []
-                if row_c_up < n_rows_coarse:
-                    neighbors.append(row_c_up * n_cols_coarse + col_c)
-                if row_c_down < n_rows_coarse:
-                    neighbors.append(row_c_down * n_cols_coarse + col_c)
-                
-                # Average neighbors
-                weight = 1.0 / len(neighbors)
-                for idx_c in neighbors:
-                    rows.append(idx_f)
-                    cols.append(idx_c)
-                    data.append(weight)
-                    
-            else:  # not row_even and not col_even
-                # 4-neighbor interpolation
-                row_c_up = row_f // 2
-                row_c_down = row_c_up + 1
-                col_c_left = col_f // 2
-                col_c_right = col_c_left + 1
-                
-                # Collect valid neighbors
-                neighbors = []
-                if row_c_up < n_rows_coarse and col_c_left < n_cols_coarse:
-                    neighbors.append(row_c_up * n_cols_coarse + col_c_left)
-                if row_c_up < n_rows_coarse and col_c_right < n_cols_coarse:
-                    neighbors.append(row_c_up * n_cols_coarse + col_c_right)
-                if row_c_down < n_rows_coarse and col_c_left < n_cols_coarse:
-                    neighbors.append(row_c_down * n_cols_coarse + col_c_left)
-                if row_c_down < n_rows_coarse and col_c_right < n_cols_coarse:
-                    neighbors.append(row_c_down * n_cols_coarse + col_c_right)
-                
-                # Average neighbors
-                weight = 1.0 / len(neighbors)
-                for idx_c in neighbors:
-                    rows.append(idx_f)
-                    cols.append(idx_c)
-                    data.append(weight)
-    
-    # Convert to sparse BCOO matrix
-    indices = jnp.column_stack([jnp.array(rows), jnp.array(cols)])
-    values = jnp.array(data)
-    
-    return sparse.BCOO((values, indices), shape=(fine_grid.len, coarse_grid.len))
-
-
 
 class SpatialVotingModel:
     """
@@ -155,7 +29,7 @@ class SpatialVotingModel:
     ):
         """
         Args:
-            voter_ideal_points: Array of shape (number_of_voters, 2)
+            voter_ideal_points: Array of [x,y] coordinates of shape (number_of_voters, 2)
             grid: Grid instance
             number_of_voters: int
             majority: int
@@ -315,54 +189,130 @@ class SpatialVotingModel:
     # Delegate properties to underlying model
     @property
     def stationary_distribution(self):
+        """
+        Stationary distribution of the voting model's Markov chain. 
+        """
         return self.model.stationary_distribution
     
     @property
     def MarkovChain(self):
+        """
+        Markov chain of the voting model. 
+        """
         return self.model.MarkovChain
     
     @property
     def analyzed(self):
+        """
+        Boolean, True if the voting model has been analyzed. 
+        """
         return self.model.analyzed
     
     @property
     def core_points(self):
+        """
+        Core points of the voting model, if any.
+        """
         return self.model.core_points
     
     @property
     def number_of_feasible_alternatives(self):
+        """
+        Number of feasible alternatives in the voting model.
+        """
         return self.model.number_of_feasible_alternatives
 
     @property
     def core_exists(self):
+        """
+        Boolean, True if the voting model has a core, one or more alternatives
+        that are preferred to all other alternatives by a strict majority.
+        """
         return self.model.core_exists
 
     @property
     def Pareto(self):
-        """Delegate to model.Pareto."""
+        """
+        Pareto set of the voting model.
+
+        Returns:
+            JAX boolean array indicating whether an alternative is Pareto optimal.
+
+        Note: This function is cached, so it will only be computed once.
+        
+        Uses: For the grid coordinates of Pareto Optimal alternatives, use grid.points[voting_model.Pareto]
+        
+        """
         return self.model.Pareto
     
     def summarize_in_context(self, grid=None, **kwargs):
-        """Delegate to model, using self.grid if not provided."""
+        """Delegate to model, using self.grid if not provided."
+        
+        Delegated to VotingModel.summarize_in_context()
+        
+        Args:
+            grid: Grid to use for summarization. Defaults to self.grid.
+            **kwargs: Additional keyword arguments to pass to VotingModel.summarize_in_context().
+        
+        Returns:
+            dict: Dictionary containing summary statistics.
+
+        See: help(VotingModel.summarize_in_context)
+
+        """
         if grid is None:
             grid = self.grid
         return self.model.summarize_in_context(grid=grid, **kwargs)
     
     def what_beats(self, **kwargs):
-        """Delegate to model."""
+        """Delegated to VotingModel.what_beats().
+                
+        Args:
+            i: Index of the alternative to compare against.
+            **kwargs: Additional keyword arguments to pass to VotingModel.what_beats().
+        
+        Returns:
+            boolean mask indicating which alternatives will win against the given alternative.
+
+        See: help(VotingModel.what_beats)
+        """
         return self.model.what_beats(**kwargs)
     
     def what_is_beaten_by(self, **kwargs):
-        """Delegate to model."""
+        """Delegated to VotineModel.what_is_beaten_by().
+                
+        Args:
+            i: Index of the alternative to compare against.
+            **kwargs: Additional keyword arguments to pass to VotingModel.what_is_beaten_by().
+        
+        Returns:
+            boolean mask indicating which alternatives will lose to the given alternative.
+
+        Note: this is not the same as (not what_beats(i)).  Under unanimity, for example, the
+        situation can easily be that not(X beats Y) and not(Y is beaten by X) because neither the
+        X->Y vote nor the Y->X vote has every voter's vote.
+
+        See: help(VotingModel.what_is_beaten_by)
+        """
         return self.model.what_is_beaten_by(**kwargs)
     
     def E_𝝿(self, z):
-        """Delegate to model."""
+        """Delegated to VotingModel.E_𝝿().
+        
+        Args:
+            z: Array of values for each alternative
+        
+        Returns:
+            Mean of z under the voting model's stationary distribution
+        
+        See also: help(VotingModel.E_𝝿)
+        """
         return self.model.E_𝝿(z)
     
     # Spatial-specific methods
     def plot_stationary_distribution(self, **kwargs):
-        """Visualize distribution on grid using grid.plot()."""
+        """Visualization of the voting model's stationary distribution on the grid. 
+        Delegated to grid.plot()."""
         return self.grid.plot(self.stationary_distribution, **kwargs)
     
     def plots(self, **kwargs):
@@ -375,9 +325,9 @@ class SpatialVotingModel:
     
     def get_spatial_symmetry_partition(self, symmetries, tolerance=1e-6):
         """
-        Generate partition from spatial symmetries.
-        
-        Convenience method that delegates to grid.partition_from_symmetry().
+        Delegated to grid.partition_from_symmetry().
+
+        Find lumping of grid points that are symmetric with respect to the given symmetries.
         
         Args:
             symmetries: List of symmetry specifications (see Grid.partition_from_symmetry)
@@ -400,3 +350,131 @@ class SpatialVotingModel:
             - See Grid.partition_from_symmetry() for full documentation
         """
         return self.grid.partition_from_symmetry(symmetries, tolerance=tolerance)
+
+
+def create_outline_interpolation_matrix(fine_grid, coarse_grid):
+    """
+    Create sparse interpolation matrix for outline-based solvers.
+    
+    Uses pattern-based approach with row/column parity to eliminate coordinate lookups.
+    For grids where coarse has 2x spacing of fine (same boundaries), this creates a
+    sparse BCOO matrix that maps coarse grid probabilities to fine grid via interpolation.
+    
+    Args:
+        fine_grid: Grid instance with finer spacing
+        coarse_grid: Grid instance with 2x spacing of fine_grid
+    
+    Returns:
+        jax.experimental.sparse.BCOO: Sparse interpolation matrix of shape (n_fine, n_coarse)
+    
+    Pattern:
+        - (even_row, even_col): Direct copy from coarse[row//2, col//2]
+        - (even_row, odd_col): Average of left-right neighbors
+        - (odd_row, even_col): Average of up-down neighbors
+        - (odd_row, odd_col): Average of 4 diagonal neighbors
+    
+    Example:
+        >>> fine_grid = Grid(x0=0, x1=10, xstep=1, y0=0, y1=10, ystep=1)
+        >>> coarse_grid = Grid(x0=0, x1=10, xstep=2, y0=0, y1=10, ystep=2)
+        >>> C = create_outline_interpolation_matrix(fine_grid, coarse_grid)
+        >>> # Use C @ coarse_dist to interpolate to fine grid
+    """
+    # Get grid shapes
+    n_rows_fine, n_cols_fine = fine_grid.shape()
+    n_rows_coarse, n_cols_coarse = coarse_grid.shape()
+    
+    # Build sparse matrix data as coordinate lists
+    rows = []
+    cols = []
+    data = []
+    
+    for row_f in range(n_rows_fine):
+        for col_f in range(n_cols_fine):
+            # Fine grid 1D index
+            idx_f = row_f * n_cols_fine + col_f
+            
+            # Determine parity
+            row_even = (row_f % 2 == 0)
+            col_even = (col_f % 2 == 0)
+            
+            if row_even and col_even:
+                # Direct copy from coarse grid
+                row_c = row_f // 2
+                col_c = col_f // 2
+                idx_c = row_c * n_cols_coarse + col_c
+                rows.append(idx_f)
+                cols.append(idx_c)
+                data.append(1.0)
+                
+            elif row_even and not col_even:
+                # Left-right interpolation
+                row_c = row_f // 2
+                col_c_left = col_f // 2
+                col_c_right = col_c_left + 1
+                
+                # Collect valid neighbors
+                neighbors = []
+                if col_c_left < n_cols_coarse:
+                    neighbors.append(row_c * n_cols_coarse + col_c_left)
+                if col_c_right < n_cols_coarse:
+                    neighbors.append(row_c * n_cols_coarse + col_c_right)
+                
+                # Average neighbors
+                weight = 1.0 / len(neighbors)
+                for idx_c in neighbors:
+                    rows.append(idx_f)
+                    cols.append(idx_c)
+                    data.append(weight)
+                    
+            elif not row_even and col_even:
+                # Up-down interpolation
+                col_c = col_f // 2
+                row_c_up = row_f // 2
+                row_c_down = row_c_up + 1
+                
+                # Collect valid neighbors
+                neighbors = []
+                if row_c_up < n_rows_coarse:
+                    neighbors.append(row_c_up * n_cols_coarse + col_c)
+                if row_c_down < n_rows_coarse:
+                    neighbors.append(row_c_down * n_cols_coarse + col_c)
+                
+                # Average neighbors
+                weight = 1.0 / len(neighbors)
+                for idx_c in neighbors:
+                    rows.append(idx_f)
+                    cols.append(idx_c)
+                    data.append(weight)
+                    
+            else:  # not row_even and not col_even
+                # 4-neighbor interpolation
+                row_c_up = row_f // 2
+                row_c_down = row_c_up + 1
+                col_c_left = col_f // 2
+                col_c_right = col_c_left + 1
+                
+                # Collect valid neighbors
+                neighbors = []
+                if row_c_up < n_rows_coarse and col_c_left < n_cols_coarse:
+                    neighbors.append(row_c_up * n_cols_coarse + col_c_left)
+                if row_c_up < n_rows_coarse and col_c_right < n_cols_coarse:
+                    neighbors.append(row_c_up * n_cols_coarse + col_c_right)
+                if row_c_down < n_rows_coarse and col_c_left < n_cols_coarse:
+                    neighbors.append(row_c_down * n_cols_coarse + col_c_left)
+                if row_c_down < n_rows_coarse and col_c_right < n_cols_coarse:
+                    neighbors.append(row_c_down * n_cols_coarse + col_c_right)
+                
+                # Average neighbors
+                weight = 1.0 / len(neighbors)
+                for idx_c in neighbors:
+                    rows.append(idx_f)
+                    cols.append(idx_c)
+                    data.append(weight)
+    
+    # Convert to sparse BCOO matrix
+    indices = jnp.column_stack([jnp.array(rows), jnp.array(cols)])
+    values = jnp.array(data)
+    
+    return sparse.BCOO((values, indices), shape=(fine_grid.len, coarse_grid.len))
+
+

@@ -64,10 +64,19 @@ class VotingModel:
     @property
     def Pareto(self):
         """
-        Returns the Pareto Optimal set (Core under unanimity).
+        Returns a boolean mask for the grid indicating the Pareto Optimal set (Core under unanimity).  
+ 
+        The Pareto set is the set of alternatives for which no other alternative is 
+        universally preferred by all voters (under unanimity, not majority). Equivalently,
+        an alternative is Pareto optimal when a change would lower some voter's utility. 
         
         Returns:
             JAX boolean array indicating points in the Pareto set.
+
+        Note: This function is cached, so it will only be computed once.
+        
+        Uses: For the grid coordinates of Pareto Optimal alternatives, use grid.points[voting_model.Pareto]
+
         """
         if self._pareto_core is not None:
             return self._pareto_core
@@ -83,7 +92,15 @@ class VotingModel:
         return self._pareto_core
 
     def E_𝝿(self,z):
-        """returns mean, i.e., expected value of z under the stationary distribution"""
+        """
+        Returns the mean, i.e., expected value of z under the stationary distribution.
+        
+        Args:
+            z: Array of values for each alternative
+        
+        Returns:
+            Mean of z under the voting model's stationary distribution
+        """
         return jnp.dot(self.stationary_distribution,z)
 
     def analyze(self, *, solver="full_matrix_inversion", **kwargs):
@@ -186,10 +203,17 @@ class VotingModel:
         ### 
         # Calculates the parameters needed by class LazyStochasticMatrix
         #
-        # returns a dict:
+        # Args:
+        #     None
+        #
+        # Returns:
+        #     a dict:
         #  mask: a boolean mask of size (number_of_feasible_alternatives, number_of_feasible_alternatives)
         #     mask[i,j] is true is alternative j wins a vote over alternative i with majority self.majority
-        #     status_quo_values 
+        #     
+        #  status_quo_values: an array of size (number_of_feasible_alternatives,)
+        #     status_quo_values[i] is the probability of an alternative i, that is the status quo,
+        #                          winning the vote in the ZI or MI challenger process
         ###
         winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
         number_of_winning_alternatives = winner_mask.sum(axis=1)
@@ -203,11 +227,42 @@ class VotingModel:
             'status_quo_values': status_quo_values        }
 
     def transition_matrix(self):
-        """Returns the a transition matrix for the model's Markov Chain as a LazyStochasticMatrix"""
+        """Returns the transition matrix for the model's Markov Chain as a LazyStochasticMatrix
+        
+        Args:
+            None
+        
+        Returns:
+            an instance of LazyStochasticMatrix
+        """
         return LazyStochasticMatrix(**self.stochastic_matrix_parameters())
 
     def summarize_in_context(self,*,grid,valid=None):
-        """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""
+        """
+        calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid
+        
+        Args:
+            grid: a Grid instance
+            valid (optional): an array of booleans of size grid.len, indicating which grid points are valid
+                defaults to all True array for grid
+        
+        Returns:
+            a dict containing summary statistics for the stationary distribution
+
+            if core exists:
+                'core_exists': True
+                'core_points': array of valid points in core
+            else:
+                'core_exists': False
+                'point_mean': the weighted mean point coordinates
+                'point_cov': the covariance of the point coordinates
+                'prob_min': the minimum probability
+                'prob_min_points': (n_min,2) array of [x,y] points with minimum probability
+                'prob_max': the maximum probability
+                'prob_max_points': (n_max,2) array of [x,y] points with maximum probability
+                'entropy_bits': the Shannon entropy of the distribution in bits
+
+        """
         # missing valid defaults to all True array for grid
         valid = jnp.full((grid.len,), True) if valid is None else valid
         # check valid array shape 
@@ -264,13 +319,32 @@ class VotingModel:
         title_stationary_distribution="Stationary Distribution",
         title_stationary_distribution_zoom="Stationary Distribution (zoom)"
     ):
+        """
+        Creates a set of plots for the Voting Model.
+
+        This function was copied from the original gridvoting repository, and has not
+        been updated.  It is provided for reference and future development and probably
+        does not work as intended.
+        """
         import matplotlib.pyplot as plt
         import numpy as np
         
         def _fn(name):
+            """
+            Return the filename with the prefix if it is not None.
+
+            Args:
+                name: the filename
+            """
             return None if fprefix is None else fprefix + name
 
         def _save(fname):
+            """
+            Save the current figure to a file.
+
+            Args:
+                fname: the filename to save the figure to
+            """
             if fprefix is not None:
                 plt.savefig(fprefix + fname)
 

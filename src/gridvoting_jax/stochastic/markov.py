@@ -25,6 +25,18 @@ from .utils import (
 
 
 def _correct_minor_negative_probabilities(x):
+    """Correct minor negative probabilities in a probability vector by adjusting the
+    maximum components down and zeroing out the negative components. This becomes necessary
+    when the probability vector is computed from matrix algorithms that do not guarantee
+    non-negative entries.
+    
+    Args:
+        x: A probability vector.
+    Returns:
+        A probability vector with minor negative probabilities corrected.
+    Raises:
+        RuntimeError: If the probability vector contains significantly negative probabilities.
+    """
     min_component = x.min().item()
     # Use extracted constant from core for negative checks
     if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
@@ -38,14 +50,23 @@ def _correct_minor_negative_probabilities(x):
     return x
 
 def dense_matrix_inversion(*, Q=None):
-    """This is another way to potentially find the stationary distribution,
-    but can suffer from numerical irregularities like negative entries.
+    """Uses a dense matrix inversion to find the stationary distribution,
+    but can suffer from numerical irregularities like small negative entries.
     Assumes eigenvalue of 1.0 exists and solves for the eigenvector by
     considering a related matrix equation Q v = b, where:
     Q is P transpose minus the identity matrix I, with the first row
     replaced by all ones for the vector scaling requirement;
     v is the eigenvector of eigenvalue 1 to be found; and
-    b is the first basis vector, where b[0]=1 and 0 elsewhere."""
+    b is the first basis vector, where b[0]=1 and 0 elsewhere.
+    
+    Args:
+        Q: Q matrix (P transpose minus the identity matrix I, with the first row replaced by all ones)
+    Returns:
+        Stationary distribution
+    Raises:
+        ValueError: If Q matrix is not provided
+        ValueError: If provided Q matrix is instead a lazy P matrix (LazyStochasticMatrix)
+    """
     if (Q is None):
         raise ValueError("Q matrix must be provided")
     if (isinstance(Q, LazyStochasticMatrix)):
@@ -73,6 +94,28 @@ def dense_matrix_inversion(*, Q=None):
 
 
 def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
+    """
+    GMRES iteration to find the stationary distribution. Calls JAX's GMRES implementation,
+    jax.scipy.sparse.linalg.gmres, to solve Q v = b, where:
+    Q is P transpose minus the identity matrix I, with the first row replaced by all ones for the vector scaling requirement;
+    v is the eigenvector of eigenvalue 1 to be found; and
+    b is the first basis vector, where b[0]=1 and 0 elsewhere.
+
+    Unlike dense_matrix_inversion, this method does not require a dense Q matrix,
+    but instead can handle LazyQMatrix objects and thereby uses less memory.
+
+    Args:
+        P: Transition matrix (Ignored, included for API consistency 
+                    when called by MarkovChain::control_iteration)
+        Q: Q matrix (P transpose minus the identity matrix I, with the first row replaced by all ones)
+        iterations: number of iterations
+        initial_guess: Optional initial distribution (if None, uses uniform)
+    Returns:
+        Improved guess at the stationary distribution (shape (n))
+    Raises:
+        ValueError: If Q matrix is not provided
+        ValueError: If provided Q matrix is instead a lazy P matrix (LazyStochasticMatrix)
+    """
     if Q is None:
         raise ValueError("Q matrix must be provided")
     if initial_guess is None:
@@ -102,7 +145,7 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
     
     Args:
         P: Transition matrix
-        Q: Ignored
+        Q: Ignored (included for API consistency when called by MarkovChain::control_iteration)
         iterations: number of iterations
         initial_guess: Optional initial distribution (if None, uses uniform)
     
@@ -120,7 +163,8 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
 
 def entropy_based_guess_pair(*, P):
     """
-    Returns a pair of initial guesses based on the entropy of each row.
+    Returns a pair of initial guesses based on the entropy of each row of P.
+    v1 is the row with maximum entropy, v2 is the row with minimum entropy.
     """
     n = P.shape[0]
     row_entropies = entropy_in_bits(P)
@@ -176,25 +220,55 @@ iterative_solvers = dict(
 )   
 
 class MarkovChain:
+    """Represents a Markov chain with a transition matrix P."""
     def __init__(self, *, P):
-        """initializes a MarkovChain instance by copying in the transition matrix P"""
+        """initializes a MarkovChain instance with transition matrix P"""
         self.P = P
         self.N = P.shape[0]
 
     def calculate_chain_properties(self):
+        """calculates and sets properties of the Markov chain:
+            self.absorbing_points: boolean vector indicating which states are absorbing
+            self.has_unique_stationary_distribution: boolean indicating whether the chain has a unique stationary distribution
+
+        Args:
+            None
+
+        Returns:
+            self: the MarkovChain instance with calculated properties set:
+                self.absorbing_points: boolean vector indicating which states are absorbing
+                self.has_unique_stationary_distribution: boolean indicating whether the chain has a unique stationary distribution
+                     (assuming full connectivity, which is not checked)
+        """
         diagP = self.P.diagonal()
         self.absorbing_points = jnp.equal(diagP, 1.0)
         self.has_unique_stationary_distribution = not jnp.any(self.absorbing_points)
         return self
 
     def dense_P(self):
-        """Materialize the transition matrix if it is a lazy matrix."""
+        """Materialize the transition matrix if it is a lazy matrix.
+
+        Args:
+            None
+
+        Returns:
+            P: the transition matrix as a dense array
+        """
         if matrix_is_dense(self.P):
             return self.P
         else:
             return self.P.to_dense()
 
     def L1_step_norm(self, x):
+        """Computes the L1 norm of advancing the Markov chain by one step, starting from x
+        
+        Args:
+            x: the initial distribution
+
+        Returns:
+            ||xP - x||L1: 
+            the L1 norm of advancing the Markov chain by one step, starting from x
+        """
         return jnp.linalg.norm((x @ self.P ) - x, ord=1, axis=-1)
 
     def control_iteration(self, *, solver=iterate_power_method, time_per_digit=None, initial_guess=None):
@@ -345,10 +419,12 @@ class MarkovChain:
 
         Note:  This function does not check for multiple connected components.  
         If the Markov Chain contains multiple connected components, some solvers may
-        fail due to numerical issues associated with multiple stationary distributions. A test for 
-        connected components can be time-consuming for large chains and is not implemented.  
-        See tests/test_markov_double_cycle.py for an example of a Markov Chain with multiple
-        connected components.
+        fail due to numerical issues associated with multiple stationary distributions. 
+        For example, the "full_matrix_inversion" solver will fail with a singular matrix. 
+        
+        An alternative is to perform a test for connected components but this is not implemented. 
+        See tests/test_markov_double_cycle.py for an example of solver behavior with a Markov Chain
+        that has two distinct connected components.
         
         Args:
             solver: Strategy to use. Options:
@@ -435,7 +511,18 @@ class MarkovChain:
         return self.stationary_distribution
 
     def diagnostic_metrics(self):
-        """ return Markov chain approximation metrics in mathematician-friendly format """
+        """ return Markov chain approximation metrics in mathematician-friendly format
+
+        args:
+            None
+
+        returns:
+            dict: Dictionary with the following keys:
+            `||F||`: Number of states in the Markov chain
+            `(𝝨𝝿)-1`: The difference between the sum of the stationary distribution and 1
+            `||𝝿P-𝝿||_L1_norm`: The L1 norm of the difference between the stationary distribution and the product of the stationary distribution and the transition matrix
+
+        """
         metrics = {
             '||F||': self.P.shape[0],
             '(𝝨𝝿)-1':  float(self.stationary_distribution.sum())-1.0, # cast to float to avoid singleton
@@ -523,6 +610,16 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarr
     return P_lumped
     
 def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indices: jnp.ndarray) -> jnp.ndarray:
+    """
+    Compute lumped transition matrix using lazy matrix operations.
+    
+    Args:
+        P: LazyStochasticMatrix object
+        inverse_indices: Array mapping each state to its group (0 to k-1)
+    
+    Returns:
+        jnp.ndarray: Lumped transition matrix (k×k)
+    """
     n = P.shape[0]
     k = int(inverse_indices.max()) + 1
     
@@ -728,6 +825,9 @@ def partition_from_permutation_symmetry(
     permutation_group: list[tuple]
 ) -> jnp.ndarray:
     """
+    CAUTION: This AI-generated function is relatively untested and requires further review.
+
+
     Generate partition from permutation symmetries.
     
     Groups states that are equivalent under permutations of state labels.
@@ -850,3 +950,5 @@ def list_partition_to_inverse(partition: list[list[int]], n_states: int) -> jnp.
         for s in group:
             inverse = inverse.at[s].set(i)
     return inverse
+
+
