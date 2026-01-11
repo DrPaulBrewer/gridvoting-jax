@@ -3,14 +3,12 @@ import jax.numpy as jnp
 import copy
 from warnings import warn
 
-# Import from core and dynamics
-from ..core import (
-    assert_valid_transition_matrix, 
-    assert_zero_diagonal_matrix
+# Import from stochastic
+from ..stochastic import (
+    LazyStochasticMatrix,
+    MarkovChain
 )
-from ..core.winner_determination import compute_winner_matrix_jit
-from ..dynamics import MarkovChain
-from ..dynamics.lazy import FlexMarkovChain
+
 
 
 class VotingModel:
@@ -66,10 +64,19 @@ class VotingModel:
     @property
     def Pareto(self):
         """
-        Returns the Pareto Optimal set (Core under unanimity).
+        Returns a boolean mask for the grid indicating the Pareto Optimal set (Core under unanimity).  
+ 
+        The Pareto set is the set of alternatives for which no other alternative is 
+        universally preferred by all voters (under unanimity, not majority). Equivalently,
+        an alternative is Pareto optimal when a change would lower some voter's utility. 
         
         Returns:
             JAX boolean array indicating points in the Pareto set.
+
+        Note: This function is cached, so it will only be computed once.
+        
+        Uses: For the grid coordinates of Pareto Optimal alternatives, use grid.points[voting_model.Pareto]
+
         """
         if self._pareto_core is not None:
             return self._pareto_core
@@ -78,15 +85,22 @@ class VotingModel:
         unanimous_model = self.unanimize()
         
         # Analyze to find core
-        # Use full matrix inversion as default for robustness on small-medium grids
-        unanimous_model.analyze(solver="full_matrix_inversion")
+        unanimous_model.analyze(solver=None)
         
         # Cache and return core points
         self._pareto_core = unanimous_model.core_points
         return self._pareto_core
 
     def E_𝝿(self,z):
-        """returns mean, i.e., expected value of z under the stationary distribution"""
+        """
+        Returns the mean, i.e., expected value of z under the stationary distribution.
+        
+        Args:
+            z: Array of values for each alternative
+        
+        Returns:
+            Mean of z under the voting model's stationary distribution
+        """
         return jnp.dot(self.stationary_distribution,z)
 
     def analyze(self, *, solver="full_matrix_inversion", **kwargs):
@@ -101,81 +115,154 @@ class VotingModel:
             **kwargs: Passed to find_unique_stationary_distribution (e.g. tolerance, max_iterations).
         """
         # Main Analysis
-        self.MarkovChain = MarkovChain(P=self._get_transition_matrix())
+        self.MarkovChain = MarkovChain(P=self.transition_matrix())
+        self.MarkovChain.calculate_chain_properties()
         self.core_points = self.MarkovChain.absorbing_points
         self.core_exists = jnp.any(self.core_points)
-        if not self.core_exists:
+        if not self.core_exists and solver is not None:
             self.stationary_distribution = self.MarkovChain.find_unique_stationary_distribution(
                 solver=solver, 
                 **kwargs
             )
         self.analyzed = True
 
-    def analyze_lazy(self, *, solver="auto", force_lazy=False, force_dense=False, **kwargs):
-        """
-        Analyzes the voting model using lazy matrix construction.
-        
-        This method uses FlexMarkovChain which auto-selects dense/lazy based on memory,
-        or can be forced to use lazy construction for large grids.
+
+    def what_beats(self, *, i:int):
+        """Returns boolean array of size number_of_feasible_alternatives
+        with value True where alternative beats current state i by some majority.
         
         Args:
-            solver: Strategy to use.
-                - "auto" (Default) - Auto-select gmres for lazy, full_matrix_inversion for dense
-                - "gmres" - Use GMRES solver
-                - "power_method" - Use power method solver
-            force_lazy: Force lazy construction (useful for large grids)
-            force_dense: Force dense construction
-            **kwargs: Passed to find_unique_stationary_distribution (e.g. tolerance, max_iterations).
+            i: Index of the alternative to compare against
         
-        Example:
-            >>> model = gv.bjm_spatial_triangle(g=80, zi=False)
-            >>> model.analyze_lazy(force_lazy=True)  # Avoids GPU OOM on large grids
+        Returns:
+            Boolean array where True indicates alternative beats i
         """
-        # Create FlexMarkovChain (auto-selects dense/lazy based on memory)
-        flex_mc = FlexMarkovChain.from_voting_model(
-            self,
-            force_lazy=force_lazy,
-            force_dense=force_dense
-        )
+        cU = self.utility_functions
+        N = self.number_of_feasible_alternatives
         
-        # Analyze
-        flex_mc.find_unique_stationary_distribution(solver=solver, **kwargs)
+        # Get utilities for alternative i (status quo)
+        # U_i shape: (V,)
+
+        U_i = cU[:, i]
         
-        # Store results
-        self.MarkovChain = flex_mc.backend
+        # Generate preferences: does each voter prefer j over i?
+        # cU shape: (V, N)
+        # U_i shape: (V,) -> broadcast to (V, 1)
+        # Result: (V, N) where [v, j] = "does voter v prefer j over i?"
+        prefs = jnp.greater(cU, U_i[:, jnp.newaxis])
         
-        # Handle core points (LazyMarkovChain doesn't compute absorbing points)
-        if hasattr(self.MarkovChain, 'absorbing_points'):
-            self.core_points = self.MarkovChain.absorbing_points
+        # Sum votes for each alternative -> (N,)
+        votes = prefs.sum(axis=0)
+        
+        # Determine winners: alternative j beats i if votes[j] >= majority
+        beats_i = jnp.greater_equal(votes, self.majority)
+        
+        # Set diagonal to False (alternative doesn't beat itself)
+        beats_i = beats_i.at[i].set(False)
+        
+        return beats_i
+    
+    def what_is_beaten_by(self, *, i:int):
+        """Returns array of size number_of_feasible_alternatives
+        with value 1 where current state i beats alternative by some majority.
+        
+        This is the converse of what_beats: instead of finding what beats i,
+        we find what i beats.
+        
+        Args:
+            i: Index of the alternative doing the beating
+            
+        Returns:
+            Boolean array where True indicates i beats that alternative
+        """
+        cU = self.utility_functions
+        N = self.number_of_feasible_alternatives
+        
+        # Get utilities for alternative i (the challenger)
+        # U_i shape: (V,)
+        U_i = cU[:, i]
+        
+        # Generate preferences: does each voter prefer i over j?
+        # cU shape: (V, N)
+        # U_i shape: (V,) -> broadcast to (V, 1)
+        # Result: (V, N) where [v, j] = "does voter v prefer i over j?"
+        prefs = jnp.greater(U_i[:, jnp.newaxis], cU)
+        
+        # Sum votes for each comparison -> (N,)
+        votes = prefs.sum(axis=0)
+        
+        # Determine which alternatives i beats: i beats j if votes[j] >= majority
+        i_beats = jnp.greater_equal(votes, self.majority)
+        
+        # Set diagonal to False (alternative doesn't beat itself)
+        i_beats = i_beats.at[i].set(False)
+        
+        return i_beats
+
+    def stochastic_matrix_parameters(self):
+        ### 
+        # Calculates the parameters needed by class LazyStochasticMatrix
+        #
+        # Args:
+        #     None
+        #
+        # Returns:
+        #     a dict:
+        #  mask: a boolean mask of size (number_of_feasible_alternatives, number_of_feasible_alternatives)
+        #     mask[i,j] is true is alternative j wins a vote over alternative i with majority self.majority
+        #     
+        #  status_quo_values: an array of size (number_of_feasible_alternatives,)
+        #     status_quo_values[i] is the probability of an alternative i, that is the status quo,
+        #                          winning the vote in the ZI or MI challenger process
+        ###
+        winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
+        number_of_winning_alternatives = winner_mask.sum(axis=1)
+        if self.zi:
+            number_of_losing_alternatives = self.number_of_feasible_alternatives - number_of_winning_alternatives
+            status_quo_values = number_of_losing_alternatives/(0.0+self.number_of_feasible_alternatives)
         else:
-            # For lazy chains, we don't compute absorbing points (would require dense P)
-            self.core_points = jnp.zeros(self.number_of_feasible_alternatives, dtype=bool)
-        
-        self.core_exists = jnp.any(self.core_points)
-        
-        if not self.core_exists:
-            self.stationary_distribution = flex_mc.stationary_distribution
-        
-        self.analyzed = True
+            status_quo_values = 1.0/(1.0+number_of_winning_alternatives)
+        return {
+            'mask': winner_mask,
+            'status_quo_values': status_quo_values        }
 
-    def what_beats(self, *, index):
-        """returns array of size number_of_feasible_alternatives
-        with value 1 where alternative beats current index by some majority"""
-        assert self.analyzed
-        points = (self.MarkovChain.P[index, :] > 0)
-        points = points.at[index].set(0)
-        return points
-
-    def what_is_beaten_by(self, *, index):
-        """returns array of size number_of_feasible_alternatives
-        with value 1 where current index beats alternative by some majority"""
-        assert self.analyzed
-        points = (self.MarkovChain.P[:, index] > 0)
-        points = points.at[index].set(0)
-        return points
+    def transition_matrix(self):
+        """Returns the transition matrix for the model's Markov Chain as a LazyStochasticMatrix
         
+        Args:
+            None
+        
+        Returns:
+            an instance of LazyStochasticMatrix
+        """
+        return LazyStochasticMatrix(**self.stochastic_matrix_parameters())
+
     def summarize_in_context(self,*,grid,valid=None):
-        """calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid"""
+        """
+        calculate summary statistics for stationary distribution using grid's coordinates and optional subset valid
+        
+        Args:
+            grid: a Grid instance
+            valid (optional): an array of booleans of size grid.len, indicating which grid points are valid
+                defaults to all True array for grid
+        
+        Returns:
+            a dict containing summary statistics for the stationary distribution
+
+            if core exists:
+                'core_exists': True
+                'core_points': array of valid points in core
+            else:
+                'core_exists': False
+                'point_mean': the weighted mean point coordinates
+                'point_cov': the covariance of the point coordinates
+                'prob_min': the minimum probability
+                'prob_min_points': (n_min,2) array of [x,y] points with minimum probability
+                'prob_max': the maximum probability
+                'prob_max_points': (n_max,2) array of [x,y] points with maximum probability
+                'entropy_bits': the Shannon entropy of the distribution in bits
+
+        """
         # missing valid defaults to all True array for grid
         valid = jnp.full((grid.len,), True) if valid is None else valid
         # check valid array shape 
@@ -232,13 +319,32 @@ class VotingModel:
         title_stationary_distribution="Stationary Distribution",
         title_stationary_distribution_zoom="Stationary Distribution (zoom)"
     ):
+        """
+        Creates a set of plots for the Voting Model.
+
+        This function was copied from the original gridvoting repository, and has not
+        been updated.  It is provided for reference and future development and probably
+        does not work as intended.
+        """
         import matplotlib.pyplot as plt
         import numpy as np
         
         def _fn(name):
+            """
+            Return the filename with the prefix if it is not None.
+
+            Args:
+                name: the filename
+            """
             return None if fprefix is None else fprefix + name
 
         def _save(fname):
+            """
+            Save the current figure to a file.
+
+            Args:
+                fname: the filename to save the figure to
+            """
             if fprefix is not None:
                 plt.savefig(fprefix + fname)
 
@@ -283,109 +389,3 @@ class VotingModel:
                     fname=_fn("stationary_distribution_zoom.png"),
                 )
 
-    def _get_transition_matrix(self, batch_size=128):
-        """
-        Computes the transition matrix P.
-        Dispatches to vectorized or batched implementation based on problem size.
-        """
-        nfa = self.number_of_feasible_alternatives
-        
-        # Heuristic: For small grids, full vectorization is faster and creates smaller graphs.
-        # For large grids (g>=30 -> N>=3700), the O(V*N^2) intermediate tensor risks OOM.
-        # g=30 -> N=3721. N^2 ~ 14M. V=3 -> 42M floats/ints. Safe.
-        # g=60 -> N=14641. N^2 ~ 214M. V=3 -> 642M floats. ~2.5GB. Risk.
-        # Threshold: N > 5000 uses batching.
-        if nfa > 5000:
-            return self._get_transition_matrix_batched(batch_size=batch_size)
-        else:
-            return self._get_transition_matrix_vectorized()
-
-    def _get_transition_matrix_vectorized(self):
-        """Original fully vectorized implementation. O(V * N^2) memory."""
-        utility_functions = self.utility_functions
-        majority = self.majority
-        zi = self.zi
-        nfa = self.number_of_feasible_alternatives
-        cU = jnp.asarray(utility_functions)
-        
-        # Create indices for all alternatives as status quo
-        status_quo_indices = jnp.arange(nfa)
-        
-        # Use core JIT function for winner determination
-        # cV[i, j] = 1 if j beats i (where i is status quo)
-        cV = compute_winner_matrix_jit(utility_functions, majority, status_quo_indices)
-        
-        return self._finalize_transition_matrix(cV)
-
-    def _get_transition_matrix_batched(self, batch_size=128):
-        """Batched implementation to save memory. O(V * N * batch_size) memory."""
-        nfa = self.number_of_feasible_alternatives
-        
-        # Calculate padding needed
-        remainder = nfa % batch_size
-        pad_len = (batch_size - remainder) if remainder > 0 else 0
-        total_len = nfa + pad_len
-        num_batches = total_len // batch_size
-        
-        # Create indices [0, 1, ... nfa-1, 0, 0 ...] (padding with 0 is fine, we slice later)
-        indices = jnp.arange(total_len)
-        # We need to mask out the padded indices so they don't affect computation if meaningful
-        # (Though here we just slice the result, so exact values for padding don't matter as long as valid)
-        indices = jnp.where(indices < nfa, indices, 0)
-        
-        # Reshape to (num_batches, batch_size)
-        batched_indices = indices.reshape((num_batches, batch_size))
-        
-        # Define the function to map over batches
-        # We need cU in closure
-        cU = jnp.asarray(self.utility_functions) # (V, N)
-        majority = self.majority
-        
-        def process_batch(batch_idx):
-            # batch_idx shape: (batch_size,) containing SQ indices
-            
-            # batch_idx shape: (batch_size,) containing SQ indices
-            
-            # Use core JIT function for winner determination
-            # Returns (batch_size, N) matrix
-            cV_batch = compute_winner_matrix_jit(cU, majority, batch_idx)
-            
-            return cV_batch
-
-        # Map over the batches
-        # Result shape: (num_batches, batch_size, N)
-        # We use jax.lax.map for efficiency (sequential compilation, parallel execution potential)
-        batched_cV = jax.lax.map(process_batch, batched_indices)
-        
-        # Collapse batch dimension -> (total_len, N)
-        cV_padded = batched_cV.reshape((total_len, nfa))
-        
-        # Slice off padding -> (nfa, nfa)
-        cV = cV_padded[:nfa, :]
-        
-        # For strict correctness, ensure diagonal is 0 (though logic should ensure it naturally)
-        # logic: CH vs SQ. if CH==SQ, prefs is False (not greater). votes=0. 0 < majority (usually).
-        # So cV diagonal is 0.
-        
-        return self._finalize_transition_matrix(cV)
-
-    def _finalize_transition_matrix(self, cV):
-        """Convert winner matrix to transition matrix using ZI/MI succession logic."""
-        from ..core.zimi_succession_logic import finalize_transition_matrix
-
-        # By convention in cV matrix, the diagonal from state j -> same state j should have 0 votes
-        assert_zero_diagonal_matrix(cV)
-        
-        # Create status_quo_indices for full matrix (all states)
-        status_quo_indices = jnp.arange(self.number_of_feasible_alternatives)
-        
-        # Use shared ZI/MI succession logic
-        cP = finalize_transition_matrix(
-            cV,
-            self.zi,
-            status_quo_indices,
-            eligibility_mask=None  # Future: self._get_eligibility_mask()
-        )
-        
-        assert_valid_transition_matrix(cP)
-        return cP

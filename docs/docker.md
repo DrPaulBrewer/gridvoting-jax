@@ -4,7 +4,7 @@
 
 The `gridvoting-jax` project uses a multi-tier Docker image system for efficient development and testing:
 
-- **Base Images**: Heavy dependencies (JAX, CUDA, OSF data) - built once
+- **Base Images**: Heavy dependencies (JAX, CUDA, BJM data) - built once
 - **Release Images**: Versioned releases from PyPI - fast builds
 - **Dev Images**: For local development with mounted source code
 
@@ -53,16 +53,16 @@ Versioned releases from PyPI:
 ./test_docker.sh --version=latest --gpu
 ```
 
-### OSF Validation
+### BJM Validation
 ```bash
 # Quick validation (g=20, 40)
-./test_docker_osf.sh --dev --gpu --quick
+./test_docker_bjm.sh --dev --gpu --quick
 
 # Extended validation (g=20, 40, 60, 80, 100)
-./test_docker_osf.sh --dev --gpu --extended
+./test_docker_bjm.sh --dev --gpu --extended
 
 # With float64 precision
-./test_docker_osf.sh --dev --gpu --float64
+./test_docker_bjm.sh --dev --gpu --float64
 ```
 
 ## Development Container Features
@@ -123,9 +123,9 @@ Examples:
   ./test_docker.sh --dev tests/test_lazy_consistency.py -v
 ```
 
-### `test_docker_osf.sh`
+### `test_docker_bjm.sh`
 ```
-Usage: ./test_docker_osf.sh [OPTIONS]
+Usage: ./test_docker_bjm.sh [OPTIONS]
 
 Options:
   --dev              Use dev image (default)
@@ -137,8 +137,8 @@ Options:
   --float64          Use float64 precision
 
 Examples:
-  ./test_docker_osf.sh --dev --gpu --quick
-  ./test_docker_osf.sh --version=v0.9.1 --cpu --extended
+  ./test_docker_bjm.sh --dev --gpu --quick
+  ./test_docker_bjm.sh --version=v0.9.1 --cpu --extended
 ```
 
 ## CUDA Version Detection

@@ -3,8 +3,12 @@ import pytest
 import jax
 import jax.numpy as jnp
 import gridvoting_jax as gv
+from copy import deepcopy
+from gridvoting_jax.core.constants import EPSILON
+from gridvoting_jax.stochastic.markov import iterate_power_method, iterate_bifurcated_power_method
+from gridvoting_jax.stochastic.utils import matrix_is_dense, entropy_in_bits
 
-def assert_distributions_close(pi1, pi2, tol_factor=500.0):
+def assert_distributions_close(pi1, pi2, tol_factor):
     """Assert two distributions are close within tolerance based on dtype."""
     diff = jnp.linalg.norm(pi1 - pi2, ord=1)
     dtype = pi1.dtype
@@ -19,104 +23,72 @@ def assert_distributions_close(pi1, pi2, tol_factor=500.0):
     
     assert diff < tol, f"L1 diff {diff} exceeds tolerance {tol}"
 
+
+def _iterator_equivalence(*,P_lazy,iterator,tol_factor):
+    """Test equivalence of iterator function on lazy and dense versions of a model's Markov Chain."""
+    assert not matrix_is_dense(P_lazy), "lazy P matrix should not be dense"
+    P_dense = P_lazy.to_dense()
+    assert matrix_is_dense(P_dense), "dense P matrix should be dense"
+    dense_power_method = iterator(P=P_dense, initial_guess=None, iterations=1)
+    lazy_power_method = iterator(P=P_lazy, initial_guess=None, iterations=1)
+    assert_distributions_close(
+        dense_power_method, 
+        lazy_power_method,
+        tol_factor=tol_factor
+    )    
+
 @pytest.mark.parametrize("g", [20, 40])
-def test_power_method_equivalence(g):
+def test_entropy_equivalence(g, bmj_g20_mi, bmj_g40_mi):
+    """Test entropy equivalence."""
+    P_lazy = bmj_g20_mi.model.transition_matrix() if g == 20 else bmj_g40_mi.model.transition_matrix()
+    P_dense = P_lazy.to_dense()
+    assert_distributions_close(
+        entropy_in_bits(P_dense), 
+        P_lazy.row_entropies(),
+        tol_factor=20.0*P_dense.shape[0]
+    )
+
+@pytest.mark.parametrize("g", [20, 40])
+def test_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
     """Test standard Power Method equivalence.
-    
-    Tolerances (updated 2025-12-29 after normalization fix):
-    - Measured: ~5-16 eps (g=20: 5.1 eps, g=40: 16.2 eps)
-    - Set to 20 eps (was 350 eps before normalization fix)
-    - 17x improvement from adding periodic normalization!
     """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
-    
-    params = {"max_iterations": 20, "timeout": 60}
-    
-    model_dense.analyze(solver="power_method", **params)
-    model_lazy.analyze_lazy(solver="power_method", force_lazy=True, **params)
-    
-    assert_distributions_close(
-        model_dense.stationary_distribution, 
-        model_lazy.stationary_distribution,
-        tol_factor=50.0  # Increased from 20.0 to account for per-iteration normalization
+    _iterator_equivalence(
+        P_lazy=bmj_g20_mi.model.transition_matrix() if g == 20 else bmj_g40_mi.model.transition_matrix(),
+        iterator=iterate_power_method,
+        tol_factor=5.0
     )
 
 @pytest.mark.parametrize("g", [20, 40])
-def test_bifurcated_power_method_equivalence(g):
-    """Test Bifurcated Power Method equivalence.
-    
-    Tolerances (updated 2025-12-29 after normalization fix):
-    - Measured: ~1 eps (g=20: 0.9 eps, g=40: 1.4 eps)
-    - Set to 10 eps (was 50 eps before normalization fix)
-    - 50x improvement from adding periodic normalization!
-    - Now essentially identical between dense and lazy
-    """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
-    
-    params = {"max_iterations": 20, "timeout": 60}
-    
-    model_dense.analyze(solver="bifurcated_power_method", **params)
-    model_lazy.analyze_lazy(solver="bifurcated_power_method", force_lazy=True, **params)
-    
-    assert_distributions_close(
-        model_dense.stationary_distribution, 
-        model_lazy.stationary_distribution,
-        tol_factor=10.0  # Updated from 50.0
+def test_bifurcated_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
+    """Test Bifurcated Power Method equivalence."""    
+    _iterator_equivalence(
+        P_lazy=bmj_g20_mi.model.transition_matrix() if g == 20 else bmj_g40_mi.model.transition_matrix(),
+        iterator=iterate_bifurcated_power_method,
+        tol_factor=5.0
     )
 
-@pytest.mark.parametrize("g", [20, 40])
-def test_gmres_equivalence(g):
-    """Test GMRES equivalence.
-    
-    Tolerances (updated 2025-12-29 after normalization fix):
-    - Float32: ~16-36 eps (g=20: 36.2 eps, g=40: 15.7 eps)
-    - Float64: ~127-414 eps (g=20: 127.1 eps, g=40: 413.8 eps)
-    - Set to 500 eps (unchanged, but now supports both precisions)
-    - Note: Float64 requires higher tolerance due to different numerical behavior
-    """
-    model_dense = gv.bjm_spatial_triangle(g=g, zi=False)
-    model_lazy = gv.bjm_spatial_triangle(g=g, zi=False)
-    
-    params = {"max_iterations": 20}
-    
-    model_dense.analyze(solver="gmres_matrix_inversion", **params)
-    model_lazy.analyze_lazy(solver="gmres", force_lazy=True, **params)
-    
-    assert_distributions_close(
-        model_dense.stationary_distribution, 
-        model_lazy.stationary_distribution,
-        tol_factor=500.0  # Supports both float32 and float64
-    )
 
-def test_condorcet_equivalence():
-    """Test equivalence on simple Condorcet cycle model."""
-    from gridvoting_jax.models.examples.condorcet import condorcet_cycle
-    
-    # Test all 3 solvers on this small model
+def test_condorcet_equivalence(condorcet_mi):
+    """ Test lazy and dense equivalence on simple Condorcet cycle model. """
+    # Test both power_method and bifurcated_power_method solvers on this small model
     solvers = [
-        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60}),
-        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([1.0,0.0,0.0])}),
-        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,1.0,0.0])}),
-        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.0,1.0])}),
-        ("power_method", "power_method", {"max_iterations": 20, "timeout": 60, "initial_guess": jnp.array([0.0,0.5,0.5])}),
-        ("bifurcated_power_method", "bifurcated_power_method", {"max_iterations": 20, "timeout": 60}),
-        ("gmres_matrix_inversion", "gmres", {"max_iterations": 20})
+        (iterate_power_method, {"iterations": 20, "initial_guess": None}),
+        (iterate_power_method, {"iterations": 20, "initial_guess": jnp.array([1.0,0.0,0.0])}),
+        (iterate_power_method, {"iterations": 20, "initial_guess": jnp.array([0.0,1.0,0.0])}),
+        (iterate_power_method, {"iterations": 20, "initial_guess": jnp.array([0.0,0.0,1.0])}),
+        (iterate_power_method, {"iterations": 20, "initial_guess": jnp.array([0.0,0.5,0.5])}),
+        (iterate_bifurcated_power_method, {"iterations": 20, "initial_guess": None})
     ]
     
-    for dense_solver, lazy_solver, params in solvers:
-        model_dense = condorcet_cycle(zi=False)
-        model_lazy = condorcet_cycle(zi=False)
+    for iterator, params in solvers:
+        P_lazy = condorcet_mi.transition_matrix()
+        P_dense = P_lazy.to_dense()
         
-        # Dense Execution
-        model_dense.analyze(solver=dense_solver, **params)
-        
-        # Lazy Execution
-        model_lazy.analyze_lazy(solver=lazy_solver, force_lazy=True, **params)
+        result_dense = iterator(P=P_dense, **params)
+        result_lazy = iterator(P=P_lazy, **params)
         
         assert_distributions_close(
-            model_dense.stationary_distribution, 
-            model_lazy.stationary_distribution,
-            tol_factor=10.0
+            result_dense, 
+            result_lazy,
+            tol_factor=5.0
         )

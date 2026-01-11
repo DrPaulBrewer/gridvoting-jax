@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v3
@@ -31,8 +31,5 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest tests/ -v -m "not slow"
-    
-    - name: Test CPU-only mode
-      run: |
-        NO_GPU=1 pytest tests/test_gridvoting_jax.py -v -m "not slow"
+        pytest tests/ -v
+

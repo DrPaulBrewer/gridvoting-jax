@@ -1,7 +1,7 @@
 """Random triangle spatial voting examples."""
 
 from ...spatial import SpatialVotingModel
-from ....spatial import Grid
+from ....geometry import Grid
 import jax.numpy as jnp
 import jax
 

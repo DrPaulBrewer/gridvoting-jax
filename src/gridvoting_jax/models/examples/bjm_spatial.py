@@ -1,7 +1,7 @@
 """BJM Research spatial voting example (Triangle 1 from OSF data)."""
 
 from ..spatial import SpatialVotingModel
-from ...spatial import Grid
+from ...geometry import Grid
 import jax.numpy as jnp
 
 
