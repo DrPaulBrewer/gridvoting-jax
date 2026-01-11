@@ -40,7 +40,10 @@ import gridvoting_jax as gv
 Note: the pip line uses a dash '-' but the import line uses an underscore '_'
 
 ####**Float64 Precision**
-By default, JAX uses 32-bit floats for faster GPU performance. To enable 64-bit precision for higher accuracy:
+By default, JAX uses 32-bit floats for faster performance. However, larger models (g>50) should
+use 64-bit floats for higher accuracy and to avoid accumulation errors.
+
+To enable 64-bit precision for higher accuracy:
 ```python
 import gridvoting_jax as gv
 gv.enable_float64()
@@ -64,7 +67,7 @@ print(f"Core exists: {model.core_exists}")
 print(f"Stationary distribution: {model.stationary_distribution[:5]}...")
 ```
 
-### Budget Voting Example (New in v0.9.0)
+### Budget Voting Example
 
 ```python
 import gridvoting_jax as gv
@@ -316,7 +319,7 @@ print(f"Strongly lumpable: {is_valid}")
 ```
 
 ### Pareto Efficiency
-Analyze the Pareto Optimal set (points where no other point is unanimously preferred).
+Finds the Pareto Optimal set (points where no other point is unanimously preferred).
 
 ```python
 # Get a boolean mask for Pareto set
@@ -527,7 +530,7 @@ mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
 | g=80 | `outline_and_power` | `power_method (lazy)` | Use outline or lazy solvers |
 | g=100 | `outline_and_power` | N/A | Requires outline solver |
 
-**Pre-computed Interpolation Matrix** *(New in v0.19.0)*:
+**Pre-computed Interpolation Matrix** :
 ```python
 from gridvoting_jax.models.spatial import create_outline_interpolation_matrix
 
@@ -538,7 +541,7 @@ C = create_outline_interpolation_matrix(model.grid, coarse_grid)
 model1.analyze(solver="outline_and_fill", interpolation_matrix=C)
 model2.analyze(solver="outline_and_fill", interpolation_matrix=C)
 ```
-### Large Grid Support *(New in v0.10.0)*
+### Large Grid Support 
 
 - **g=80**: Validated (L1 ~1e-08)
 - **g=100**: 10,201 alternatives, uses lazy solvers + outline solvers
@@ -618,42 +621,7 @@ This compares your computer's simulation results to the published scientific rec
 
 ## Testing
 
-### Run Tests
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run all tests (43 tests in v0.9.0)
-pytest tests/
-
-# Skip slow tests
-pytest tests/ -m "not slow"
-
-# Run only slow tests (benchmark test)
-pytest tests/ -m slow
-
-# Run with coverage
-pytest tests/ --cov=gridvoting_jax -m "not slow"
-```
-
-**Test Coverage (v0.9.0)**:
-- Budget voting: 7 tests (symmetry, ZI/MI modes, distributions)
-- Plott's theorem examples: 3 tests (core existence/absence)
-- Shapes: 4 tests (random triangles, rings)
-- BJM examples: 3 tests (BJM validation)
-- Core functionality: 26 tests (grid, voting, solvers)
-
-**Test Markers**:
-- `@pytest.mark.slow`: Long-running tests (benchmarks)
-- Use `-m "not slow"` to skip slow tests during development
-
-### Google Colab
-
-```python
-!pip install gridvoting-jax
-!pytest /usr/local/lib/python3.*/dist-packages/gridvoting_jax/
-```
+see [TESTING.md](./TESTING.md)
 
 ---
 
