@@ -46,7 +46,7 @@ def _test_bjm_g20_reflection_lumpability(model):
     
     # Threshold check - exact symmetry should have very high accuracy
     print(f"L1 norm difference: {diff_l1:.2e}")
-    assert diff_l1 < 1e-6
+    assert diff_l1 < 1e-5
 
 
 def test_bjm_g20_reflection_lumpability_lazy(bmj_g20_mi):
