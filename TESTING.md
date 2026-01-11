@@ -50,7 +50,7 @@ Tests are automatically run on GitHub via two workflows:
 1.  **Tests (`tests.yml`)**:
     *   **Triggers**: Push and Pull Request to `main`/`master`.
     *   **Environment**: `ubuntu-latest`.
-    *   **Python Versions**: 3.9, 3.10, 3.11, 3.12.
+    *   **Python Versions**: 3.10, 3.11, 3.12.
     *   **Command**: `pytest tests/ -v`.
 
 2.  **Python Testing (`python-testing.yml`)**:

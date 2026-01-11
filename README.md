@@ -3,7 +3,7 @@
 **A JAX-powered derivative of the original [gridvoting](https://github.com/drpaulbrewer/gridvoting) project**
 
 [![PyPI version](https://img.shields.io/pypi/v/gridvoting-jax.svg)](https://pypi.org/project/gridvoting-jax/)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This library provides GPU/TPU/CPU-accelerated spatial voting simulations using Google's JAX framework with float32 precision.
@@ -165,7 +165,7 @@ docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t dev/cpu:local .
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - numpy >= 2.0.0
 - matplotlib >= 3.8.0
 - jax >= 0.4.20
@@ -478,7 +478,7 @@ mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
   - Fails: g≥80 (out of memory on some GPUs, matrix construction OOM)
 
 - **`"bifurcated_power_method"`**: Dual-start power iteration
-  - Starts from min and max utility points
+  - Starts from uniform distribution and atom at middle grid point
   - Better convergence for some models
   - Same memory requirements as power_method
 
