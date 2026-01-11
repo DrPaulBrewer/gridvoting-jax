@@ -37,6 +37,17 @@ def _iterator_equivalence(*,P_lazy,iterator,tol_factor):
     )    
 
 @pytest.mark.parametrize("g", [20, 40])
+def test_entropy_equivalence(g, bmj_g20_mi, bmj_g40_mi):
+    """Test entropy equivalence."""
+    P_lazy = bmj_g20_mi.model.transition_matrix() if g == 20 else bmj_g40_mi.model.transition_matrix()
+    P_dense = P_lazy.to_dense()
+    assert_distributions_close(
+        gv.stochastic.markov.utils.entropy_in_bits(P_dense), 
+        P_lazy.row_entropies(),
+        tol_factor=5.0
+    )
+
+@pytest.mark.parametrize("g", [20, 40])
 def test_power_method_equivalence(g, bmj_g20_mi, bmj_g40_mi):
     """Test standard Power Method equivalence.
     """

@@ -145,6 +145,24 @@ class LazyStochasticMatrix:
             1D array of diagonal values M[i,i]
         """
         return self.status_quo_values
+
+    def row_entropies(self) -> Array:
+        """Return the entropies of each row.
+        
+        Returns:
+            1D array of row entropies
+        """
+        winners_per_row = jnp.sum(self.mask, axis=1)
+        # if winner_per_row == 0, entropy is 0 and status quo value is 1 (zero entropy)
+        # otherwise, entropy is the sum of two terms:
+        #        -winners_per_row[i]*(challenger_value[i] * log2(challenger_value[i])) 
+        #        -status_quo[i]*log2(status_quo[i])
+        # where challenger_value[i] is the challenger value for row i
+        # and status_quo[i] is the status quo value for row i
+        # 
+        safe_values = jnp.where(self.challenger_values == 0, 1.0, self.challenger_values)   
+        return -winners_per_row*(safe_values * jnp.log2(safe_values)) - \
+            self.status_quo_values * jnp.log2(self.status_quo_values)
     
     def to_dense(self) -> Array:
         """Materialize the full matrix.

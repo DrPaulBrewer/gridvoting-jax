@@ -68,7 +68,7 @@ def entropy_in_bits(v: Array) -> float:
         
     Example:
         >>> v = jnp.array([0.5, 0.5])
-        >>> entropy_in_bits(v)  # Maximum entropy for 2 states = 1 bit
+        >>> entropy_in_bits(v)  # Entropy for 2 states = 1 bit
         1.0
     """
     safe = jnp.where(v > 0, v, 1.0)

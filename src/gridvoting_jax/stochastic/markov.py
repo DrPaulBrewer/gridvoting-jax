@@ -951,15 +951,15 @@ def list_partition_to_inverse(partition: list[list[int]], n_states: int) -> jnp.
             inverse = inverse.at[s].set(i)
     return inverse
 
-def _experimental_partition_from_entropy(MC: MarkovChain, H_decimals=3):
+def _experimental_partition_from_entropy(P, decimals=3):
     """
-    Generate a partition from the entropy of Markov chain.
+    Generate a partition from the entropy of a transition matrix.
     
     Groups states with similar outgoing transition entropies.
     
     Args:
-        MC: MarkovChain object
-        H_decimals: Number of decimal places to round entropy values to create discriminant
+        P: Transition matrix
+        decimals: Number of decimal places to round entropy values to create discriminant
     
     Returns:
         jnp.ndarray: Inverse indices array grouping states with similar transition entropies
@@ -968,8 +968,8 @@ def _experimental_partition_from_entropy(MC: MarkovChain, H_decimals=3):
     use in most applications.  It is provided for curiosity and testing purposes and is marked with
     an underscore to indicate that it is not a primary partitioning method.
 
-    Note: This is an experimental feature. It may be removed in the future.
+    Warning: This is an experimental feature. It may be removed in a future release.
     """
-    H = entropy_in_bits(MC.P)
-    H_rounded = jnp.round(H, decimals=H_decimals)
+    H = entropy_in_bits(P) if matrix_is_dense(P) else P.row_entropies()
+    H_rounded = jnp.round(H, decimals=decimals)
     return jnp.unique(H_rounded, return_inverse=True)[1]
