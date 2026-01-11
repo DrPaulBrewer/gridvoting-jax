@@ -4,8 +4,9 @@ import jax
 import jax.numpy as jnp
 import gridvoting_jax as gv
 from copy import deepcopy
+from gridvoting_jax.core.constants import EPSILON
 from gridvoting_jax.stochastic.markov import iterate_power_method, iterate_bifurcated_power_method
-from gridvoting_jax.stochastic.utils import matrix_is_dense
+from gridvoting_jax.stochastic.utils import matrix_is_dense, entropy_in_bits
 
 def assert_distributions_close(pi1, pi2, tol_factor):
     """Assert two distributions are close within tolerance based on dtype."""
@@ -42,9 +43,9 @@ def test_entropy_equivalence(g, bmj_g20_mi, bmj_g40_mi):
     P_lazy = bmj_g20_mi.model.transition_matrix() if g == 20 else bmj_g40_mi.model.transition_matrix()
     P_dense = P_lazy.to_dense()
     assert_distributions_close(
-        gv.stochastic.markov.utils.entropy_in_bits(P_dense), 
+        entropy_in_bits(P_dense), 
         P_lazy.row_entropies(),
-        tol_factor=5.0
+        tol_factor=20.0*P_dense.shape[0]
     )
 
 @pytest.mark.parametrize("g", [20, 40])

@@ -5,14 +5,6 @@ import gridvoting_jax as gv
 from tests.test_utils import get_transition_matrix_vectorized
 
 
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
-    )
-    config.addinivalue_line(
-        "markers", "large_grid: marks tests that use large grids (g>=80)"
-    )
 
 
 # ============================================================================

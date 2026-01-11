@@ -261,7 +261,6 @@ def test_spatial_voting_model_symmetry():
     import pytest
     import jax.numpy as jnp
 
-    pytestmark = pytest.mark.lumping
     
     # Small grid
     grid = Grid(x0=-2, x1=2, y0=-2, y1=2)

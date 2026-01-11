@@ -7,19 +7,5 @@ testpaths = ["tests"]
 # Disable parallel execution and ensure test isolation
 # Disable cache provider to avoid permission issues and littering of the container
 addopts = "--tb=short --strict-markers -p no:xdist -p no:cacheprovider"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "essential: marks core functionality tests",
-    "lazy: marks lazy solver tests",
-    "lumping: marks lumping and symmetry tests",
-    "benchmarks: marks performance benchmarks",
-    "budget: marks budget voting tests",
-    "spatial: marks spatial voting model tests",
-    "essential: marks core functionality tests",
-    "lazy: marks lazy solver tests",
-    "lumping: marks lumping and symmetry tests",
-    "benchmarks: marks performance benchmarks",
-    "budget: marks budget voting tests",
-    "spatial: marks spatial voting model tests",
-]
+
 

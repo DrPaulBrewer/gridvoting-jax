@@ -11,8 +11,6 @@ import jax.numpy as jnp
 import gridvoting_jax as gv
 from gridvoting_jax.core.constants import EPSILON
 
-pytestmark = pytest.mark.essential
-
 
 def test_mi_diagonal_is_positive(bmj_g20_mi_P_diagonal):
     """Validate that MI transition matrix has positive diagonal.

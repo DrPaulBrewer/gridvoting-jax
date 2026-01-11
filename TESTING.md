@@ -2,25 +2,6 @@
 
 This document outlines the testing procedures for `gridvoting-jax`.
 
-## Test Organization (Pytest Markers)
-
-To facilitate faster development loops, the test suite is organized using pytest markers. You can run specific groups of tests using `-m <marker>`.
-
-| Marker | Description | Typical Usage |
-| :--- | :--- | :--- |
-| `essential` | Core functionality tests (Grid, JAX basics, Solvers) | `pytest -m essential` |
-| `lazy` | Lazy solver implementation tests | `pytest -m lazy` |
-| `lumping` | Symmetry detection and lumping tests | `pytest -m lumping` |
-| `benchmarks` | Performance benchmarks and replication checks | `pytest -m benchmarks` |
-| `budget` | Budget voting model tests | `pytest -m budget` |
-| `spatial` | Spatial voting model and shape tests | `pytest -m spatial` |
-| `slow` | Long-running tests (skipped in CI by default) | `pytest -m "not slow"` |
-
-### Test Lists
-
-To see the tests that correspond to a marker, you can run: `pytest -m <marker> --collect-only`.
-
-For example, to see the tests that correspond to the `lazy` marker, you can run: `pytest -m lazy --collect-only`.
 
 ## Running Tests with Docker
 
@@ -35,27 +16,31 @@ Running `./test_docker.sh` without arguments effectively runs:
 *   **Mode**: CPU execution.
 *   **Tests**: Runs **ALL** tests in the `tests/` directory (including slow ones).
 
-### Common Commands
+### Interactive Mode
+Running `./test_docker.sh --cpu --dev --it --command=ipython` will run an ipython3 interactive environment
 
-**Run core tests only:**
-```bash
-./test_docker.sh --command="pytest -m essential"
-```
+Options:
+   *  `--cpu`  calculate on local CPU
+   *  `--gpu`  calculate on local GPU
+   *  `--it`   runs docker container in interactive terminal mode
+   *  `--command=` runs a specific command in the container
 
-**Run specific feature tests:**
-```bash
-./test_docker.sh --command="pytest -m lazy"
-```
 
-**Run in parallel (CPU only):**
-```bash
-./test_docker.sh --parallel  # Uses 2 processes
-./test_docker.sh --jobs=4    # Uses 4 processes
-```
+### Other Common Commands
 
-**Run with GPU:**
+**Run tests with local GPU:**
 ```bash
 ./test_docker.sh --dev --gpu
+```
+
+**Run a specific test file:**
+```bash
+./test_docker.sh --dev --cpu tests/test_models_examples_bjm_g20_replication.py
+```
+
+**Run a specific test function:**
+```bash
+./test_docker.sh --dev --cpu tests/test_models_examples_bjm_g20_replication.py::test_bjm_g20_replication
 ```
 
 ## Continuous Integration (GitHub Actions)
@@ -66,13 +51,11 @@ Tests are automatically run on GitHub via two workflows:
     *   **Triggers**: Push and Pull Request to `main`/`master`.
     *   **Environment**: `ubuntu-latest`.
     *   **Python Versions**: 3.9, 3.10, 3.11, 3.12.
-    *   **Command**: `pytest tests/ -v -m "not slow"` (Skips slow tests).
-    *   **Check**: Also verifies CPU-only mode explicitly.
+    *   **Command**: `pytest tests/ -v`.
 
 2.  **Python Testing (`python-testing.yml`)**:
     *   **Triggers**: Push and Pull Request to `main`.
     *   **OS Coverage**: `ubuntu-latest`, `macOS-latest`, `windows-latest`.
     *   **Python Versions**: 3.10, 3.11.
-    *   **Command**: `pytest tests/ -sv -m "not slow"`.
+    *   **Command**: `pytest tests/ -sv`.
 
-**Note:** Both workflows skip tests marked as `@pytest.mark.slow` to ensure reasonably fast feedback. Heavy benchmarks should be run locally or via specific manual triggers.

@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 
-pytestmark = pytest.mark.lumping
+
 import gridvoting_jax as gv
 
 def test_suggest_symmetries_empty():
