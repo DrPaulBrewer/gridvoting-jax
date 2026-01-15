@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.0-base-ubuntu22.04
+FROM ubuntu:24.04
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -23,8 +23,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip build wheel setuptools \
     requests pandas ipython pytest
 
-# Install JAX with CUDA 12 support
-RUN pip install --no-cache-dir "jax[cuda12]"
+# Install JAX >= 0.8.2 with CUDA 12 support
+# JAX's cuda12 package includes all necessary CUDA libraries
+RUN pip install --no-cache-dir "jax[cuda12]>=0.8.2"
 
 # Install gridvoting-jax dependencies (but not the package itself)
 COPY requirements.txt /tmp/requirements.txt

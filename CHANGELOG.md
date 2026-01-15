@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.30.1] - 2026-01-15
+
+### Changed - Docker Infrastructure
+
+- **CUDA 12 Base Image Update**: Modernized `Dockerfiles/base/Dockerfile.jax-cuda12` for latest Python and JAX versions
+  - **Base Image**: Changed from `nvidia/cuda:12.2.0-base-ubuntu22.04` to `ubuntu:24.04`
+    - **Rationale**: Avoids CUDA driver version conflicts with host systems
+    - JAX's `cuda12` package bundles all necessary CUDA libraries (cuDNN, NCCL, etc.)
+    - No separate CUDA base image needed
+  - **Python Version**: Upgraded from Python 3.10 to Python 3.12
+    - Ubuntu 24.04 LTS provides Python 3.12 by default
+    - Required for JAX 0.8.2+ (minimum Python 3.11)
+  - **JAX Version**: Updated from unspecified to `>= 0.8.2`
+    - Automatically installs latest available JAX version
+    - Forward compatible with future JAX releases (0.8.3, 0.8.4, etc.)
+  - **Host Compatibility**: Works with CUDA 12.1+ drivers on host
+    - Tested and verified with CUDA 12.2 host drivers
+    - JAX's bundled CUDA libraries handle GPU acceleration
+    - No driver version conflicts
+
+### Technical Details
+
+**Files Modified**:
+- `Dockerfiles/base/Dockerfile.jax-cuda12`: Updated base image and JAX installation
+
+**Benefits**:
+- ✅ Latest Python 3.12 with improved performance and features
+- ✅ Latest JAX versions (>= 0.8.2) automatically available
+- ✅ No CUDA driver version conflicts with host systems
+- ✅ Self-contained JAX installation with bundled CUDA libraries
+- ✅ Forward compatible with future JAX releases
+
+**Testing**:
+- Docker image builds successfully (~5 minutes)
+- Python 3.12.3 verified
+- JAX 0.8.2 verified
+- GPU detection confirmed with `--gpus all` flag on CUDA 12.2 host
+
 ## [0.30.0] - 2026-01-11
 
 ### Major Refactoring - Code Organization & Unification
