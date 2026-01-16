@@ -54,6 +54,7 @@ class SpatialVotingModel:
             utility_functions=self.utility_functions,
             number_of_voters=number_of_voters,
             number_of_feasible_alternatives=grid.len,
+            weights=grid.weights,
             majority=majority,
             zi=zi
         )

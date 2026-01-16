@@ -11,7 +11,6 @@ JAX operations are performed.
 """
 
 import os
-from warnings import warn
 from typing import Optional
 
 # ============================================================================
@@ -22,7 +21,6 @@ from typing import Optional
 cpu_count = os.cpu_count()
 if cpu_count is None:
     cpu_count = 1  # Fallback if detection fails
-    warn("Could not detect CPU count, defaulting to 1 thread")
 
 # Configure JAX CPU parallelization (only if not already set by user)
 if 'XLA_FLAGS' not in os.environ:
@@ -68,18 +66,12 @@ def enable_float64() -> None:
         >>> import gridvoting_jax as gv
         >>> gv.enable_float64()
         >>> # All subsequent JAX operations will use float64
-    
-    Note:
-        If TOLERANCE was already imported by other modules using 'from ...', 
-        they will hold the old value. Use 'import core; core.TOLERANCE' or 
-        set the GV_ENABLE_FLOAT64 environment variable before importing.
     """
     # Import here to avoid circular dependency
     from . import constants
     
     jax.config.update("jax_enable_x64", True)
     constants.TOLERANCE = 1e-10
-    warn("enable_float64 called: JAX float64 enabled, TOLERANCE set to 1e-10")
 
 
 # ============================================================================
@@ -102,15 +94,9 @@ if os.environ.get('GV_FORCE_CPU', '0') != '1':
                 # Set GPU allocator to reduce fragmentation issues
                 if device_type == 'gpu' and 'TF_GPU_ALLOCATOR' not in os.environ:
                     os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-                warn(f"JAX using {device_type.upper()}: {default_device}")
-            else:
-                warn("JAX using CPU (no GPU/TPU detected)")
     except RuntimeError:
          # Fallback if JAX cannot find backend or other init error
-         warn("JAX initialization failed to detect devices, falling back to CPU")
-else:
-    warn("GV_FORCE_CPU=1: JAX forced to CPU-only mode")
-
+         pass
 
 def get_available_memory_bytes() -> Optional[int]:
     """Estimate available memory in bytes on the active device.

@@ -666,16 +666,13 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     
     Args:
         MC: Original MarkovChain instance
-        partition: List of lists, where each inner list contains indices 
-                   of states to be combined into a single aggregate state.
-                   Example: [[0,1], [2,3], [4,5]] combines states 0&1 into 
-                   aggregate state 0, states 2&3 into aggregate state 1, etc.
+        inverse_indices: Inverse indices mapping states to their aggregate groups
     
     Returns:
-        MarkovChain: New chain with k states where k = len(partition)
+        MarkovChain: New chain with k states where k = len(inverse_indices)
     
     Raises:
-        ValueError: If partition is invalid (missing states, duplicates, 
+        ValueError: If inverse_indices is invalid (missing states, duplicates, 
                     empty groups, etc.)
     
     References:
@@ -692,7 +689,7 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
         >>> lumped = lump(mc, inverse_indices)
     
     Notes:
-        - Partition must include all states exactly once
+        - inverse_indices must include all states exactly once
         - Each group in partition must be non-empty
         - States within each aggregate are weighted equally
         - Lumping may not preserve the Markov property (strong lumpability)

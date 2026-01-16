@@ -284,3 +284,142 @@ def test_spatial_voting_model_symmetry():
     
     # Verify partition is valid
     assert len(partition) == grid.len
+
+
+# ============================================================================
+# PolarGrid Rotation Partition Tests
+# ============================================================================
+
+def _expected_partition_count(grid, angle):
+    """Calculate expected number of partitions for rotation symmetry.
+    
+    The partition_from_rotation formula creates partitions based on:
+    - Center point (r=0): Always partition 0 (singleton)
+    - For each radius ring and each theta position within the rotation angle:
+      partition = 1 + floor(((r-rstep)/rstep) * angle_in_thetasteps + ((theta % angle) / thetastep))
+    
+    This results in: 1 + (n_rings * angle_in_thetasteps) partitions
+    where angle_in_thetasteps = angle / thetastep
+    """
+    if angle % grid.thetastep != 0:
+        raise ValueError("Angle must be multiple of thetastep")
+    if 360 % angle != 0:
+        raise ValueError("Angle must divide 360")
+    
+    n_rings = grid.n_rvals - 1  # Exclude origin
+    angle_in_thetasteps = angle // grid.thetastep
+    return 1 + (n_rings * angle_in_thetasteps)
+
+
+def test_polar_partition_from_rotation_basic():
+    """Test basic partition_from_rotation functionality."""
+    from gridvoting_jax.geometry import PolarGrid
+    
+    grid = PolarGrid(radius=10, thetastep=3)
+    partition = grid.partition_from_rotation(angle=120)
+    
+    # (i) Check number of partitions is correct
+    num_partitions = int(partition.max()) + 1
+    expected_partitions = _expected_partition_count(grid, 120)
+    assert num_partitions == expected_partitions, f"Expected {expected_partitions} partitions, got {num_partitions}"
+    
+    # (ii) Check no gaps in partition indices
+    unique_partitions = jnp.unique(partition)
+    expected_indices = jnp.arange(num_partitions)
+    assert jnp.array_equal(unique_partitions, expected_indices), "Partition indices have gaps"
+    
+    # (iii) Check inverse_indices are exactly correct
+    # Origin should be in partition 0, alone
+    assert partition[0] == 0
+    origin_group = jnp.where(partition == 0)[0]
+    assert len(origin_group) == 1
+    
+    # For each partition, verify points are related by rotation
+    for partition_id in range(1, num_partitions):
+        group_indices = jnp.where(partition == partition_id)[0]
+        
+        # All points in group should be at same radius
+        group_radii = grid.r[group_indices]
+        assert jnp.allclose(group_radii, group_radii[0]), f"Partition {partition_id} has points at different radii"
+        
+        # Thetas should differ by multiples of angle
+        group_thetas = grid.theta[group_indices]
+        theta_diffs = (group_thetas - group_thetas[0]) % 360
+        assert jnp.allclose(theta_diffs % 120, 0, atol=1e-6), f"Partition {partition_id} thetas not separated by angle"
+
+
+@pytest.mark.parametrize("radius,thetastep,angle", [
+    # radius=10 tests
+    (10, 3, 120),
+    (10, 3, 60),
+    (10, 5, 120),
+    (10, 5, 60),
+    (10, 30, 120),
+    (10, 30, 60),
+    # radius=20 tests
+    (20, 3, 120),
+    (20, 3, 60),
+    (20, 5, 120),
+    (20, 5, 60),
+    (20, 30, 120),
+    (20, 30, 60),
+    # radius=50 tests (reduced for performance, using coarser thetastep)
+    (50, 15, 120),
+    (50, 15, 60),
+])
+def test_polar_partition_from_rotation_parameterized(radius, thetastep, angle):
+    """Test partition_from_rotation with various grid configurations and angles."""
+    from gridvoting_jax.geometry import PolarGrid
+    
+    grid = PolarGrid(radius=radius, thetastep=thetastep)
+    partition = grid.partition_from_rotation(angle=angle)
+    
+    # (i) Check number of partitions is correct
+    num_partitions = int(partition.max()) + 1
+    expected_partitions = _expected_partition_count(grid, angle)
+    assert num_partitions == expected_partitions, \
+        f"radius={radius}, thetastep={thetastep}, angle={angle}: Expected {expected_partitions} partitions, got {num_partitions}"
+    
+    # (ii) Check no gaps in partition indices
+    unique_partitions = jnp.unique(partition)
+    expected_indices = jnp.arange(num_partitions)
+    assert jnp.array_equal(unique_partitions, expected_indices), \
+        f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition indices have gaps"
+    
+    # (iii) Check inverse_indices are exactly correct
+    # Origin check
+    assert partition[0] == 0
+    origin_group = jnp.where(partition == 0)[0]
+    assert len(origin_group) == 1
+    
+    # Check each partition
+    for partition_id in range(1, num_partitions):
+        group_indices = jnp.where(partition == partition_id)[0]
+        
+        # All points in group should be at same radius
+        group_radii = grid.r[group_indices]
+        assert jnp.allclose(group_radii, group_radii[0]), \
+            f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition {partition_id} has points at different radii"
+        
+        # Thetas should differ by multiples of angle
+        group_thetas = grid.theta[group_indices]
+        theta_diffs = (group_thetas - group_thetas[0]) % 360
+        assert jnp.allclose(theta_diffs % angle, 0, atol=1e-6), \
+            f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition {partition_id} thetas not separated by angle"
+
+
+@pytest.mark.parametrize("radius,thetastep", [
+    (10, 30),
+    (20, 30),
+    (50, 30),
+])
+def test_polar_partition_rotation_invalid_angle(radius, thetastep):
+    """Test that angle=45 with thetastep=30 raises ValueError."""
+    from gridvoting_jax.geometry import PolarGrid
+    
+    grid = PolarGrid(radius=radius, thetastep=thetastep)
+    
+    # angle=45 is not a multiple of thetastep=30, should raise ValueError
+    with pytest.raises(ValueError, match="Angle must be a multiple of the theta step"):
+        grid.partition_from_rotation(angle=45)
+

@@ -6,9 +6,9 @@ from warnings import warn
 # Import from stochastic
 from ..stochastic import (
     LazyStochasticMatrix,
+    LazyWeightedStochasticMatrix,
     MarkovChain
 )
-
 
 
 class VotingModel:
@@ -18,12 +18,14 @@ class VotingModel:
         utility_functions,
         number_of_voters,
         number_of_feasible_alternatives,
+        weights=None,
         majority,
         zi
     ):
         """initializes a VotingModel with utility_functions for each voter,
         the number_of_voters,
         the number_of_feasible_alternatives,
+        the weights for each alternative,
         the majority size, and whether to use zi fully random agenda or
         intelligent challengers random over winning set+status quo"""
         assert utility_functions.shape == (
@@ -33,6 +35,7 @@ class VotingModel:
         self.utility_functions = utility_functions
         self.number_of_voters = number_of_voters
         self.number_of_feasible_alternatives = number_of_feasible_alternatives
+        self.weights = weights
         self.majority = majority
         self.zi = zi
         self.analyzed = False
@@ -224,7 +227,41 @@ class VotingModel:
             status_quo_values = 1.0/(1.0+number_of_winning_alternatives)
         return {
             'mask': winner_mask,
-            'status_quo_values': status_quo_values        }
+            'status_quo_values': status_quo_values        
+            }
+
+    def weighted_stochastic_matrix_parameters(self):
+        ###
+        # Calculates the parameters needed by class LazyWeightedStochasticMatrix
+        #
+        # Args:
+        #     None
+        #
+        # Returns:
+        #     a dict:
+        #  mask: a boolean mask of size (number_of_feasible_alternatives, number_of_feasible_alternatives)
+        #     mask[i,j] is true is alternative j wins a vote over alternative i with majority self.majority
+        #     
+        #  status_quo_values: an array of size (number_of_feasible_alternatives,)
+        #     status_quo_values[i] is the probability of an alternative i, that is the status quo,
+        #                          winning the vote in the ZI or MI challenger process
+        #
+        #  weights: an array of size (number_of_feasible_alternatives,)
+        #     weights[i] is the weight of alternative i
+        ###
+        winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
+        weight_of_winning_alternatives = winner_mask @ self.weights
+        total_weight = self.weights.sum()
+        weight_of_losing_alternatives = total_weight - weight_of_winning_alternatives
+        if self.zi:
+            status_quo_values = weight_of_losing_alternatives/total_weight
+        else:
+            status_quo_values = self.weights/(self.weights+weight_of_winning_alternatives)
+        return {
+            'mask': winner_mask,
+            'status_quo_values': status_quo_values,
+            'weights': self.weights
+            }
 
     def transition_matrix(self):
         """Returns the transition matrix for the model's Markov Chain as a LazyStochasticMatrix
@@ -235,7 +272,10 @@ class VotingModel:
         Returns:
             an instance of LazyStochasticMatrix
         """
-        return LazyStochasticMatrix(**self.stochastic_matrix_parameters())
+        if self.weights is None:
+            return LazyStochasticMatrix(**self.stochastic_matrix_parameters())
+        else:
+            return LazyWeightedStochasticMatrix(**self.weighted_stochastic_matrix_parameters())
 
     def summarize_in_context(self,*,grid,valid=None):
         """

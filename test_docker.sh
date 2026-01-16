@@ -68,6 +68,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
 
+        --float64)
+            PRECISION="float64"
+            shift
+            ;;
+
         --dry-run)
             DRY_RUN=1
             shift
@@ -104,6 +109,14 @@ else
     fi
     DOCKER_ARGS=""
 fi
+
+# Construct Environment Variables
+ENV_VARS="-e PYTHONUNBUFFERED=1 -e PYTHONDONTWRITEBYTECODE=1"
+if [ "$PRECISION" == "float64" ]; then
+    ENV_VARS="$ENV_VARS -e GV_ENABLE_FLOAT64=1"
+fi
+
+DOCKER_ARGS="$DOCKER_ARGS $ENV_VARS"
 
 # Construct final command
 if [ -n "$COMMAND" ]; then

@@ -5,7 +5,6 @@ the package for solver convergence, geometric tests, and plotting.
 """
 
 import os
-from warnings import warn
 import jax.numpy as jnp
 
 # ============================================================================
@@ -19,11 +18,9 @@ if os.environ.get("GV_ENABLE_FLOAT64") == "1" or os.environ.get("JAX_ENABLE_X64"
     jax.config.update("jax_enable_x64", True)
     TOLERANCE: float = 1e-10
     DTYPE_FLOAT = jnp.float64
-    warn("GV_ENABLE_FLOAT64=1: JAX float64 enabled, default solver TOLERANCE set to 1e-10")
 else:
     TOLERANCE: float = 1e-5
     DTYPE_FLOAT = jnp.float32
-    warn("GV_ENABLE_FLOAT64=0: JAX float32 enabled, default solver TOLERANCE set to 1e-5")
 
 # ============================================================================
 # Solver Tolerances

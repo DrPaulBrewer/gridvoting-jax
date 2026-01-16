@@ -90,18 +90,20 @@ class Grid:
         self.y1 = y1
         self.xstep = xstep
         self.ystep = ystep
-        xvals = jnp.arange(x0, x1 + xstep, xstep)
-        yvals = jnp.arange(y1, y0 - ystep, -ystep)
-        xgrid, ygrid = jnp.meshgrid(xvals, yvals)
-        self.x = jnp.ravel(xgrid)
-        self.y = jnp.ravel(ygrid)
-        self.points = jnp.column_stack((self.x,self.y))
-        # extent should match extent=(x0,x1,y0,y1) for compatibility with matplotlib.pyplot.contour
-        # see https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.contour.html
         self.extent = (self.x0, self.x1, self.y0, self.y1)
         self.gshape = self.shape()
-        self.boundary = ((self.x==x0) | (self.x==x1) | (self.y==y0) | (self.y==y1))
         self.len = self.gshape[0] * self.gshape[1]
+        self.x, self.y = self._coords(jnp.arange(self.len))
+        self.points = jnp.column_stack((self.x,self.y))
+        self.boundary = ((self.x==x0) | (self.x==x1) | (self.y==y0) | (self.y==y1))
+        self.weights = None
+
+    def _coords(self, i):
+        """returns the (x,y) coordinates of the i-th grid point"""
+        rows, cols = self.shape()
+        row = i // cols
+        col = i % cols
+        return self.x0 + col * self.xstep, self.y1 - row * self.ystep
 
     def shape(self, *, x0=None, x1=None, xstep=None, y0=None, y1=None, ystep=None):
         """returns a tuple(number_of_rows,number_of_cols) for the natural shape of the current grid, or a subset"""
@@ -177,8 +179,8 @@ class Grid:
             int: Grid index, or raises ValueError if point not on grid
         """
         # Compute row and column indices
-        col = round((x - self.x0) / self.xstep)
-        row = round((self.y1 - y) / self.ystep)
+        col = jnp.round((x - self.x0) / self.xstep)
+        row = jnp.round((self.y1 - y) / self.ystep)
         
         # Check if within bounds
         n_rows, n_cols = self.gshape
@@ -585,3 +587,110 @@ class Grid:
         inverse_indices = jnp.array(labels, dtype=jnp.int32)
         
         return inverse_indices
+
+
+class PolarGrid(Grid):
+    def __init__(self, *, radius, rstep=1, thetastep=15):
+        """initializes 2D grid for (r,theta) coordinates
+        Creates a 1D JAX array of grid coordinates in self.x and self.y"""
+        self.radius = radius
+        self.rstep = rstep
+        self.thetastep = thetastep
+        self.rvals = jnp.arange(0, radius + rstep, rstep)
+        self.thetavals = jnp.arange(0, 360, thetastep)
+        self.n_rvals = len(self.rvals)
+        self.n_thetavals = len(self.thetavals)
+        self.len = 1 + ((self.n_rvals-1) * self.n_thetavals)
+        # left handed radar map coordinates
+        self.unit_vectors = jnp.column_stack((jnp.sin(jnp.deg2rad(self.thetavals)), jnp.cos(jnp.deg2rad(self.thetavals))))
+        self.points = jnp.vstack((
+            jnp.array([0.0,0.0]),
+            jnp.vectorize(lambda i: 
+              self.rvals[1+(i//self.n_thetavals)]*self.unit_vectors[i%self.n_thetavals]
+            )(jnp.arange((self.n_rvals-1)*self.n_thetavals))
+        ))
+        assert self.points.shape[0] == self.len
+        self.r = jnp.concat((jnp.array([0.0]),jnp.repeat(self.rvals[1:], self.n_thetavals)))
+        assert self.r.shape[0] == self.len 
+        assert jnp.allclose(self.r*self.r, dist_sqeuclidean(jnp.array([[0.0,0.0]]), self.points))
+        self.theta = jnp.concat((jnp.array([jnp.nan]),jnp.tile(self.thetavals, self.n_rvals-1)))
+        assert self.theta.shape[0] == self.len
+        self.x = self.points[:,0]
+        assert self.x.shape[0] == self.len
+        self.y = self.points[:,1]
+        assert self.y.shape[0] == self.len
+        # weights are the area of each grid cell
+        self.weights = (
+            (jnp.square(jnp.where(self.r+0.5*self.rstep>self.radius, self.radius, self.r+0.5*self.rstep))
+            -jnp.square(self.r-0.5*self.rstep)
+            )*jnp.deg2rad(self.thetastep)/2.0
+            ).at[0].set(0.25*jnp.pi*self.rstep**2)
+        total_weight = self.weights.sum()
+        expected_weight = jnp.pi*self.radius**2
+        assert jnp.allclose(total_weight, expected_weight, rtol=1e-4), f"Total weight {total_weight} does not match expected weight {expected_weight}"
+        self.x0 = self.x.min()
+        self.x1 = self.x.max()
+        self.y0 = self.y.min()
+        self.y1 = self.y.max()
+        self.extent = (self.x0, self.x1, self.y0, self.y1)
+
+    def shape(self):
+        """
+        Not implemented for PolarGrid
+        """
+        raise NotImplementedError
+
+    def index(self, *, r=None, theta=None, x=None, y=None, TOLERANCE=GEOMETRY_EPSILON):
+        if r is not None and theta is not None:
+            if r==0:
+                return 0
+            theta = theta % 360
+            if theta < 0:
+                theta += 360
+            return 1 + int((r-self.rstep) / self.rstep) * self.n_thetavals + int(theta / self.thetastep)
+        elif x is not None and y is not None:
+            distances = dist_sqeuclidean(self.points, jnp.array([[x,y]]))
+            min_dist = distances.min()
+            if (min_dist > TOLERANCE):
+                raise ValueError("Point is not on PolarGrid")
+            idx = jnp.argmin(distances)
+            return idx
+        else:
+            raise ValueError("Either r, theta, or  x, y must be specified")
+
+    def plot(self, *, z, levels=20, cmap='viridis', label='Z value', title='Polar Contour Plot'):
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+        contour_plot = ax.contourf(self.theta, self.r, z, levels=levels, cmap=cmap)
+        fig.colorbar(contour_plot, ax=ax, label=label)
+        ax.set_title(title)
+        plt.show()
+
+    def parts_from_linear_discriminator(self, *, a, b, c):
+        """
+        Not implemented for PolarGrid
+        
+        """
+        raise NotImplementedError()
+
+    def partition_from_rotation(self, *, angle):
+        """
+        returns inverse indices for rotation angle symmetry
+        """
+        if angle % self.thetastep != 0:
+            raise ValueError("Angle must be a multiple of the theta step")
+        if 360 % angle != 0:
+            raise ValueError("Angle must divide 360")
+        angle_in_thetasteps = angle // self.thetastep
+        parts = (1+jnp.floor(
+                    ((self.r-self.rstep)/self.rstep)*angle_in_thetasteps
+                    +((self.theta%angle)/self.thetastep))
+            ).astype(jnp.int32).at[0].set(0)
+        return parts    
+
+    def partition_from_symmetry(self, *, symmetries:list[str]):
+        """
+        Not implemented for PolarGrid
+        """
+        raise NotImplementedError
+    
