@@ -4,6 +4,142 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.31.0] - 2026-01-16
+
+### Added - Polar Grids with Area-Based Weighting
+
+- **`PolarGrid` Class**: New polar coordinate grid system for spatial voting models with radial symmetry
+  - **Constructor**: `PolarGrid(radius, rstep=1, thetastep=15)`
+    - `radius`: Maximum radius of the grid
+    - `rstep`: Radial step size (default: 1)
+    - `thetastep`: Angular step size in degrees (default: 15)
+  - **Grid Structure**: Points arranged in concentric rings around origin
+    - Origin (r=0) is a single point
+    - Each ring has `360/thetastep` angular positions
+    - Total points: `1 + (n_rings * n_angular_positions)`
+  - **Coordinate Systems**: Dual representation
+    - `grid.r`, `grid.theta`: Polar coordinates (radial distance, angle in degrees)
+    - `grid.x`, `grid.y`: Cartesian coordinates (computed from polar)
+    - `grid.points`: JAX array of shape `(N, 2)` with `[x, y]` coordinates
+  - **Area-Based Weights**: `grid.weights` property provides probability weights proportional to grid cell area
+    - Origin cell: `π * rstep²/4` (circular area)
+    - Ring cells: `(r_outer² - r_inner²) * θ_step/2` (annular sector area)
+    - Total weight equals `π * radius²` (validates to 1e-4 relative tolerance)
+    - **Use Case**: Enables proper probability-weighted sampling in polar state spaces
+  - **Methods**:
+    - `index(r=None, theta=None, x=None, y=None)`: Find grid index from coordinates
+    - `partition_from_rotation(angle)`: Create partition for rotational symmetry
+    - `plot(z, ...)`: Polar contour plotting using Matplotlib
+  - **Location**: `src/gridvoting_jax/geometry.py` (131 lines added)
+
+- **Weighted Voting Models**: Support for non-uniform challenger selection probabilities
+  - **`VotingModel` Parameter**: Added optional `weights` parameter
+    - Type: JAX array of shape `(n_alternatives,)` with positive weights
+    - **Behavior**: When provided, challengers selected with probability ∝ weights instead of uniformly
+    - **Default**: `None` (uniform selection, backward compatible)
+    - **Use Case**: Properly handle grids with non-uniform cell areas (e.g., `PolarGrid`)
+  - **Implementation**: Modified `_get_transition_matrix_vectorized()` and `_get_transition_matrix_batched()`
+    - Weighted probability calculation: `weights[j] / sum(weights[winners])`
+    - Maintains stochastic matrix properties (rows sum to 1.0)
+  - **Location**: `src/gridvoting_jax/models/base.py` (46 lines modified)
+
+- **`LazyWeightedStochasticMatrix` Class**: Memory-efficient weighted stochastic matrix implementation
+  - **Purpose**: Lazy evaluation of stochastic matrices with per-state weights
+  - **Constructor**: `LazyWeightedStochasticMatrix(mask, status_quo_values, weights)`
+    - `mask`: 2D boolean array defining non-zero off-diagonal positions
+    - `status_quo_values`: 1D array of diagonal values M[i,i]
+    - `weights`: 1D array of positive weights for each state
+  - **Matrix Formula**: 
+    - Diagonal: `M[i,i] = status_quo_values[i]`
+    - Off-diagonal: `M[i,j] = mask[i,j] * (1-M[i,i]) * weights[j] / sum(weights[winners_i])`
+  - **Features**:
+    - Matrix-vector multiplication (`__matmul__`, `__rmatmul__`)
+    - Transpose wrapper (`LazyWeightedStochasticMatrixTranspose`)
+    - Element access (`__getitem__`)
+    - Row entropy calculation (`row_entropies()`)
+    - Dense materialization (`to_dense()`)
+  - **Performance**: O(N) memory (vs O(N²) for dense), suitable for large grids
+  - **Location**: `src/gridvoting_jax/stochastic/lazy_weighted_stochastic.py` (289 lines, new file)
+
+### Added - Comprehensive Test Suites
+
+- **PolarGrid Rotation Tests**: `tests/test_geometry_symmetry.py` (139 lines added)
+  - **Test Coverage**: 18 tests validating `partition_from_rotation()` method
+    - 1 basic test (radius=10, thetastep=3, angle=120°)
+    - 14 parameterized tests covering:
+      - Grid sizes: radius ∈ {10, 20, 50}
+      - Angular resolutions: thetastep ∈ {3, 5, 15, 30}
+      - Rotation angles: 120° (3-fold), 60° (6-fold)
+    - 3 invalid angle tests (verifying ValueError for incompatible angles)
+  - **Validation Checks** (per test):
+    - (i) Correct partition count: `1 + (n_rings * angle_in_thetasteps)`
+    - (ii) No gaps in partition indices (contiguous from 0 to max)
+    - (iii) Exact inverse_indices verification:
+      - Origin in partition 0 alone
+      - Points in same partition at same radius
+      - Theta values differ by multiples of rotation angle
+  - **Helper Function**: `_expected_partition_count(grid, angle)` computes expected partitions
+  - **Performance**: Optimized test suite runs in 24.97s (39% faster than initial 40.70s)
+    - radius=50 uses thetastep=15 for better performance with large grids
+
+- **LazyWeightedStochasticMatrix Tests**: `tests/test_stochastic_lazy.py` (198 lines added)
+  - **Test Coverage**: 18 tests validating weighted stochastic matrix operations
+    - 3 weight configurations:
+      - Uniform weights = 1.0 (should match unweighted `LazyStochasticMatrix`)
+      - Uniform weights = 2.0 (should match unweighted `LazyStochasticMatrix`)
+      - Variable weights = [1.0, 3.0, 5.0] (true weighted behavior)
+    - Operations tested:
+      - Dense conversion (`to_dense()`)
+      - Transpose (`LazyWeightedStochasticMatrixTranspose`)
+      - Left multiplication with identity (`I @ M`)
+      - Right multiplication with identity (`M @ I`)
+      - Right multiplication with ones vector (`M @ 1`)
+    - 1 equivalence test verifying uniform weights produce identical results to unweighted matrix
+  - **Test Data**: Computed expected dense matrix for variable weights with inline documentation
+  - **Validation**: All tests use `2*EPSILON` tolerance for numerical accuracy
+  - **Execution Time**: Tests complete in ~1.5 seconds
+
+### Changed - Documentation
+
+- **README.md Updates**: Added comprehensive API documentation (49 lines added)
+  - **PolarGrid Section**: Full documentation of constructor, properties, methods, and usage notes
+  - **VotingModel Section**: Documented `weights` parameter with use cases and examples
+  - **Integration**: Clear explanation of how `PolarGrid.weights` integrates with `VotingModel`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/geometry.py`: +131 lines (PolarGrid class)
+- `src/gridvoting_jax/models/base.py`: +46 lines (weights parameter support)
+- `src/gridvoting_jax/models/spatial.py`: +1 line (import update)
+- `src/gridvoting_jax/stochastic/__init__.py`: +2 lines (exports)
+- `src/gridvoting_jax/stochastic/lazy_weighted_stochastic.py`: +289 lines (new file)
+- `src/gridvoting_jax/stochastic/markov.py`: +11 lines (minor refactoring)
+- `tests/test_geometry_symmetry.py`: +139 lines (PolarGrid rotation tests)
+- `tests/test_stochastic_lazy.py`: +198 lines (weighted matrix tests)
+- `README.md`: +49 lines (API documentation)
+- `test_docker.sh`: +13 lines (script improvements)
+
+**Testing**:
+- All 174 tests pass (125.17s total runtime)
+- New test suites: 36 tests added (18 PolarGrid + 18 LazyWeightedStochasticMatrix)
+- Comprehensive validation of partition correctness, matrix operations, and numerical accuracy
+
+**Key Implementation Details**:
+- PolarGrid weights calculated using exact geometric formulas for annular sectors
+- Weighted transition matrices maintain stochastic properties (row sums = 1.0)
+- Lazy weighted matrix uses pre-computed row-normalized weights for efficiency
+- All implementations use JAX for GPU/TPU compatibility
+
+### Notes
+
+- This release adds support for polar coordinate grids with proper area-based weighting
+- `PolarGrid` is particularly useful for models with radial or rotational symmetry
+- Weighted voting models enable accurate probability calculations on non-uniform grids
+- `LazyWeightedStochasticMatrix` provides memory-efficient weighted matrix operations
+- All new features maintain backward compatibility (weights parameter is optional)
+
+
 ## [0.30.1] - 2026-01-15
 
 ### Changed - Docker Infrastructure

@@ -260,6 +260,36 @@ Constructs a 2D grid for spatial voting models.
 - **`embedding(valid)`**: Create embedding function for plotting subsets
 - **`plot(z, ...)`**: Plot scalar fields on the grid using Matplotlib
 
+#### `class PolarGrid`
+
+```python
+grid = gv.PolarGrid(radius, rstep=1, thetastep=15)
+```
+
+Constructs a 2D polar grid for spatial voting models with radial symmetry.
+
+**Parameters:**
+- `radius`: Maximum radius of the grid
+- `rstep`: Radial step size (default: 1)
+- `thetastep`: Angular step size in degrees (default: 15)
+
+**Properties:**
+- `grid.points`: JAX array of shape `(N, 2)` containing `[x, y]` coordinates in Cartesian space
+- `grid.r`, `grid.theta`: 1D JAX arrays of radial and angular coordinates
+- `grid.weights`: 1D JAX array of area-based weights for each grid cell
+- `grid.len`: Total number of grid points (1 + (n_rings * n_angular_positions))
+
+**Methods:**
+- **`index(r=None, theta=None, x=None, y=None)`**: Find grid index from polar or Cartesian coordinates
+- **`partition_from_rotation(angle)`**: Create partition for rotational symmetry
+- **`plot(z, ...)`**: Plot scalar fields using polar contour plot
+
+**Notes:**
+- Grid points are arranged in concentric rings around the origin
+- The origin (r=0) is a single point
+- Weights represent the area of each grid cell in state space
+- Useful for models with radial or rotational symmetry
+
 ### Symmetry & Dimension Reduction
 Reduce computational cost by exploiting spatial symmetries.
 
@@ -343,9 +373,18 @@ vm = gv.VotingModel(
     number_of_voters,
     number_of_feasible_alternatives,
     majority,
-    zi
+    zi,
+    weights=None  # Optional: JAX array of weights for each alternative
 )
 ```
+
+**Parameters:**
+- `utility_functions`: JAX array of shape `(n_voters, n_alternatives)` containing utility values
+- `number_of_voters`: Total number of voters
+- `number_of_feasible_alternatives`: Total number of alternatives
+- `majority`: Number of votes required to win
+- `zi`: Boolean for Zero Intelligence (True) or Minimal Intelligence (False) challenger selection
+- `weights`: *(Optional)* JAX array of shape `(n_alternatives,)` with positive weights for each alternative. When provided, challengers are selected with probability proportional to weights instead of uniformly. Useful for grids with non-uniform cell areas (e.g., `PolarGrid`)
 
 **Methods:**
 - **`analyze(solver="full_matrix_inversion")`**: Compute stationary distribution
