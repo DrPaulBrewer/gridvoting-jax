@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.41.0] - 2026-01-18
+
+### Fixed - Critical Float64 Precision Bug
+
+- **`enable_float64()` Lazy Import Issue**: Fixed bug where `DTYPE_FLOAT` was imported at module load time, preventing `enable_float64()` from updating it
+  - **Impact**: When `enable_float64()` was called at runtime, modules that had already imported `DTYPE_FLOAT` continued using `jnp.float32` instead of `jnp.float64`
+  - **Consequence**: Mixed float32/float64 results throughout the codebase, causing precision degradation in transition matrices, lazy matrices, and solver operations
+  - **Root Cause**: Direct import pattern `from ..core.constants import DTYPE_FLOAT` captured the value at import time
+  - **Fix**: Implemented lazy import pattern (Solution 1, Option B):
+    - Changed from: `from ..core.constants import DTYPE_FLOAT`
+    - Changed to: `from ..core import constants` and use `constants.DTYPE_FLOAT`
+    - This ensures `DTYPE_FLOAT` is always evaluated at runtime, reflecting changes made by `enable_float64()`
+  - **Files Modified** (24 references updated across 5 files):
+    - `src/gridvoting_jax/stochastic/lazy_stochastic.py`: 2 references
+    - `src/gridvoting_jax/stochastic/lazy_weighted_stochastic.py`: 5 references
+    - `src/gridvoting_jax/stochastic/markov.py`: 8 references
+    - `src/gridvoting_jax/models/base.py`: 5 references
+    - `src/gridvoting_jax/geometry.py`: 4 references
+  - **Test Enhancement**: Updated `test_core_float64.py` to test all solvers including `gmres_matrix_inversion`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/geometry.py`: Import pattern + 4 DTYPE_FLOAT references
+- `src/gridvoting_jax/models/base.py`: Import pattern + 5 DTYPE_FLOAT references
+- `src/gridvoting_jax/stochastic/lazy_stochastic.py`: Import pattern + 2 DTYPE_FLOAT references
+- `src/gridvoting_jax/stochastic/lazy_weighted_stochastic.py`: Import pattern + 5 DTYPE_FLOAT references
+- `src/gridvoting_jax/stochastic/markov.py`: Import pattern + 8 DTYPE_FLOAT references
+- `tests/test_core_float64.py`: Added `gmres_matrix_inversion` to solver test list
+
+**Testing**:
+- Test-Driven Development approach: test updated to cover all solvers
+- Test now verifies float64 dtype for:
+  - Transition matrices
+  - Stationary distributions (all solvers: full_matrix_inversion, gmres_matrix_inversion, power_method, bifurcated_power_method)
+  - Lumped/unlumped results with partitions
+- All tests pass in Docker environment
+
+**Notes**:
+- This is a critical bug fix for users calling `enable_float64()` at runtime
+- Users setting `GV_ENABLE_FLOAT64=1` or `JAX_ENABLE_X64=1` environment variables before import were not affected
+- The lazy import pattern ensures consistent float64 precision throughout the entire codebase
+- Complements the v0.40.1 fix which updated constants but didn't address the import timing issue
+
 ## [0.40.1] - 2026-01-18
 
 ### Fixed - Critical Float64 Precision Bug

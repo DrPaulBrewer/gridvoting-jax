@@ -14,7 +14,7 @@ from typing import Union, Tuple
 import jax.numpy as jnp
 from jax import Array
 
-from ..core.constants import DTYPE_FLOAT
+from ..core import constants
 
 
 class LazyStochasticMatrix:
@@ -57,7 +57,7 @@ class LazyStochasticMatrix:
         self.challenger_values = (1.0-status_quo_values) * safe_inverse_winners_per_row
         self.ndim = 2
         self.shape = mask.shape
-        self.dtype = DTYPE_FLOAT
+        self.dtype = constants.DTYPE_FLOAT
 
     def __matmul__(self, other: Array) -> Array:
         """Right multiplication: self @ other (M * v or M * V).

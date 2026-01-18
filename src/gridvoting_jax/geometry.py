@@ -11,7 +11,8 @@ import scipy.sparse
 
 
 # Import from core
-from .core.constants import TOLERANCE, EPSILON, GEOMETRY_EPSILON, DTYPE_FLOAT, PLOT_LOG_BIAS
+from .core import constants
+from .core.constants import TOLERANCE, EPSILON, GEOMETRY_EPSILON, PLOT_LOG_BIAS
 
 
 def dist_sqeuclidean(XA, XB):
@@ -24,8 +25,8 @@ def dist_sqeuclidean(XA, XB):
     Returns:
         Distance matrix of shape (m, p)
     """
-    XA = jnp.asarray(XA, dtype=DTYPE_FLOAT)
-    XB = jnp.asarray(XB, dtype=DTYPE_FLOAT)
+    XA = jnp.asarray(XA, dtype=constants.DTYPE_FLOAT)
+    XB = jnp.asarray(XB, dtype=constants.DTYPE_FLOAT)
     # Squared Euclidean: ||a-b||^2 = ||a||^2 + ||b||^2 - 2*a·b
     XA_sq = jnp.sum(XA**2, axis=1, keepdims=True)
     XB_sq = jnp.sum(XB**2, axis=1, keepdims=True)
@@ -42,8 +43,8 @@ def dist_manhattan(XA, XB):
     Returns:
         Distance matrix of shape (m, p)
     """
-    XA = jnp.asarray(XA, dtype=DTYPE_FLOAT)
-    XB = jnp.asarray(XB, dtype=DTYPE_FLOAT)
+    XA = jnp.asarray(XA, dtype=constants.DTYPE_FLOAT)
+    XB = jnp.asarray(XB, dtype=constants.DTYPE_FLOAT)
     # Manhattan distance: sum(|a-b|)
     return jnp.sum(jnp.abs(XA[:, None, :] - XB[None, :, :]), axis=2)
 
@@ -252,7 +253,7 @@ class Grid:
         self, *, voter_ideal_points, metric="sqeuclidean", scale=-1
     ):
         """returns utility function values for each voter at each grid point"""
-        voter_ideal_points = jnp.asarray(voter_ideal_points, dtype=DTYPE_FLOAT)
+        voter_ideal_points = jnp.asarray(voter_ideal_points, dtype=constants.DTYPE_FLOAT)
         
         if metric == "sqeuclidean":
             distances = dist_sqeuclidean(voter_ideal_points, self.points)

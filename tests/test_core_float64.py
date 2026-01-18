@@ -3,7 +3,6 @@ import pytest
 import jax.numpy as jnp
 import gridvoting_jax as gv
 
-
 def test_enable_float64():
     """Test that enable_float64() enables 64-bit precision"""
     # Enable float64
@@ -27,3 +26,31 @@ def test_enable_float64():
     assert constants.DTYPE_FLOAT == jnp.float64, f"DTYPE_FLOAT not updated: {constants.DTYPE_FLOAT}"
     assert constants.TOLERANCE == 1e-10, f"TOLERANCE not updated: {constants.TOLERANCE}"
     assert constants.EPSILON == float(jnp.finfo(jnp.float64).eps), f"EPSILON not updated: {constants.EPSILON}"
+
+    # test that normalize_if_needed returns float64
+    vec = jnp.full(101, 2.0, dtype=jnp.float64)
+    assert gv.stochastic.utils.normalize_if_needed(vec).dtype == jnp.float64, f"normalize_if_needed did not return float64"
+
+    # Test that it works with a voting model
+    # because thats where the bug was
+    pg = gv.geometry.PolarGrid(radius=10)
+    pt1 = 7.0*pg.unit_vectors[0]
+    pt2 = 7.0*pg.unit_vectors[120//pg.thetastep]
+    pt3 = 7.0*pg.unit_vectors[240//pg.thetastep]
+    
+    svm = gv.SpatialVotingModel(
+        voter_ideal_points=jnp.array([pt1,pt2,pt3], dtype=jnp.float64),
+        grid=pg,
+        majority=2,
+        number_of_voters=3,
+        zi=True
+    )
+    assert svm.model.transition_matrix().dtype == jnp.float64, f"Transition matrix dtype is not float64: {svm.model.transition_matrix().dtype}"
+    for solver in ['full_matrix_inversion', 'gmres_matrix_inversion','power_method','bifurcated_power_method']:
+        svm.analyze(solver=solver)
+        assert svm.stationary_distribution.dtype == jnp.float64, f"Stationary distribution dtype is not float64: {svm.stationary_distribution.dtype} for solver={solver}"
+
+    #  test that it works with lumping
+    for solver in ['full_matrix_inversion', 'gmres_matrix_inversion','power_method','bifurcated_power_method']:
+        svm.analyze(solver=solver, partitions=pg.partition_from_rotation(angle=120))
+        assert svm.stationary_distribution.dtype == jnp.float64, f"Stationary distribution dtype is not float64: {svm.stationary_distribution.dtype} for solver={solver}"

@@ -14,7 +14,7 @@ from typing import Union, Tuple
 import jax.numpy as jnp
 from jax import Array
 
-from ..core.constants import DTYPE_FLOAT
+from ..core import constants
 
 
 class LazyWeightedStochasticMatrix:
@@ -47,8 +47,9 @@ class LazyWeightedStochasticMatrix:
             weights: 1D array of weights for each state
         """
         self.mask = mask
-        self.status_quo_values = status_quo_values
-        self.weights = weights
+        self.status_quo_values = jnp.array(status_quo_values, dtype=constants.DTYPE_FLOAT)
+        self.weights = jnp.array(weights, dtype=constants.DTYPE_FLOAT)
+        assert mask.dtype == jnp.bool_, "Mask must be boolean"
         assert mask.shape[0] == mask.shape[1], "Mask must be square"
         assert mask.shape[0] == status_quo_values.shape[0], "Mask and status quo values must have same shape"
         assert mask.shape[0] == weights.shape[0], "Mask and weights must have same shape"
@@ -69,7 +70,7 @@ class LazyWeightedStochasticMatrix:
         self.challenger_scale = 1.0 - status_quo_values
         self.ndim = 2
         self.shape = mask.shape
-        self.dtype = DTYPE_FLOAT
+        self.dtype = constants.DTYPE_FLOAT
 
     def __matmul__(self, other: Array) -> Array:
         """Right multiplication: self @ other (M * v or M * V).
@@ -80,7 +81,7 @@ class LazyWeightedStochasticMatrix:
         Returns:
             Result of matrix-vector or matrix-matrix multiplication
         """
-        other = jnp.asarray(other, dtype=self.dtype)
+        other = jnp.asarray(other, dtype=constants.DTYPE_FLOAT)
         # M @ v: result[i] = status_quo[i]*v[i] + challenger_scale[i] * sum_j(mask[i,j] * row_normalized_weights[i,j] * v[j])
         
         if other.ndim == 1:
@@ -104,7 +105,7 @@ class LazyWeightedStochasticMatrix:
         Returns:
             Result of vector-matrix or matrix-matrix multiplication
         """
-        other = jnp.asarray(other, dtype=self.dtype)
+        other = jnp.asarray(other, dtype=constants.DTYPE_FLOAT)
         # v @ M: result[j] = status_quo[j]*v[j] + sum_i(mask[i,j] * challenger_scale[i] * row_normalized_weights[i,j] * v[i])
         
         # Compute the weighted contribution: mask.T * row_normalized_weights.T gives us the effective weights

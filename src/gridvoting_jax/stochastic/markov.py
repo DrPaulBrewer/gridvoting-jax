@@ -5,10 +5,10 @@ from warnings import warn
 
 # Import constants from core
 from ..core import (
+    constants,
     EPSILON,
     TOLERANCE, 
     NEGATIVE_PROBABILITY_TOLERANCE, 
-    DTYPE_FLOAT,
     BAD_STATIONARY_TOLERANCE,
     get_available_memory_bytes,
 )
@@ -78,7 +78,7 @@ def dense_matrix_inversion(*, Q=None):
     try:
         unit_eigenvector = jnp.linalg.solve(
             Q,
-            jnp.zeros(n, dtype=DTYPE_FLOAT).at[0].set(1.0)
+            jnp.zeros(n, dtype=constants.DTYPE_FLOAT).at[0].set(1.0)
         )
     except Exception as err:
         warn(str(err)) # print the original exception lest it be lost for debugging purposes
@@ -119,12 +119,12 @@ def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
     if Q is None:
         raise ValueError("Q matrix must be provided")
     if initial_guess is None:
-        initial_guess = jnp.ones(Q.shape[0], dtype=DTYPE_FLOAT)/Q.shape[0]
+        initial_guess = jnp.ones(Q.shape[0], dtype=constants.DTYPE_FLOAT)/Q.shape[0]
     # Use JAX's GMRES
     # tol in gmres is residual tolerance, roughly related to error
     v, info = jax.scipy.sparse.linalg.gmres(
         Q, 
-        jnp.zeros(Q.shape[0], dtype=DTYPE_FLOAT).at[0].set(1.0),
+        jnp.zeros(Q.shape[0], dtype=constants.DTYPE_FLOAT).at[0].set(1.0),
         x0=initial_guess,
         tol=TOLERANCE, 
         restart=50,
@@ -155,7 +155,7 @@ def iterate_power_method(*, P=None, Q=None, iterations, initial_guess):
     if P is None:
         raise ValueError("P matrix must be provided")
     if initial_guess is None:
-        initial_guess = jnp.ones(P.shape[0], dtype=DTYPE_FLOAT)/P.shape[0]
+        initial_guess = jnp.ones(P.shape[0], dtype=constants.DTYPE_FLOAT)/(0.0+P.shape[0])
     def evolve_step(_, vec):
         return normalize_if_needed(vec @ P)
     v = jax.lax.fori_loop(0, iterations, evolve_step, initial_guess)
@@ -185,8 +185,8 @@ def geometry_based_guess_pair(*, n, atom_idx):
     """
     if atom_idx is None:
         raise ValueError("atom_idx must be provided")
-    v1 = jnp.ones(n, dtype=DTYPE_FLOAT)/n
-    v2 = jnp.zeros(n, dtype=DTYPE_FLOAT)
+    v1 = jnp.ones(n, dtype=constants.DTYPE_FLOAT)/n
+    v2 = jnp.zeros(n, dtype=constants.DTYPE_FLOAT)
     return jnp.stack([v1, v2.at[atom_idx].set(1.0)], axis=0) # shape (2,n)
 
 def iterate_bifurcated_power_method(*, P=None, Q=None, iterations, initial_guess):
@@ -301,7 +301,7 @@ class MarkovChain:
         if not callable(solver):
             raise ValueError("solver must be callable")
         if initial_guess is not None:
-            initial_guess = jnp.array(initial_guess, dtype=DTYPE_FLOAT)
+            initial_guess = jnp.array(initial_guess, dtype=constants.DTYPE_FLOAT)
         
         # Compute and cache Q matrix (dense) for solvers that need it
         # if memory is a concern, self.P will be lazy and Q will be made dense from lazy evaluation
@@ -466,7 +466,7 @@ class MarkovChain:
             if available_mem is not None:
                 n = self.P.shape[0]
                 # Determine element size (float32=4, float64=8)
-                item_size = jnp.dtype(DTYPE_FLOAT).itemsize                
+                item_size = jnp.dtype(constants.DTYPE_FLOAT).itemsize                
                 estimated_needed = 0
                 if solver == "full_matrix_inversion":
                     # Q(N^2) + Result(N^2) all float

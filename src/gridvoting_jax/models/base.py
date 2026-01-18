@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import copy
 from warnings import warn
+from ..core import constants
 
 # Import from stochastic
 from ..stochastic import (
@@ -221,7 +222,7 @@ class VotingModel:
         winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
         number_of_winning_alternatives = winner_mask.sum(axis=1)
         if self.zi:
-            number_of_losing_alternatives = self.number_of_feasible_alternatives - number_of_winning_alternatives
+            number_of_losing_alternatives = (self.number_of_feasible_alternatives - number_of_winning_alternatives).astype(constants.DTYPE_FLOAT)
             status_quo_values = number_of_losing_alternatives/(0.0+self.number_of_feasible_alternatives)
         else:
             status_quo_values = 1.0/(1.0+number_of_winning_alternatives)
@@ -250,13 +251,13 @@ class VotingModel:
         #     weights[i] is the weight of alternative i
         ###
         winner_mask = jnp.vectorize(lambda i:self.what_beats(i=i))(jnp.arange(self.number_of_feasible_alternatives))
-        weight_of_winning_alternatives = winner_mask @ self.weights
-        total_weight = self.weights.sum()
+        weight_of_winning_alternatives = (winner_mask @ self.weights).astype(constants.DTYPE_FLOAT)
+        total_weight = self.weights.sum().astype(constants.DTYPE_FLOAT)
         weight_of_losing_alternatives = total_weight - weight_of_winning_alternatives
         if self.zi:
-            status_quo_values = weight_of_losing_alternatives/total_weight
+            status_quo_values = (weight_of_losing_alternatives/total_weight).astype(constants.DTYPE_FLOAT)    
         else:
-            status_quo_values = self.weights/(self.weights+weight_of_winning_alternatives)
+            status_quo_values = (self.weights/(self.weights+weight_of_winning_alternatives)).astype(constants.DTYPE_FLOAT)
         return {
             'mask': winner_mask,
             'status_quo_values': status_quo_values,
