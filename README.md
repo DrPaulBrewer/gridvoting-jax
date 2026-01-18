@@ -496,13 +496,22 @@ model = gv.bjm_budget_triangle(budget=100, zi=False)
 #### `class MarkovChain`
 
 ```python
-mc = gv.MarkovChain(P, tolerance=5e-5)
+mc = gv.MarkovChain(P)
 mc.solve(solver="full_matrix_inversion")
+
+# With partitions for automatic lumping/unlumping
+partition = model.grid.partition_from_symmetry(['reflect_x'])
+mc.solve(solver="full_matrix_inversion", partitions=partition)
 ```
+
+**Parameters:**
+- `solver`: Strategy to use (see solver options below)
+- `initial_guess`: Optional starting distribution for iterative solvers
+- `partitions`: Optional JAX array for automatic Markov chain lumping/unlumping. When provided, the chain is lumped using the partition, solved on the reduced state space, then unlumped back to the original space. See [Symmetry & Dimension Reduction](#symmetry--dimension-reduction) section for details.
+- `time_per_digit`: Time budget (seconds) per digit of precision for iterative solvers (default: 1.0)
 
 > [!NOTE]
 > **API Change**: The `MarkovChain` method `find_unique_stationary_distribution` has been renamed to `solve` for a more concise API aligned with scientific computing conventions.
-```
 
 **Dense Solvers** (constructs full transition matrix):
 - **`"full_matrix_inversion"`** (default): Direct matrix inversion
