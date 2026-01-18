@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.40.1] - 2026-01-18
+
+### Fixed - Critical Float64 Precision Bug
+
+- **`enable_float64()` Constants Update**: Fixed bug where `enable_float64()` did not update `DTYPE_FLOAT` and `EPSILON` constants
+  - **Impact**: When `enable_float64()` was called at runtime, `DTYPE_FLOAT` remained `jnp.float32` instead of updating to `jnp.float64`
+  - **Consequence**: `lump()` function degraded float64 arrays to float32 because `LazyStochasticMatrix.dtype` used the stale `DTYPE_FLOAT` constant
+  - **Root Cause**: `enable_float64()` only updated JAX config and `TOLERANCE`, but not `DTYPE_FLOAT` or `EPSILON`
+  - **Fix**: Added two lines to `enable_float64()`:
+    ```python
+    constants.DTYPE_FLOAT = jnp.float64
+    constants.EPSILON = float(jnp.finfo(jnp.float64).eps)
+    ```
+  - **Location**: `src/gridvoting_jax/core/config.py:75-76`
+  - **Test**: Added assertions to `test_core_float64.py` to verify constants are updated
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/core/config.py`: +2 lines (DTYPE_FLOAT and EPSILON updates)
+- `tests/test_core_float64.py`: +4 lines (test assertions for constant updates)
+
+**Testing**:
+- Test-Driven Development approach: added failing test, then fixed code
+- Test now verifies `DTYPE_FLOAT == jnp.float64` after `enable_float64()`
+- Test verifies `EPSILON == float(jnp.finfo(jnp.float64).eps)` after `enable_float64()`
+
+**Notes**:
+- This is a critical bug fix for users calling `enable_float64()` at runtime
+- Users setting `GV_ENABLE_FLOAT64=1` or `JAX_ENABLE_X64=1` environment variables before import were not affected
+- The bug caused silent precision degradation in lumped Markov chains
+
 ## [0.40.0] - 2026-01-18
 
 ### Changed - BREAKING CHANGE: API Simplification

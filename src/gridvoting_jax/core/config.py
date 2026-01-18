@@ -72,6 +72,8 @@ def enable_float64() -> None:
     
     jax.config.update("jax_enable_x64", True)
     constants.TOLERANCE = 1e-10
+    constants.DTYPE_FLOAT = jnp.float64
+    constants.EPSILON = float(jnp.finfo(jnp.float64).eps)
 
 
 # ============================================================================

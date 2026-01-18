@@ -21,3 +21,9 @@ def test_enable_float64():
     
     # Verify dtype is float64
     assert vec.dtype == jnp.float64, f"Expected float64, got {vec.dtype}"
+    
+    # Verify constants are updated
+    from gridvoting_jax.core import constants
+    assert constants.DTYPE_FLOAT == jnp.float64, f"DTYPE_FLOAT not updated: {constants.DTYPE_FLOAT}"
+    assert constants.TOLERANCE == 1e-10, f"TOLERANCE not updated: {constants.TOLERANCE}"
+    assert constants.EPSILON == float(jnp.finfo(jnp.float64).eps), f"EPSILON not updated: {constants.EPSILON}"
