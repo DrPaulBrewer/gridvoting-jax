@@ -410,7 +410,7 @@ class MarkovChain:
         
         return (current_guess, convergence_history)
 
-    def find_unique_stationary_distribution(self, *, 
+    def solve(self, *, 
                                            solver="full_matrix_inversion", 
                                            initial_guess=None,
                                            partitions=None, 
@@ -453,7 +453,7 @@ class MarkovChain:
             if initial_guess is not None:
                 raise ValueError("initial_guess is not supported for partitioned Markov Chains.")
             MC_lumped = lump(self, partitions)
-            MC_lumped.find_unique_stationary_distribution(solver=solver, time_per_digit=time_per_digit)
+            MC_lumped.solve(solver=solver, time_per_digit=time_per_digit)
             if MC_lumped.stationary_distribution is None:
                 self.stationary_distribution = None
                 return None

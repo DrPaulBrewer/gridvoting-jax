@@ -319,7 +319,7 @@ print(f"Number of groups: {int(partition.max()) + 1}")
 # 3. Lump Markov Chain
 # Solve on reduced state space (e.g., 50% fewer states)
 lumped_mc = gv.lump(model.MarkovChain, partition)
-lumped_pi = lumped_mc.find_unique_stationary_distribution()
+lumped_pi = lumped_mc.solve()
 
 # 4. Unlump
 # Map results back to full grid
@@ -497,7 +497,11 @@ model = gv.bjm_budget_triangle(budget=100, zi=False)
 
 ```python
 mc = gv.MarkovChain(P, tolerance=5e-5)
-mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
+mc.solve(solver="full_matrix_inversion")
+```
+
+> [!NOTE]
+> **API Change**: The `MarkovChain` method `find_unique_stationary_distribution` has been renamed to `solve` for a more concise API aligned with scientific computing conventions.
 ```
 
 **Dense Solvers** (constructs full transition matrix):

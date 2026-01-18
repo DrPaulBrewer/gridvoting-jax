@@ -32,7 +32,7 @@ def _test_bjm_g20_reflection_lumpability(model):
     # Create and solve lumped chain
     mc = model.MarkovChain
     lumped_mc = gv.lump(mc, partition)
-    lumped_mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
+    lumped_mc.solve(solver="full_matrix_inversion")
     pi_lumped = lumped_mc.stationary_distribution
     
     # Unlump the solution back to original space

@@ -21,9 +21,9 @@ def test_lump_preserves_markov_property():
     assert is_lumpable(mc, partition)
     
     # Test lump-unlump roundtrip
-    mc.find_unique_stationary_distribution()
+    mc.solve()
     lumped = lump(mc, partition)
-    lumped.find_unique_stationary_distribution()
+    lumped.solve()
     
     pi_unlumped = unlump(lumped.stationary_distribution, partition)
     
@@ -49,11 +49,11 @@ def test_lump_violates_markov_property():
     assert not is_lumpable(mc, partition)
     
     # Stationary distributions won't match after lump-unlump
-    mc.find_unique_stationary_distribution()
+    mc.solve()
     original_pi = mc.stationary_distribution
     
     lumped = lump(mc, partition)
-    lumped.find_unique_stationary_distribution()
+    lumped.solve()
     pi_unlumped = unlump(lumped.stationary_distribution, partition)
     
     # Should NOT match (violated Markov property)

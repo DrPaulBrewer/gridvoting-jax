@@ -115,7 +115,7 @@ class VotingModel:
                 - "full_matrix_inversion" (Default)
                 - "gmres_matrix_inversion"
                 - "power_method"
-            **kwargs: Passed to find_unique_stationary_distribution (e.g. tolerance, max_iterations).
+            **kwargs: Passed to solve (e.g. tolerance, max_iterations).
         """
         # Main Analysis
         self.MarkovChain = MarkovChain(P=self.transition_matrix())
@@ -123,7 +123,7 @@ class VotingModel:
         self.core_points = self.MarkovChain.absorbing_points
         self.core_exists = jnp.any(self.core_points)
         if not self.core_exists and solver is not None:
-            self.stationary_distribution = self.MarkovChain.find_unique_stationary_distribution(
+            self.stationary_distribution = self.MarkovChain.solve(
                 solver=solver, 
                 **kwargs
             )
