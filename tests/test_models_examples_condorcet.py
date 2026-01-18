@@ -35,7 +35,7 @@ def test_condorcet(zi, correct_P):
         rtol=0
     )
     mc=condorcet_model.MarkovChain
-    alt = mc.find_unique_stationary_distribution()
+    alt = mc.solve()
     chex.assert_trees_all_close(
         alt,
         jnp.array([1.0/3.0, 1.0/3.0, 1.0/3.0]),

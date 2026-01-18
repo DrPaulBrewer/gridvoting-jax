@@ -71,7 +71,7 @@ def main():
     print("Step 5: Creating and solving lumped chain...")
     start = time.time()
     lumped_mc = gv.lump(model.MarkovChain, partition)
-    lumped_mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
+    lumped_mc.solve(solver="full_matrix_inversion")
     time_lumped = time.time() - start
     pi_lumped = lumped_mc.stationary_distribution
     speedup = time_original / time_lumped

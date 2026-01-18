@@ -4,6 +4,85 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.40.0] - 2026-01-18
+
+### Changed - BREAKING CHANGE: API Simplification
+
+- **`MarkovChain.solve()`**: Renamed method from `find_unique_stationary_distribution` to `solve`
+  - **Rationale**: More concise API aligned with scientific computing conventions (scipy, numpy)
+  - **Impact**: All code calling `MarkovChain.find_unique_stationary_distribution()` must update to `MarkovChain.solve()`
+  - **Behavior**: Identical functionality - only the method name changed
+  - **Files Modified**: 11 files (2 source, 4 tests, 3 examples, 1 notebook, 1 documentation)
+    - `src/gridvoting_jax/stochastic/markov.py`: Method definition + internal recursive call
+    - `src/gridvoting_jax/models/base.py`: Method call + docstring
+    - `tests/test_models_examples_condorcet.py`: 1 occurrence
+    - `tests/test_stochastic_markov_lump.py`: 4 occurrences
+    - `tests/test_markov_double_cycle.py`: 3 occurrences
+    - `tests/test_integrated_lump_bjm_g20.py`: 1 occurrence
+    - `examples/benchmark_lumping.py`: 1 occurrence
+    - `examples/benchmark_pareto_lumping.py`: 1 occurrence
+    - `examples/benchmark_lumping_reflection.py`: 1 occurrence
+    - `BJM-polar.ipy`: 1 occurrence
+    - `README.md`: 2 occurrences + API change note
+  - **Total**: 16 occurrences renamed
+
+### Added - Automatic Lumping Support
+
+- **`partitions` Parameter**: New optional parameter for `MarkovChain.solve()`
+  - **Purpose**: Enables automatic Markov chain lumping/unlumping for dimension reduction
+  - **Usage**: `mc.solve(solver="full_matrix_inversion", partitions=partition)`
+  - **Behavior**: When provided, the chain is automatically:
+    1. Lumped using the partition (reduces state space)
+    2. Solved on the reduced state space
+    3. Unlumped back to the original space
+  - **Use Case**: Exploit spatial symmetries to reduce computational cost
+  - **Example**:
+    ```python
+    partition = model.grid.partition_from_symmetry(['reflect_x'])
+    mc.solve(solver="full_matrix_inversion", partitions=partition)
+    ```
+  - **Documentation**: Added comprehensive parameter documentation to README.md
+  - **Location**: `src/gridvoting_jax/stochastic/markov.py:417`
+
+### Migration Guide
+
+**Before (v0.32.0)**:
+```python
+mc.find_unique_stationary_distribution(solver="full_matrix_inversion")
+```
+
+**After (v0.40.0)**:
+```python
+mc.solve(solver="full_matrix_inversion")
+
+# With automatic lumping (new feature)
+partition = model.grid.partition_from_symmetry(['reflect_x'])
+mc.solve(solver="full_matrix_inversion", partitions=partition)
+```
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/stochastic/markov.py`: Method rename + partitions parameter
+- `src/gridvoting_jax/models/base.py`: Method call update
+- `tests/`: 4 test files updated
+- `examples/`: 3 example files updated
+- `BJM-polar.ipy`: Notebook updated
+- `README.md`: Documentation updated with API change note and partitions parameter
+
+**Testing**:
+- All 22 affected tests pass successfully (6.22s runtime in Docker)
+- No remaining references to old method name (verified via grep)
+- Backward compatibility: CHANGELOG.md preserves historical references
+
+**Notes**:
+- This is a breaking change affecting all users of `MarkovChain`
+- Simple find-and-replace migration: `find_unique_stationary_distribution` → `solve`
+- New `partitions` parameter is optional and backward compatible
+- Automatic lumping feature enables significant performance improvements for symmetric models
+
+
+
 ## [0.32.0] - 2026-01-18
 
 ### Added - SO(2) Continuous Rotation Symmetry Support

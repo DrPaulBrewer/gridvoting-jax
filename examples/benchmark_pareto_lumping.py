@@ -58,7 +58,7 @@ def benchmark_pareto_lumping():
                 lumped_mc = gv.lump(mc, partition)
                 
                 # Solve 2x2 chain
-                pi_lumped = lumped_mc.find_unique_stationary_distribution()
+                pi_lumped = lumped_mc.solve()
                 
                 time_lump = time.time() - start_lump
                 
