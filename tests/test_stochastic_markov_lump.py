@@ -21,18 +21,10 @@ def test_lump_preserves_markov_property():
     assert is_lumpable(mc, partition)
     
     # Test lump-unlump roundtrip
-    mc.solve()
-    lumped = lump(mc, partition)
-    lumped.solve()
+    sd_as_is = mc.solve()
+    sd_using_lump_unlump = mc.solve(partitions=partition)
     
-    pi_unlumped = unlump(lumped.stationary_distribution, partition)
-    
-    # Reaggregate and compare
-    pi_reaggregated = jnp.array([
-        pi_unlumped[0] + pi_unlumped[1],
-        pi_unlumped[2]
-    ])
-    assert jnp.allclose(pi_reaggregated, lumped.stationary_distribution)
+    assert jnp.allclose(sd_as_is, sd_using_lump_unlump)
 
 
 def test_lump_violates_markov_property():
@@ -52,9 +44,7 @@ def test_lump_violates_markov_property():
     mc.solve()
     original_pi = mc.stationary_distribution
     
-    lumped = lump(mc, partition)
-    lumped.solve()
-    pi_unlumped = unlump(lumped.stationary_distribution, partition)
+    pi_unlumped = mc.solve(partitions=partition)
     
     # Should NOT match (violated Markov property)
     assert not jnp.allclose(pi_unlumped, original_pi, atol=1e-3)

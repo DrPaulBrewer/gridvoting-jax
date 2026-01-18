@@ -11,6 +11,7 @@ def _test_bjm_g20_reflection_lumpability(model):
     2. Lumping using reflection symmetry
     3. Unlumping the solution
     4. Verifying it matches the original solution
+    5. Doing steps 2-4 with the partitions= parameter
     
     Args:
         model: BMJ g=20 model (either lazy or dense)
@@ -45,6 +46,14 @@ def _test_bjm_g20_reflection_lumpability(model):
     assert jnp.allclose(jnp.sum(pi_unlumped), 1.0, atol=1e-6)
     
     # Threshold check - exact symmetry should have very high accuracy
+    print(f"L1 norm difference: {diff_l1:.2e}")
+    assert diff_l1 < 1e-5
+    
+    # Do steps 2-4 with partitions= parameter
+    mc.solve(solver="full_matrix_inversion", partitions=partition)
+    new_pi_unlumped = mc.stationary_distribution
+    diff_l1 = float(jnp.linalg.norm(pi_original - new_pi_unlumped, ord=1))
+    assert jnp.allclose(jnp.sum(new_pi_unlumped), 1.0, atol=1e-6)
     print(f"L1 norm difference: {diff_l1:.2e}")
     assert diff_l1 < 1e-5
 
