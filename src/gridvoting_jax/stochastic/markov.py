@@ -410,7 +410,11 @@ class MarkovChain:
         
         return (current_guess, convergence_history)
 
-    def find_unique_stationary_distribution(self, *, solver="full_matrix_inversion", initial_guess=None, time_per_digit=1.0):
+    def find_unique_stationary_distribution(self, *, 
+                                           solver="full_matrix_inversion", 
+                                           initial_guess=None,
+                                           partitions=None, 
+                                           time_per_digit=1.0):
         """
         Finds the stationary distribution for a Markov Chain.
 
@@ -428,13 +432,14 @@ class MarkovChain:
         
         Args:
             solver: Strategy to use. Options:
-                - "dense_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
+                - "full_matrix_inversion": (Default) Direct algebraic solve (O(N^3)). Best for N < 5000.
                 - "gmres_matrix_inversion": Iterative linear solver (GMRES). Lower memory (O(N^2)).
                 - "power_method": Single-path power method with uniform initial guess (O(N^2)).
                   Matches lazy power method behavior.
                 - "bifurcated_power_method": Dual-start entropy-based power method (O(N^2)).
                   More robust but more expensive than power_method.
-            initial_guess: Optional starting distribution for "power_method".
+            initial_guess: Optional starting distribution for "power_method"
+            partitions: Optional partitions for Markov Chain lumping/un-lumping
             time_per_digit: Time in seconds to wait for each digit of precision in the L1 step norm.
         """
         if not hasattr(self,'absorbing_points'):
@@ -444,7 +449,16 @@ class MarkovChain:
         if jnp.any(self.absorbing_points):
             self.stationary_distribution = None
             return None
-            
+        if partitions is not None:
+            if initial_guess is not None:
+                raise ValueError("initial_guess is not supported for partitioned Markov Chains.")
+            MC_lumped = lump(self, partitions)
+            MC_lumped.find_unique_stationary_distribution(solver=solver, time_per_digit=time_per_digit)
+            if MC_lumped.stationary_distribution is None:
+                self.stationary_distribution = None
+                return None
+            self.stationary_distribution = unlump(MC_lumped.stationary_distribution, partitions)
+            return self.stationary_distribution            
         # Memory Check
         try:
             available_mem = get_available_memory_bytes()
