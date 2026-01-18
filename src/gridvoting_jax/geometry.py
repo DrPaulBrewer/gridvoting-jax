@@ -676,13 +676,27 @@ class PolarGrid(Grid):
     def partition_from_rotation(self, *, angle):
         """
         returns inverse indices for rotation angle symmetry
+
+        Args:
+            angle (int): angle in degrees
+
+            if angle is 0, returns inverse indices for continuous rotation symmetry (each ring is a partition) (in group theory: SO(2))
+            otherwise, each ring is further partitioned into 360/self.thetastep tiled segments  (in group theory: cyclic group Cn where n=360/self.thetastep)
+
+        Returns:
+            jnp.ndarray: inverse indices for use in lumping/unlumping
         """
+        if angle is None:
+            raise ValueError("Angle must be specified, got: None")
+        # test for angle==0 first, to avoid division by zero
+        if angle == 0:  # continuous rotation lumps by radius; each ring is a partition
+            return jnp.round(self.r/self.rstep).astype(jnp.int32)
         if angle % self.thetastep != 0:
-            raise ValueError("Angle must be a multiple of the theta step")
+            raise ValueError("Angle must be a multiple of the theta step, got: {}".format(angle))
         if 360 % angle != 0:
-            raise ValueError("Angle must divide 360")
+            raise ValueError("Angle must divide 360, got: {}".format(angle))
         angle_in_thetasteps = angle // self.thetastep
-        parts = (1+jnp.floor(
+        parts = (1+jnp.round(
                     ((self.r-self.rstep)/self.rstep)*angle_in_thetasteps
                     +((self.theta%angle)/self.thetastep))
             ).astype(jnp.int32).at[0].set(0)

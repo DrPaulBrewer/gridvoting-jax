@@ -4,6 +4,62 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.32.0] - 2026-01-18
+
+### Added - SO(2) Continuous Rotation Symmetry Support
+
+- **`PolarGrid.partition_from_rotation(angle=0)`**: New support for continuous rotation symmetry
+  - **`angle=0` Parameter**: Creates partitions for continuous rotation symmetry (SO(2) group)
+    - Each ring forms a single partition (all angular positions at same radius grouped together)
+    - Enables lumping for models with full rotational symmetry
+    - Implementation: `return jnp.round(self.r/self.rstep).astype(jnp.int32)`
+    - **Use Case**: Reduces state space for radially symmetric models
+  - **Validation**: Added `None` check with clear error message
+  - **Location**: `src/gridvoting_jax/geometry.py` (+14 lines)
+
+- **Test Coverage**: New test for continuous rotation symmetry
+  - **`test_polar_partition_continuous_rotation()`**: Validates `angle=0` behavior
+    - Verifies correct number of partitions (one per ring)
+    - Checks no gaps in partition indices
+    - Confirms origin is in partition 0 alone
+    - Validates all points in each partition share the same radius
+  - **Location**: `tests/test_geometry_symmetry.py` (+32 lines)
+
+### Changed - PolarGrid Improvements
+
+- **Enhanced Documentation**: Comprehensive `partition_from_rotation()` API documentation
+  - **`angle=0`**: Continuous rotation symmetry (SO(2)) - each ring forms a partition
+  - **`angle>0`**: Discrete rotation symmetry (cyclic group C_n) - each ring tiled n-fold into k partitions where n=360/angle, k=angle/thetastep
+  - **Constraints**: Angle must divide 360 and be a multiple of `thetastep`
+  - **Location**: README.md, PolarGrid Methods section
+
+- **Improved Error Messages**: Better diagnostics in `partition_from_rotation()`
+  - Error messages now include the invalid value received
+  - Format: `"Angle must divide 360, got: {angle}"`
+  - Helps users quickly identify configuration issues
+
+### Fixed - Numerical Precision
+
+- **Partition Calculation**: Changed `jnp.floor()` → `jnp.round()` for discrete rotation partitions
+  - **Impact**: More robust handling of floating-point rounding errors
+  - **Location**: `src/gridvoting_jax/geometry.py:699`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/geometry.py`: +14 lines (angle=0 support, error messages, floor→round fix)
+- `tests/test_geometry_symmetry.py`: +32 lines (continuous rotation test)
+- `README.md`: +4 lines (enhanced API documentation)
+
+**Testing**:
+- New test validates SO(2) symmetry partition correctness
+- All existing PolarGrid rotation tests continue to pass
+
+**Notes**:
+- Backward compatible - existing `angle>0` behavior unchanged
+- `angle=0` is a new feature enabling continuous rotation symmetry lumping
+- Complements existing discrete rotation symmetry support from v0.31.0
+
 ## [0.31.0] - 2026-01-16
 
 ### Added - Polar Grids with Area-Based Weighting

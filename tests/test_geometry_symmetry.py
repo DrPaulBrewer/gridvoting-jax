@@ -423,3 +423,35 @@ def test_polar_partition_rotation_invalid_angle(radius, thetastep):
     with pytest.raises(ValueError, match="Angle must be a multiple of the theta step"):
         grid.partition_from_rotation(angle=45)
 
+
+def test_polar_partition_continuous_rotation():
+    """Test that angle=0 returns inverse indices for continuous rotation symmetry."""
+    from gridvoting_jax.geometry import PolarGrid
+    
+    grid = PolarGrid(radius=5, rstep=0.1, thetastep=3)
+    partition = grid.partition_from_rotation(angle=0)
+    
+    # (i) Check number of partitions is correct
+    num_partitions = int(partition.max()) + 1
+    expected_partitions = grid.n_rvals
+    assert num_partitions == expected_partitions, f"Expected {expected_partitions} partitions, got {num_partitions}"
+    
+    # (ii) Check no gaps in partition indices
+    unique_partitions = jnp.unique(partition)
+    expected_indices = jnp.arange(num_partitions)
+    assert jnp.array_equal(unique_partitions, expected_indices), "Partition indices have gaps"
+    
+    # (iii) Check inverse_indices are exactly correct
+    # Origin should be in partition 0, alone
+    assert partition[0] == 0
+    origin_group = jnp.where(partition == 0)[0]
+    assert len(origin_group) == 1
+    
+    # For each partition, verify points are related by rotation
+    for partition_id in range(1, num_partitions):
+        group_indices = jnp.where(partition == partition_id)[0]
+        
+        # All points in group should be at same radius
+        group_radii = grid.r[group_indices]
+        assert jnp.allclose(group_radii, group_radii[0]), f"Partition {partition_id} has points at different radii"
+        

@@ -282,6 +282,9 @@ Constructs a 2D polar grid for spatial voting models with radial symmetry.
 **Methods:**
 - **`index(r=None, theta=None, x=None, y=None)`**: Find grid index from polar or Cartesian coordinates
 - **`partition_from_rotation(angle)`**: Create partition for rotational symmetry
+  - `angle=0`: Continuous rotation symmetry (SO(2)) - each ring forms a partition
+  - `angle>0`: Discrete rotation symmetry (cyclic group C_n) - rings subdivided into angular sectors
+  - Angle must divide 360 and be a multiple of `thetastep`
 - **`plot(z, ...)`**: Plot scalar fields using polar contour plot
 
 **Notes:**
