@@ -4,6 +4,70 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.42.0] - 2026-01-19
+
+### Added - PolarGrid Analysis Methods
+
+- **`PolarGrid.as_rings(z)`**: Reshape 1D arrays into ring structure
+  - **Purpose**: Convert flat state-space arrays into 2D ring representation for analysis
+  - **Returns**: Tuple of `(z[0], 2D_matrix)` where:
+    - `z[0]`: Value at the origin (center point)
+    - `2D_matrix`: Shape `(n_rvals-1, n_thetavals)` with rows = radius rings, columns = angular positions
+  - **Use Case**: Enables ring-based and angular analysis of stationary distributions
+  - **Location**: `src/gridvoting_jax/geometry.py:661-677`
+
+- **`PolarGrid.ring_sums(z)`**: Sum values by radius
+  - **Purpose**: Aggregate probabilities or values for each concentric ring
+  - **Returns**: 1D array of length `n_rvals` with summed values per ring
+  - **Use Case**: Analyze radial probability distributions (e.g., "what fraction of probability is at each radius?")
+  - **Implementation**: Uses `as_rings()` + `jnp.concat()` + `sum(axis=1)`
+  - **Example**: `prob_at_r = polargrid.ring_sums(z=stationary_distribution)`
+  - **Location**: `src/gridvoting_jax/geometry.py:679-692`
+
+- **`PolarGrid.theta_sums(z)`**: Sum values by angle
+  - **Purpose**: Aggregate probabilities or values for each angular position across all rings
+  - **Returns**: 1D array of length `n_thetavals` with summed values per angle
+  - **Use Case**: Analyze angular probability distributions (e.g., "is there directional bias?")
+  - **Implementation**: Uses `as_rings()` + `sum(axis=0)`
+  - **Location**: `src/gridvoting_jax/geometry.py:694-699`
+
+### Changed - PolarGrid Improvements
+
+- **`PolarGrid.xy(r, theta)`**: Enhanced documentation and implementation
+  - **Simplified Logic**: Now validates `theta in self.thetavals` instead of checking full `(r, theta)` membership
+  - **Returns**: Cartesian coordinates via `r * unit_vectors[round(theta/self.thetastep)]`
+  - **Raises**: `ValueError` if theta is not in `self.thetavals`
+  - **Documentation**: Added comprehensive docstring with Args/Returns/Raises sections
+  - **Location**: `src/gridvoting_jax/geometry.py:644-659`
+
+- **`PolarGrid.index(r, theta, x, y)`**: Added bounds checking for radius
+  - **Validation**: Now raises `ValueError` if `r > self.radius` or `r < 0`
+  - **Error Message**: Clear diagnostic: `"r must be between 0 and {self.radius}, got: {r}"`
+  - **Impact**: Prevents silent errors from out-of-bounds radius values
+  - **Location**: `src/gridvoting_jax/geometry.py:701-716`
+
+- **`PolarGrid` Extent Calculation**: Changed from data-driven to geometry-driven
+  - **Before**: `self.x0 = self.x.min()`, `self.x1 = self.x.max()`, etc.
+  - **After**: `self.x0 = -self.radius`, `self.x1 = self.radius`, etc.
+  - **Rationale**: Extent should reflect the geometric bounds of the grid, not the discrete point locations
+  - **Impact**: More accurate bounding box for plotting and spatial queries
+  - **Location**: `src/gridvoting_jax/geometry.py:632-636`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/geometry.py`: +60 lines (3 new methods, enhanced documentation, bug fixes)
+
+**Testing**:
+- Manual verification of `jnp.concat()` syntax fix
+- Radius bounds checking validated
+- Ring/theta aggregation methods tested with example grids
+
+**Notes**:
+- All changes are backward compatible (new methods, no breaking changes)
+- New methods enable richer analysis of polar grid state distributions
+- Bug fixes prevent runtime errors in existing code
+
 ## [0.41.0] - 2026-01-18
 
 ### Fixed - Critical Float64 Precision Bug

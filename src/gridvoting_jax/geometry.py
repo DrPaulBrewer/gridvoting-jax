@@ -629,10 +629,10 @@ class PolarGrid(Grid):
         total_weight = self.weights.sum()
         expected_weight = jnp.pi*self.radius**2
         assert jnp.allclose(total_weight, expected_weight, rtol=1e-4), f"Total weight {total_weight} does not match expected weight {expected_weight}"
-        self.x0 = self.x.min()
-        self.x1 = self.x.max()
-        self.y0 = self.y.min()
-        self.y1 = self.y.max()
+        self.x0 = -self.radius
+        self.x1 = self.radius
+        self.y0 = -self.radius
+        self.y1 = self.radius
         self.extent = (self.x0, self.x1, self.y0, self.y1)
 
     def shape(self):
@@ -641,14 +641,84 @@ class PolarGrid(Grid):
         """
         raise NotImplementedError
 
+    def xy(self, *, r, theta):
+        """
+        Returns the (x,y) coordinates of a (r,theta) point on the PolarGrid
+        Args:
+            r: radius
+            theta: angle in degrees
+        Returns:
+            (x,y) coordinates via r*unit_vector[round(theta/self.thetastep)]
+
+        Raises:
+            ValueError: if theta is not in self.thetavals
+        """
+        if (theta in self.thetavals):
+            return r*self.unit_vectors[round(theta/self.thetastep)]
+        else:
+            raise ValueError("Point is not on PolarGrid")
+
+    def as_rings(self, *, z):
+        """
+        Returns the z values reshaped into rings of constant radius
+        Args:
+            z: z values
+        Returns:
+            tuple of (z[0], 2D matrix of z values with rows indicating r and columns indicating theta)
+
+        Example:
+            # From ring_sums implementation:
+            p0, p_rings = polargrid.as_rings(stationary_distribution)
+            # p0 is the probability of being at the center
+            # p_rings is a 2D matrix of probabilities with rows indicating r and columns indicating theta
+            prob_at_r = jnp.concat([p0, p_rings.sum(axis=1)])
+            # prob_at_r is a 1D array of probabilities with length n_rvals
+            
+        """
+        return (z[0], z[1:].reshape((self.n_rvals-1, self.n_thetavals)))
+
+    def ring_sums(self, *, z):
+        """
+        Returns the sum of z values for each ring of constant radius
+        Args:
+            z: z values
+        Returns:
+            1D array of summed z values with length n_rvals
+
+        Example:
+            prob_at_r = polargrid.ring_sums(stationary_distribution)
+            # prob_at_r is a 1D array of probabilities with length n_rvals
+        """
+        p0, p_rings = self.as_rings(z=z)
+        return jnp.concat([p0, p_rings.sum(axis=1)])
+
+    def theta_sums(self, *, z):
+        """
+        Returns the sum of z values for each theta of constant angle
+        Args:
+            z: z values
+        Returns:
+            1D array of summed z values with length n_thetavals
+        """
+        _, p_rings = self.as_rings(z=z)
+        return p_rings.sum(axis=0)
+
     def index(self, *, r=None, theta=None, x=None, y=None, TOLERANCE=GEOMETRY_EPSILON):
         if r is not None and theta is not None:
+            if r>self.radius or r<0:
+                raise ValueError(f"r must be between 0 and {self.radius}, got: {r}")
             if r==0:
                 return 0
             theta = theta % 360
             if theta < 0:
                 theta += 360
-            return 1 + int((r-self.rstep) / self.rstep) * self.n_thetavals + int(theta / self.thetastep)
+            if (theta>(360-0.501*self.thetastep)):
+                theta = 0.0
+            return (
+                1 
+                + round((r-self.rstep) / self.rstep) * self.n_thetavals 
+                + round(theta / self.thetastep)
+                )
         elif x is not None and y is not None:
             distances = dist_sqeuclidean(self.points, jnp.array([[x,y]]))
             min_dist = distances.min()
