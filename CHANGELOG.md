@@ -4,6 +4,63 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.43.0] - 2026-01-20
+
+### Fixed - Array Construction Bug
+
+- **`PolarGrid.ring_sums(z)`**: Fixed bug in output array construction
+  - **Impact**: Previously, `ring_sums()` would raise ValueError because jnp.concat() requires arrays and does not accept scalars
+  - **Fix**: Now uses `jnp.concatenate()` with correct arrays
+  - **Location**: `src/gridvoting_jax/geometry.py:753`
+
+### Added - PolarGrid Test Suite
+
+- **Comprehensive Test Coverage for PolarGrid Analysis Methods**: New test file `tests/test_geometry_polargrid.py` (36 lines)
+  - **`test_polargrid_as_rings()`**: Validates `PolarGrid.as_rings(z)` method
+    - Tests with constant arrays (ones, zeros)
+    - Tests with radial coordinate arrays (`pg.r`)
+    - Tests with angular coordinate arrays (`pg.theta`)
+    - Verifies correct 2D matrix shape: `(n_rvals-1, n_thetavals)`
+    - Validates center point separation: `c == z[0]`
+    - Confirms NaN handling for angular coordinates at origin
+    - **Location**: `tests/test_geometry_polargrid.py:5-18`
+  
+  - **`test_polargrid_ring_sums()`**: Validates `PolarGrid.ring_sums(z)` method
+    - Tests radial aggregation with constant arrays
+    - Verifies correct summation: `ring_sums(ones) == [1.0, n_thetavals, n_thetavals, ...]`
+    - Tests with radial coordinates: `ring_sums(r) == rvals * n_thetavals`
+    - Validates symmetry: `ring_sums(x) ≈ 0` and `ring_sums(y) ≈ 0` (within 20ε tolerance)
+    - **Location**: `tests/test_geometry_polargrid.py:21-27`
+  
+  - **`test_polargrid_theta_sums()`**: Validates `PolarGrid.theta_sums(z)` method
+    - Tests angular aggregation with constant arrays
+    - Verifies correct summation: `theta_sums(ones) == 10.0 * ones(n_thetavals)`
+    - Tests with radial coordinates: `theta_sums(r) == 55.0 * ones(n_thetavals)` (sum of 1+2+...+10)
+    - Validates directional projections: `theta_sums(x) == 55.0 * unit_vectors[:,0]`
+    - Confirms unit vector alignment: `theta_sums(y) == 55.0 * unit_vectors[:,1]`
+    - **Location**: `tests/test_geometry_polargrid.py:29-35`
+
+- **Test Configuration**:
+  - Grid parameters: `radius=10`, `thetastep=30` (12 angular positions per ring)
+  - Numerical tolerance: `20.0 * jnp.finfo(jnp.float32).eps` for floating-point comparisons
+  - Uses `jnp.allclose()` for robust numerical validation
+
+### Technical Details
+
+**Files Added**:
+- `tests/test_geometry_polargrid.py`: +36 lines (3 test functions)
+
+**Testing**:
+- All 3 tests validate core PolarGrid analysis functionality
+- Tests cover edge cases: origin handling, NaN propagation, symmetry properties
+- Numerical stability verified with appropriate tolerances
+
+**Notes**:
+- Test suite complements the PolarGrid analysis methods added in v0.42.0
+- Validates correctness of ring-based and angular aggregation operations
+- Ensures proper handling of polar coordinate singularity at origin
+- Tests confirm that `as_rings()`, `ring_sums()`, and `theta_sums()` work correctly for stationary distribution analysis
+
 ## [0.42.0] - 2026-01-19
 
 ### Added - PolarGrid Analysis Methods

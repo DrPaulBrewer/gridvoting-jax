@@ -83,8 +83,36 @@ def _is_in_triangle_single(p, a, b, c):
 
 class Grid:
     def __init__(self, *, x0, x1, xstep=1, y0, y1, ystep=1):
-        """initializes 2D grid with x0<=x<=x1 and y0<=y<=y1;
-        Creates a 1D JAX array of grid coordinates in self.x and self.y"""
+        """inititalizes a rectangular Grid object 
+        
+        Args:
+            x0: minimum x value
+            x1: maximum x value
+            xstep: step size for x
+            y0: minimum y value
+            y1: maximum y value
+            ystep: step size for y
+        
+
+        Properties:
+            x0: minimum x value
+            x1: maximum x value
+            xstep: step size for x
+            y0: minimum y value
+            y1: maximum y value
+            ystep: step size for y
+            extent: (x0, x1, y0, y1)
+            gshape: (number_of_rows, number_of_cols)
+            len: number_of_rows * number_of_cols
+            x: 1D JAX array of x coordinates
+            y: 1D JAX array of y coordinates
+            points: 2D JAX array of (x,y) coordinates
+            boundary: 1D JAX boolean array for boundary points
+            weights: 1D JAX array of weights
+        
+        Returns:
+            None
+        """
         self.x0 = x0
         self.y0 = y0
         self.x1 = x1
@@ -94,17 +122,24 @@ class Grid:
         self.extent = (self.x0, self.x1, self.y0, self.y1)
         self.gshape = self.shape()
         self.len = self.gshape[0] * self.gshape[1]
-        self.x, self.y = self._coords(jnp.arange(self.len))
+        def _coords(i):
+            """returns the (x,y) coordinate tuple of the i-th grid point
+            
+            Args:
+                i: index of the grid point
+            Returns:
+                (x,y) coordinate tuple of the i-th grid point
+
+            Note: this is a helper function for __init__, and is not defined as a method to avoid polluting subclasses with this function    
+            """
+            rows, cols = self.gshape
+            row = i // cols
+            col = i % cols
+            return (self.x0 + col * self.xstep, self.y1 - row * self.ystep)
+        self.x, self.y = _coords(jnp.arange(self.len))
         self.points = jnp.column_stack((self.x,self.y))
         self.boundary = ((self.x==x0) | (self.x==x1) | (self.y==y0) | (self.y==y1))
         self.weights = None
-
-    def _coords(self, i):
-        """returns the (x,y) coordinates of the i-th grid point"""
-        rows, cols = self.shape()
-        row = i // cols
-        col = i % cols
-        return self.x0 + col * self.xstep, self.y1 - row * self.ystep
 
     def shape(self, *, x0=None, x1=None, xstep=None, y0=None, y1=None, ystep=None):
         """returns a tuple(number_of_rows,number_of_cols) for the natural shape of the current grid, or a subset"""
@@ -592,8 +627,32 @@ class Grid:
 
 class PolarGrid(Grid):
     def __init__(self, *, radius, rstep=1, thetastep=15):
-        """initializes 2D grid for (r,theta) coordinates
-        Creates a 1D JAX array of grid coordinates in self.x and self.y"""
+        """initializes PolarGrid object
+        
+        Args:
+            radius: radius of the grid
+            rstep: step size for the radial coordinate
+            thetastep: step size for the angular coordinate
+
+        Properties:
+            radius: radius of the grid
+            rstep: step size for the radial coordinate
+            thetastep: step size for the angular coordinate
+            rvals: radial coordinate values
+            thetavals: angular coordinate values
+            unit_vectors: unit [x,y] vectors for each theta value
+            n_rvals: number of radial coordinate values
+            n_thetavals: number of angular coordinate values
+            len: total number of grid points
+            points: [x,y] coordinates for each grid point
+            r: radial coordinates for each grid point
+            theta: angular coordinates for each grid point
+            x: x coordinates for each grid point
+            y: y coordinates for each grid point
+            boundary: boolean array for boundary points
+            weights: planar area around each grid point
+            x0,y0,x1,y1: rectangular extent of the grid
+        """
         self.radius = radius
         self.rstep = rstep
         self.thetastep = thetastep
@@ -634,6 +693,7 @@ class PolarGrid(Grid):
         self.y0 = -self.radius
         self.y1 = self.radius
         self.extent = (self.x0, self.x1, self.y0, self.y1)
+        self.boundary = self.r==self.radius
 
     def shape(self):
         """
@@ -662,7 +722,7 @@ class PolarGrid(Grid):
         """
         Returns the z values reshaped into rings of constant radius
         Args:
-            z: z values
+            z: z values, a jax array of length self.len
         Returns:
             tuple of (z[0], 2D matrix of z values with rows indicating r and columns indicating theta)
 
@@ -671,7 +731,7 @@ class PolarGrid(Grid):
             p0, p_rings = polargrid.as_rings(stationary_distribution)
             # p0 is the probability of being at the center
             # p_rings is a 2D matrix of probabilities with rows indicating r and columns indicating theta
-            prob_at_r = jnp.concat([p0, p_rings.sum(axis=1)])
+            prob_at_r = jnp.concatenate([jnp.array([p0]), p_rings.sum(axis=1)])
             # prob_at_r is a 1D array of probabilities with length n_rvals
             
         """
@@ -679,9 +739,9 @@ class PolarGrid(Grid):
 
     def ring_sums(self, *, z):
         """
-        Returns the sum of z values for each ring of constant radius
+        Returns the sum of z values for each ring of constant radius (collapses angular dimension)
         Args:
-            z: z values
+            z: z values, a jax array of length self.len
         Returns:
             1D array of summed z values with length n_rvals
 
@@ -690,13 +750,13 @@ class PolarGrid(Grid):
             # prob_at_r is a 1D array of probabilities with length n_rvals
         """
         p0, p_rings = self.as_rings(z=z)
-        return jnp.concat([p0, p_rings.sum(axis=1)])
+        return jnp.concatenate([jnp.array([p0]), p_rings.sum(axis=1)])
 
     def theta_sums(self, *, z):
         """
-        Returns the sum of z values for each theta of constant angle
+        Returns the sum of z values for each theta of constant angle (collapses radial dimension)
         Args:
-            z: z values
+            z: z values, a jax array of length self.len
         Returns:
             1D array of summed z values with length n_thetavals
         """
