@@ -32,6 +32,86 @@ def dist_sqeuclidean(XA, XB):
     XB_sq = jnp.sum(XB**2, axis=1, keepdims=True)
     return XA_sq + XB_sq.T - 2 * jnp.dot(XA, XB.T)
 
+def consistent_cos(thetas_deg):
+    """
+    consistent cosine function for angles in degrees
+    reduces angle to first quadrant of unit circle
+
+    The need for this function is that the jax cosine function does not have
+    cos(90deg) = exactly 0.0, or cos(x)+cos(180deg+x) = exactly 0.0
+    
+    args:
+        thetas_deg: array of angles in degrees
+
+    returns:
+        array of cosines
+    """
+
+    thetas_deg = jnp.abs(thetas_deg)
+    thetas_deg = thetas_deg % 360
+    signs_180 = jnp.where(thetas_deg>=180.0, -1.0, 1.0)
+    thetas_deg = jnp.where(thetas_deg>=180.0, thetas_deg-180.0, thetas_deg)
+    signs_90 = jnp.where(thetas_deg>90.0, -1.0, 1.0)
+    thetas_deg = jnp.where(thetas_deg>90.0, 180.0-thetas_deg, thetas_deg)
+    zeros_90 = jnp.where(thetas_deg==90.0, 0.0, 1.0)
+    return zeros_90 * signs_180 * signs_90 * jnp.cos(jnp.deg2rad(thetas_deg)) 
+
+def consistent_sin(thetas_deg):
+    """
+    consistent sine function for angles in degrees
+    reduces angle to first quadrant of unit circle
+
+    The need for this function is that the jax sin function does not have
+    sin(90deg) = exactly 1.0, sin(x)+sin(180deg+x) = exactly 0.0
+    
+    args:
+        thetas_deg: array of angles in degrees
+
+    returns:
+        array of cosines
+    """
+
+    signs_neg = jnp.where(thetas_deg<0.0, -1.0, 1.0)
+    thetas_deg = jnp.where(thetas_deg<0.0, -thetas_deg, thetas_deg)
+    thetas_deg = thetas_deg % 360
+    signs_180 = jnp.where(thetas_deg>=180.0, -1.0, 1.0)
+    thetas_deg = jnp.where(thetas_deg>=180.0, thetas_deg-180.0, thetas_deg)
+    thetas_deg = jnp.where(thetas_deg>90.0, 180.0-thetas_deg, thetas_deg)
+    return signs_neg * signs_180 * jnp.where(thetas_deg==90.0, 1.0, jnp.sin(jnp.deg2rad(thetas_deg))) 
+
+def polar_to_cartesian(r_theta_deg):
+    """Converts polar coordinates to Cartesian coordinates.
+    
+    Args:
+        r_theta_deg: array of shape (n, 2), where each row is (r, theta_deg)
+    
+    Returns:
+        array of shape (n, 2), where each row is (x, y)
+    """
+    r_theta_deg = jnp.asarray(r_theta_deg, dtype=constants.DTYPE_FLOAT)
+    r, theta_deg = r_theta_deg[:,0], r_theta_deg[:,1]
+    x = r * consistent_cos(theta_deg)
+    y = r * consistent_sin(theta_deg)
+    return jnp.column_stack((x,y))
+
+def dist_sqeuclidean_polar(r_theta_A, r_theta_B):
+    """JAX-based squared Euclidean pairwise distance calculation in polar coordinates.
+    
+    Args:
+        r_theta_A: array of shape (m, 2), where each row is (r, theta_deg)
+        r_theta_B: array of shape (p, 2), where each row is (r, theta_deg)
+    
+    Returns:
+        Distance matrix of shape (m, p)
+    """
+    r_theta_A = jnp.asarray(r_theta_A, dtype=constants.DTYPE_FLOAT)
+    r_theta_B = jnp.asarray(r_theta_B, dtype=constants.DTYPE_FLOAT)
+    r_A, theta_A = r_theta_A[:,0], r_theta_A[:,1]
+    r_B, theta_B = r_theta_B[:,0], r_theta_B[:,1]
+    # Squared Euclidean: ||a-b||^2 = ||a||^2 + ||b||^2 - 2*a·b
+    r_A_sq = r_A**2
+    r_B_sq = r_B**2
+    return r_A_sq[:, None] + r_B_sq[None, :] - 2 * r_A[:, None] * r_B[None, :] * consistent_cos(theta_A[:, None] - theta_B[None, :])
 
 def dist_manhattan(XA, XB):
     """JAX-based Manhattan pairwise distance calculation.
@@ -285,9 +365,17 @@ class Grid:
         return (min_z,self.points[valid][min_z_mask],max_z,self.points[valid][max_z_mask])
 
     def spatial_utilities(
-        self, *, voter_ideal_points, metric="sqeuclidean", scale=-1
+        self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, decimals=None
     ):
-        """returns utility function values for each voter at each grid point"""
+        """
+        returns utility function values for each voter at each grid point
+        
+        Args:
+            voter_ideal_points: Array of voter ideal points of shape (n_voters, 2)
+            metric: Metric to use for distance calculation (default: "sqeuclidean" or "manhattan")
+            scale: Scale factor for distance (default: -1)
+            decimals: Number of decimals to round utility functions to (default: no rounding)
+        """
         voter_ideal_points = jnp.asarray(voter_ideal_points, dtype=constants.DTYPE_FLOAT)
         
         if metric == "sqeuclidean":
@@ -297,6 +385,8 @@ class Grid:
         else:
             raise ValueError(f"Unsupported metric: {metric}. Use 'sqeuclidean' or 'manhattan'.")
         
+        if decimals is not None:
+            return jnp.round(scale * distances, decimals=decimals)
         return scale * distances
 
     def plot(
@@ -637,18 +727,15 @@ class PolarGrid(Grid):
         Properties:
             radius: radius of the grid
             rstep: step size for the radial coordinate
-            thetastep: step size for the angular coordinate
+            thetastep: step size for the angular coordinate (degrees)
             rvals: radial coordinate values
-            thetavals: angular coordinate values
-            unit_vectors: unit [x,y] vectors for each theta value
+            thetavals: angular coordinate values (degrees)
             n_rvals: number of radial coordinate values
             n_thetavals: number of angular coordinate values
             len: total number of grid points
-            points: [x,y] coordinates for each grid point
             r: radial coordinates for each grid point
-            theta: angular coordinates for each grid point
-            x: x coordinates for each grid point
-            y: y coordinates for each grid point
+            theta_deg: angular coordinates (degrees) for each grid point
+            r_theta_deg: radial and angular coordinates (degrees) for each grid point
             boundary: boolean array for boundary points
             weights: planar area around each grid point
             x0,y0,x1,y1: rectangular extent of the grid
@@ -661,24 +748,13 @@ class PolarGrid(Grid):
         self.n_rvals = len(self.rvals)
         self.n_thetavals = len(self.thetavals)
         self.len = 1 + ((self.n_rvals-1) * self.n_thetavals)
-        # left handed radar map coordinates
-        self.unit_vectors = jnp.column_stack((jnp.sin(jnp.deg2rad(self.thetavals)), jnp.cos(jnp.deg2rad(self.thetavals))))
-        self.points = jnp.vstack((
-            jnp.array([0.0,0.0]),
-            jnp.vectorize(lambda i: 
-              self.rvals[1+(i//self.n_thetavals)]*self.unit_vectors[i%self.n_thetavals]
-            )(jnp.arange((self.n_rvals-1)*self.n_thetavals))
-        ))
-        assert self.points.shape[0] == self.len
         self.r = jnp.concat((jnp.array([0.0]),jnp.repeat(self.rvals[1:], self.n_thetavals)))
         assert self.r.shape[0] == self.len 
-        assert jnp.allclose(self.r*self.r, dist_sqeuclidean(jnp.array([[0.0,0.0]]), self.points))
-        self.theta = jnp.concat((jnp.array([jnp.nan]),jnp.tile(self.thetavals, self.n_rvals-1)))
-        assert self.theta.shape[0] == self.len
-        self.x = self.points[:,0]
-        assert self.x.shape[0] == self.len
-        self.y = self.points[:,1]
-        assert self.y.shape[0] == self.len
+        self.theta_deg = jnp.concat((jnp.array([0.0]),jnp.tile(self.thetavals, self.n_rvals-1)))
+        assert self.theta_deg.shape[0] == self.len
+        self.r_theta_deg = jnp.column_stack((self.r, self.theta_deg))
+        self.points = polar_to_cartesian(self.r_theta_deg)
+        self.boundary = self.r==self.radius
         # weights are the area of each grid cell
         self.weights = (
             (jnp.square(jnp.where(self.r+0.5*self.rstep>self.radius, self.radius, self.r+0.5*self.rstep))
@@ -693,30 +769,35 @@ class PolarGrid(Grid):
         self.y0 = -self.radius
         self.y1 = self.radius
         self.extent = (self.x0, self.x1, self.y0, self.y1)
-        self.boundary = self.r==self.radius
 
     def shape(self):
         """
         Not implemented for PolarGrid
         """
         raise NotImplementedError
-
-    def xy(self, *, r, theta):
+    
+    def spatial_utilities(
+        self, *, voter_ideal_points, metric="sqeuclidean", scale=-1, decimals=None
+    ):
         """
-        Returns the (x,y) coordinates of a (r,theta) point on the PolarGrid
+        returns utility function values for each voter at each grid point
+        
         Args:
-            r: radius
-            theta: angle in degrees
-        Returns:
-            (x,y) coordinates via r*unit_vector[round(theta/self.thetastep)]
-
-        Raises:
-            ValueError: if theta is not in self.thetavals
+            voter_ideal_points: Array of voter ideal points of shape (n_voters, 2)
+            metric: Metric to use for distance calculation (default: "sqeuclidean")
+            scale: Scale factor for distance (default: -1)
+            decimals: Number of decimals to round utility functions to (default: no rounding)
         """
-        if (theta in self.thetavals):
-            return r*self.unit_vectors[round(theta/self.thetastep)]
+        voter_ideal_points = jnp.asarray(voter_ideal_points, dtype=constants.DTYPE_FLOAT)
+        
+        if metric == "sqeuclidean":
+            distances = dist_sqeuclidean_polar(voter_ideal_points, self.r_theta_deg)
         else:
-            raise ValueError("Point is not on PolarGrid")
+            raise ValueError(f"Unsupported metric: {metric}. Use 'sqeuclidean'")
+        
+        if decimals is not None:
+            return jnp.round(scale * distances, decimals=decimals)
+        return scale * distances
 
     def as_rings(self, *, z):
         """
@@ -763,7 +844,7 @@ class PolarGrid(Grid):
         _, p_rings = self.as_rings(z=z)
         return p_rings.sum(axis=0)
 
-    def index(self, *, r=None, theta=None, x=None, y=None, TOLERANCE=GEOMETRY_EPSILON):
+    def index(self, *, r=None, theta=None):
         if r is not None and theta is not None:
             if r>self.radius or r<0:
                 raise ValueError(f"r must be between 0 and {self.radius}, got: {r}")
@@ -779,15 +860,8 @@ class PolarGrid(Grid):
                 + round((r-self.rstep) / self.rstep) * self.n_thetavals 
                 + round(theta / self.thetastep)
                 )
-        elif x is not None and y is not None:
-            distances = dist_sqeuclidean(self.points, jnp.array([[x,y]]))
-            min_dist = distances.min()
-            if (min_dist > TOLERANCE):
-                raise ValueError("Point is not on PolarGrid")
-            idx = jnp.argmin(distances)
-            return idx
         else:
-            raise ValueError("Either r, theta, or  x, y must be specified")
+            raise ValueError("Both r and theta must be specified")
 
     def plot(self, *, z, levels=20, cmap='viridis', label='Z value', title='Polar Contour Plot'):
         import matplotlib.pyplot as plt
@@ -829,7 +903,7 @@ class PolarGrid(Grid):
         angle_in_thetasteps = angle // self.thetastep
         parts = (1+jnp.round(
                     ((self.r-self.rstep)/self.rstep)*angle_in_thetasteps
-                    +((self.theta%angle)/self.thetastep))
+                    +((self.theta_deg%angle)/self.thetastep))
             ).astype(jnp.int32).at[0].set(0)
         return parts    
 

@@ -25,7 +25,8 @@ class SpatialVotingModel:
         number_of_voters,
         majority,
         zi,
-        distance_measure="sqeuclidean"
+        distance_measure="sqeuclidean",
+        decimals=None
     ):
         """
         Args:
@@ -35,6 +36,7 @@ class SpatialVotingModel:
             majority: int
             zi: bool
             distance_measure: "sqeuclidean", "euclidean", or custom callable
+            decimals: Number of decimals to round utility functions to
         """
         self.voter_ideal_points = jnp.asarray(voter_ideal_points)
         self.grid = grid
@@ -42,22 +44,38 @@ class SpatialVotingModel:
         self.majority = majority
         self.zi = zi
         self.distance_measure = distance_measure
+        self.decimals = decimals
         
         # Compute utility functions using grid.spatial_utilities()
-        self.utility_functions = self.grid.spatial_utilities(
+        utility_functions = self.grid.spatial_utilities(
             voter_ideal_points=self.voter_ideal_points,
-            metric=self.distance_measure
+            metric=self.distance_measure,
+            decimals=self.decimals
         )
         
         # Create underlying VotingModel
         self.model = VotingModel(
-            utility_functions=self.utility_functions,
+            utility_functions=utility_functions,
             number_of_voters=number_of_voters,
             number_of_feasible_alternatives=grid.len,
             weights=grid.weights,
             majority=majority,
             zi=zi
         )
+    
+    def round(self, *, decimals):
+        if decimals is None:
+            raise ValueError("decimals must be specified")
+        if (self.decimals is not None and decimals > self.decimals):
+            self.model.utility_functions = self.grid.spatial_utilities(
+                voter_ideal_points=self.voter_ideal_points,
+                metric=self.distance_measure,
+                decimals=decimals
+            )
+            self.decimals = decimals
+        else:
+            self.model.utility_functions = jnp.round(self.model.utility_functions, decimals=decimals)
+            self.decimals = decimals
     
     def analyze(self, *, solver="full_matrix_inversion", **kwargs):
         """
@@ -351,6 +369,24 @@ class SpatialVotingModel:
             - See Grid.partition_from_symmetry() for full documentation
         """
         return self.grid.partition_from_symmetry(symmetries, tolerance=tolerance)
+
+    def count_mismatches(self, partition):
+        """
+        Count the number of mismatches in the pattern of winners in the given partition. 
+        This is a fast check for rejecting a lumping, before running a full lumping test.
+        
+        Args:
+            partition: inverse indices array grouping lumped grid points
+        
+        Returns:
+            int: Number of mismatches
+        """
+        _, idxs = jnp.unique(partition, return_index=True) # idxs are index of first occurrence of each part
+        counts_all = jnp.vectorize(lambda i: self.model.what_beats(i=i).sum(), signature='()->()')(jnp.arange(self.grid.len))
+        counts_parts = counts_all[idxs]
+        counts_expected = counts_parts[partition]
+        mismatches = (counts_expected != counts_all).sum()
+        return mismatches
 
 
 def create_outline_interpolation_matrix(fine_grid, coarse_grid):

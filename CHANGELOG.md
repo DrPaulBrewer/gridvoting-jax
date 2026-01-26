@@ -4,6 +4,132 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.44.0] - 2026-01-26
+
+### Added - PolarGrid Enhancements
+
+- **`PolarGrid.theta_deg` Property**: New property providing angular coordinates in degrees
+  - **Purpose**: Replaces deprecated `theta` property with clearer naming
+  - **Returns**: 1D JAX array of angular positions in degrees (0-360)
+  - **Use Case**: Enables clearer distinction between radians and degrees in polar coordinate calculations
+  - **Location**: `src/gridvoting_jax/geometry.py`
+
+- **`PolarGrid` Trigonometric Consistency**: New `consistent_cos()` and `consistent_sin()` helper functions
+  - **Purpose**: Ensure numerical consistency in polar coordinate calculations by normalizing all trig operations to first quadrant
+  - **Impact**: Eliminates floating-point inconsistencies when computing coordinates at symmetric angular positions
+  - **Rationale**: Required for lumping tests to pass with rotation symmetries in float32 mode
+  - **Location**: `src/gridvoting_jax/geometry.py`
+
+### Added - SpatialVotingModel Features
+
+- **`SpatialVotingModel.round(decimals)` Method**: Precision control for utility functions
+  - **Purpose**: Round utility function values to specified decimal places for numerical stability
+  - **Behavior**: 
+    - If `decimals > self.decimals`, recomputes utilities from scratch with higher precision
+    - Otherwise, rounds existing utilities to lower precision
+  - **Use Case**: Control numerical precision in voting models to enable exact symmetry detection
+  - **Location**: `src/gridvoting_jax/models/spatial.py`
+
+- **`SpatialVotingModel.count_mismatches(partition)` Method**: Fast lumping validation
+  - **Purpose**: Quickly check if a partition is compatible with the voting model's winner structure
+  - **Returns**: Number of states where winner counts don't match within partition groups
+  - **Use Case**: Fast rejection of invalid lumpings before expensive `is_lumpable()` check
+  - **Implementation**: Vectorized using `jnp.unique()` and `jnp.vectorize()` with `what_beats()` method
+  - **Location**: `src/gridvoting_jax/models/spatial.py`
+
+- **`decimals` Parameter**: New optional parameter for `SpatialVotingModel` constructor
+  - **Purpose**: Control precision of utility function calculations at model creation
+  - **Default**: `None` (full float32/float64 precision)
+  - **Integration**: Passed to `grid.spatial_utilities()` method
+  - **Location**: `src/gridvoting_jax/models/spatial.py`
+
+### Added - Test Coverage
+
+- **Polar Grid Lumping Test**: New comprehensive test suite `tests/test_integrated_lump_polar.py`
+  - **Coverage**: 126 parameterized test cases validating rotation symmetry lumping
+  - **Test Parameters**:
+    - Voters: 3, 5, 7, 9, 11 (all divisors of 360)
+    - Angular steps: All valid divisors of rotation angle (360/voters)
+  - **Validation**: Uses `count_mismatches()` to verify zero mismatches for valid rotation partitions
+  - **Example**: 3 voters with 120° rotation symmetry tested with thetastep ∈ {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 30, 40, 60, 120}
+  - **Grid Configuration**: radius=30, r=20 (ring at distance 20)
+  - **Location**: `tests/test_integrated_lump_polar.py` (21 lines)
+
+### Changed - PolarGrid Improvements
+
+- **Property Renaming**: `PolarGrid.theta` → `PolarGrid.theta_deg` for clarity
+  - **Impact**: All references updated across codebase (geometry.py, tests)
+  - **Rationale**: Explicit naming prevents confusion between radians and degrees
+  - **Backward Compatibility**: Old `theta` property deprecated but still functional
+
+- **Coordinate Calculation**: Enhanced numerical consistency in `PolarGrid.__init__()`
+  - **Implementation**: Uses `consistent_cos()` and `consistent_sin()` for all coordinate computations
+  - **Impact**: Eliminates floating-point errors in symmetric configurations
+  - **Benefit**: Enables exact lumping with rotation symmetries in float32 mode
+
+- **`spatial_utilities()` Enhancement**: Added `decimals` parameter to `Grid.spatial_utilities()`
+  - **Purpose**: Control precision of distance-based utility calculations
+  - **Implementation**: Applies `jnp.round()` to final utility matrix when specified
+  - **Location**: `src/gridvoting_jax/geometry.py`
+
+### Changed - Model Examples
+
+- **`ring()` Example Function**: Enhanced with new parameters
+  - **New Parameters**:
+    - `decimals`: Precision control for utility functions (default: `None`)
+    - `polar`: Use `PolarGrid` instead of `Grid` (default: `False`)
+    - `thetastep`: Angular step size for polar grids (default: `15`)
+  - **Behavior**: Creates ring-shaped voter configurations on either Cartesian or polar grids
+  - **Location**: `src/gridvoting_jax/models/examples/shapes/ring.py`
+
+### Fixed - Test Suite
+
+- **Float64 Test Simplification**: Refactored `tests/test_core_float64.py`
+  - **Change**: Uses `ring()` helper function instead of manual `PolarGrid` construction
+  - **Benefit**: More concise and maintainable test code
+  - **Impact**: Same test coverage with 11 fewer lines
+
+- **PolarGrid Test Fixes**: Updated `tests/test_geometry_polargrid.py`
+  - **Fix 1**: Changed `pg.theta` → `pg.theta_deg` (3 occurrences)
+  - **Fix 2**: Changed `pg.x`/`pg.y` → `pg.points[:,0]`/`pg.points[:,1]` for coordinate access
+  - **Fix 3**: Compute `unit_vectors` from actual grid points at r=1.0 instead of using property
+  - **Rationale**: Aligns with PolarGrid API changes and ensures test correctness
+
+- **Symmetry Test Fixes**: Updated `tests/test_geometry_symmetry.py`
+  - **Fix**: Changed `grid.theta` → `grid.theta_deg` (2 occurrences)
+  - **Impact**: Tests now use correct property name for angular coordinates
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/geometry.py`: +172 lines, -83 lines (consistent trig, theta_deg, decimals support)
+- `src/gridvoting_jax/models/spatial.py`: +44 lines (round method, count_mismatches, decimals parameter)
+- `src/gridvoting_jax/models/examples/shapes/ring.py`: +24 lines (polar grid support, decimals parameter)
+- `tests/test_core_float64.py`: -11 lines (simplified using ring helper)
+- `tests/test_geometry_polargrid.py`: +13 lines (property name updates, coordinate access fixes)
+- `tests/test_geometry_symmetry.py`: +4 lines (property name updates)
+
+**Files Added**:
+- `tests/test_integrated_lump_polar.py`: +21 lines (126 parameterized test cases)
+- `BJM-polar.ipy`: Jupyter notebook for polar grid analysis (untracked)
+
+**Testing**:
+- All existing tests pass with updated property names
+- New polar lumping tests validate 126 rotation symmetry configurations
+- Float64 tests simplified and continue to pass
+
+**Performance**:
+- `count_mismatches()` provides O(N) fast rejection vs O(N²) full lumpability check
+- Consistent trigonometry functions have negligible performance impact
+
+### Notes
+
+- This release focuses on numerical consistency and precision control for polar grids
+- The `theta_deg` renaming improves API clarity without breaking backward compatibility
+- New `count_mismatches()` method enables efficient lumping validation workflows
+- Consistent trigonometry ensures rotation symmetry lumping works reliably in float32 mode
+- All changes maintain backward compatibility except for deprecated `theta` property
+
 ## [0.43.0] - 2026-01-20
 
 ### Fixed - Array Construction Bug

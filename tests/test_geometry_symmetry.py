@@ -343,7 +343,7 @@ def test_polar_partition_from_rotation_basic():
         assert jnp.allclose(group_radii, group_radii[0]), f"Partition {partition_id} has points at different radii"
         
         # Thetas should differ by multiples of angle
-        group_thetas = grid.theta[group_indices]
+        group_thetas = grid.theta_deg[group_indices]
         theta_diffs = (group_thetas - group_thetas[0]) % 360
         assert jnp.allclose(theta_diffs % 120, 0, atol=1e-6), f"Partition {partition_id} thetas not separated by angle"
 
@@ -402,7 +402,7 @@ def test_polar_partition_from_rotation_parameterized(radius, thetastep, angle):
             f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition {partition_id} has points at different radii"
         
         # Thetas should differ by multiples of angle
-        group_thetas = grid.theta[group_indices]
+        group_thetas = grid.theta_deg[group_indices]
         theta_diffs = (group_thetas - group_thetas[0]) % 360
         assert jnp.allclose(theta_diffs % angle, 0, atol=1e-6), \
             f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition {partition_id} thetas not separated by angle"

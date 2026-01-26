@@ -33,18 +33,7 @@ def test_enable_float64():
 
     # Test that it works with a voting model
     # because thats where the bug was
-    pg = gv.geometry.PolarGrid(radius=10)
-    pt1 = 7.0*pg.unit_vectors[0]
-    pt2 = 7.0*pg.unit_vectors[120//pg.thetastep]
-    pt3 = 7.0*pg.unit_vectors[240//pg.thetastep]
-    
-    svm = gv.SpatialVotingModel(
-        voter_ideal_points=jnp.array([pt1,pt2,pt3], dtype=jnp.float64),
-        grid=pg,
-        majority=2,
-        number_of_voters=3,
-        zi=True
-    )
+    svm = gv.models.examples.shapes.ring(g=10,r=7,zi=False,voters=3,polar=True,thetastep=60)
     assert svm.model.transition_matrix().dtype == jnp.float64, f"Transition matrix dtype is not float64: {svm.model.transition_matrix().dtype}"
     for solver in ['full_matrix_inversion', 'gmres_matrix_inversion','power_method','bifurcated_power_method']:
         svm.analyze(solver=solver)
@@ -52,5 +41,6 @@ def test_enable_float64():
 
     #  test that it works with lumping
     for solver in ['full_matrix_inversion', 'gmres_matrix_inversion','power_method','bifurcated_power_method']:
-        svm.analyze(solver=solver, partitions=pg.partition_from_rotation(angle=120))
+        svm.analyze(solver=solver, partitions=svm.grid.partition_from_rotation(angle=120))
         assert svm.stationary_distribution.dtype == jnp.float64, f"Stationary distribution dtype is not float64: {svm.stationary_distribution.dtype} for solver={solver}"
+        
