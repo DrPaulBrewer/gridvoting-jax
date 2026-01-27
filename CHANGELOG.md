@@ -4,6 +4,53 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.45.0] - 2026-01-26
+
+### Fixed - Critical Float64 Propagation Bug
+
+- **Constants Import Pattern**: Fixed bug where `enable_float64()` updates did not propagate to all modules
+  - **Impact**: Modules that imported constants directly (e.g., `from ..core import TOLERANCE, EPSILON`) retained original float32 values even after calling `enable_float64()`
+  - **Root Cause**: Direct imports captured constant values at import time, preventing runtime updates
+  - **Fix**: Changed all files to import only the `constants` module and reference constants as `constants.NAME`
+  - **Files Modified** (37 references updated across 3 files):
+    - `src/gridvoting_jax/stochastic/markov.py`: Removed 4 direct constant imports, updated 18 references
+    - `src/gridvoting_jax/stochastic/utils.py`: Changed import pattern, updated 9 references
+    - `src/gridvoting_jax/geometry.py`: Changed import pattern, updated 10 references
+  - **Constants Fixed**: `TOLERANCE`, `DTYPE_FLOAT`, `EPSILON`, `BAD_STATIONARY_TOLERANCE`, `NEGATIVE_PROBABILITY_TOLERANCE`, `GEOMETRY_EPSILON`, `PLOT_LOG_BIAS`
+  - **Testing**: All 214 tests pass, including critical `test_enable_float64` test
+
+### Added - Convergence History Propagation
+
+- **Lumped Markov Chain Convergence History**: `MarkovChain.solve()` now propagates convergence history from lumped chains
+  - **Behavior**: When solving with `partitions` parameter, convergence history from the lumped chain is now copied to the parent chain
+  - **Implementation**: Added conditional check: `if MC_lumped.convergence_history is not None: self.convergence_history = MC_lumped.convergence_history`
+  - **Use Case**: Enables analysis of convergence behavior when using automatic lumping for dimension reduction
+  - **Location**: `src/gridvoting_jax/stochastic/markov.py:453-454`
+
+### Technical Details
+
+**Files Modified**:
+- `src/gridvoting_jax/stochastic/markov.py`: Import pattern + 18 constant references + convergence history propagation
+- `src/gridvoting_jax/stochastic/utils.py`: Import pattern + 9 constant references
+- `src/gridvoting_jax/geometry.py`: Import pattern + 10 constant references (removed duplicate import)
+
+**Testing**:
+- All 214 tests pass (257.43s runtime in Docker)
+- Previously failing tests now pass:
+  - `test_enable_float64` ✓
+  - `test_topcycle` ✓
+  - `test_gridvoting_doublecycle_power_method` ✓
+  - `test_gridvoting_doublecycle_bifurcated_power_method` ✓
+  - `test_solver_completes[outline_and_power]` ✓
+  - `test_solver_completes[outline_and_gmres]` ✓
+
+**Notes**:
+- This is a critical bug fix for users calling `enable_float64()` at runtime
+- Complements v0.41.0 fix which updated `DTYPE_FLOAT` in `enable_float64()` but didn't address the import pattern issue
+- The lazy import pattern ensures consistent float64 precision throughout the entire codebase
+- Convergence history propagation improves observability when using lumping optimizations
+
+
 ## [0.44.0] - 2026-01-26
 
 ### Added - PolarGrid Enhancements
@@ -48,8 +95,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Polar Grid Lumping Test**: New comprehensive test suite `tests/test_integrated_lump_polar.py`
   - **Coverage**: 126 parameterized test cases validating rotation symmetry lumping
   - **Test Parameters**:
-    - Voters: 3, 5, 7, 9, 11 (all divisors of 360)
-    - Angular steps: All valid divisors of rotation angle (360/voters)
+    - Voters: 3, 5, 9, ... (all divisors of 360)
+    - Angular steps: All divisors of rotation angle (360/voters)
   - **Validation**: Uses `count_mismatches()` to verify zero mismatches for valid rotation partitions
   - **Example**: 3 voters with 120° rotation symmetry tested with thetastep ∈ {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 30, 40, 60, 120}
   - **Grid Configuration**: radius=30, r=20 (ring at distance 20)
@@ -111,7 +158,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 **Files Added**:
 - `tests/test_integrated_lump_polar.py`: +21 lines (126 parameterized test cases)
-- `BJM-polar.ipy`: Jupyter notebook for polar grid analysis (untracked)
 
 **Testing**:
 - All existing tests pass with updated property names

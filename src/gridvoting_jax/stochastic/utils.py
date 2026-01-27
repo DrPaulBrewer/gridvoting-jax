@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from ..core.constants import TOLERANCE, EPSILON
+from ..core import constants
 
 
 def _move_neg_prob_to_max(pvector: Array) -> Array:
@@ -45,9 +45,9 @@ def _move_neg_prob_to_max(pvector: Array) -> Array:
     # Zero out negative components
     fixed_pvector = jnp.where(to_zero, 0.0, pvector)
     
-    # Find ALL indices with maximum value (within 2*EPSILON)
+    # Find ALL indices with maximum value (within 2*constants.EPSILON)
     max_val = fixed_pvector.max()
-    is_max = jnp.abs(fixed_pvector - max_val) <= 2*EPSILON
+    is_max = jnp.abs(fixed_pvector - max_val) <= 2*constants.EPSILON
     num_max_indices = is_max.sum()
     
     # Distribute mass equally among all maximum indices
@@ -119,13 +119,13 @@ def _normalize_row_if_needed(v: Array) -> Array:
     """
     # To avoid nested jit, the big and little sums are calculated explicitly here 
     # and again below, instead of in a helper function
-    big_sum = jnp.sum(jnp.where(v >= 2*EPSILON, v, 0.0))
-    little_sum = jnp.sum(jnp.where(v < 2*EPSILON, v, 0.0))
+    big_sum = jnp.sum(jnp.where(v >= 2*constants.EPSILON, v, 0.0))
+    little_sum = jnp.sum(jnp.where(v < 2*constants.EPSILON, v, 0.0))
     s = big_sum + little_sum
     sinv = 1.0/s
     deviation = jnp.abs(s - 1.0)
     n = v.shape[0]
-    threshold = EPSILON * jnp.where(n > 1280, (n//128), 10)
+    threshold = constants.EPSILON * jnp.where(n > 1280, (n//128), 10)
     
     v_renorm = jnp.where(
         deviation > threshold,
@@ -133,8 +133,8 @@ def _normalize_row_if_needed(v: Array) -> Array:
         v
     )
     
-    renorm_big_sum = jnp.sum(jnp.where(v_renorm >= 2*EPSILON, v_renorm, 0.0))
-    renorm_little_sum = jnp.sum(jnp.where(v_renorm < 2*EPSILON, v_renorm, 0.0))
+    renorm_big_sum = jnp.sum(jnp.where(v_renorm >= 2*constants.EPSILON, v_renorm, 0.0))
+    renorm_little_sum = jnp.sum(jnp.where(v_renorm < 2*constants.EPSILON, v_renorm, 0.0))
     renorm_s = renorm_big_sum + renorm_little_sum
     renorm_deviation = jnp.abs(renorm_s - 1.0)
     

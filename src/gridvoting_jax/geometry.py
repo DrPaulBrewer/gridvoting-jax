@@ -12,7 +12,6 @@ import scipy.sparse
 
 # Import from core
 from .core import constants
-from .core.constants import TOLERANCE, EPSILON, GEOMETRY_EPSILON, PLOT_LOG_BIAS
 
 
 def dist_sqeuclidean(XA, XB):
@@ -154,7 +153,7 @@ def _is_in_triangle_single(p, a, b, c):
     s3 = cross(p, c, a)
 
     # Use centralized epsilon from core
-    eps = GEOMETRY_EPSILON
+    eps = constants.GEOMETRY_EPSILON
     has_neg = (s1 < -eps) | (s2 < -eps) | (s3 < -eps)
     has_pos = (s1 > eps) | (s2 > eps) | (s3 > eps)
     
@@ -357,9 +356,9 @@ class Grid:
         # note that min/max is always calculated over all of z, it is the points that must be restricted
         # because valid indicates that z came from a subset of the points
         min_z = float(z.min())
-        min_z_mask = jnp.abs(z-min_z) <= 2*EPSILON*jnp.abs(min_z)
+        min_z_mask = jnp.abs(z-min_z) <= 2*constants.EPSILON*jnp.abs(min_z)
         max_z = float(z.max())
-        max_z_mask = jnp.abs(z-max_z) <= 2*EPSILON*jnp.abs(max_z)
+        max_z_mask = jnp.abs(z-max_z) <= 2*constants.EPSILON*jnp.abs(max_z)
         if valid is None:
            return (min_z,self.points[min_z_mask],max_z,self.points[max_z_mask]) 
         return (min_z,self.points[valid][min_z_mask],max_z,self.points[valid][max_z_mask])
@@ -401,7 +400,7 @@ class Grid:
         points=None,
         zoom=False,
         border=1,
-        logbias=PLOT_LOG_BIAS, # Use constant from core
+        logbias=constants.PLOT_LOG_BIAS, # Use constant from core
         figsize=(10, 10),
         dpi=72,
         fname=None

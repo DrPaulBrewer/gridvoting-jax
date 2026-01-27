@@ -6,10 +6,6 @@ from warnings import warn
 # Import constants from core
 from ..core import (
     constants,
-    EPSILON,
-    TOLERANCE, 
-    NEGATIVE_PROBABILITY_TOLERANCE, 
-    BAD_STATIONARY_TOLERANCE,
     get_available_memory_bytes,
 )
 
@@ -39,7 +35,7 @@ def _correct_minor_negative_probabilities(x):
     """
     min_component = x.min().item()
     # Use extracted constant from core for negative checks
-    if ((min_component < 0.0) and (min_component > NEGATIVE_PROBABILITY_TOLERANCE)):
+    if ((min_component < 0.0) and (min_component > constants.NEGATIVE_PROBABILITY_TOLERANCE)):
         x = _move_neg_prob_to_max(x)
         min_component = x.min().item()
     
@@ -126,7 +122,7 @@ def iterate_gmres(*, P=None, Q=None, iterations, initial_guess):
         Q, 
         jnp.zeros(Q.shape[0], dtype=constants.DTYPE_FLOAT).at[0].set(1.0),
         x0=initial_guess,
-        tol=TOLERANCE, 
+        tol=constants.TOLERANCE, 
         restart=50,
         maxiter=iterations,
         solve_method='incremental'
@@ -328,7 +324,7 @@ class MarkovChain:
             'batch_time': float('nan'),
             'batch_iterations': 0,
             'current_norm': float(current_norm),
-            'tolerance': float(TOLERANCE),
+            'tolerance': float(constants.TOLERANCE),
             'batch_norm_goal': float(current_norm * 1.01) # batch_norm_goal for first entry
         })
 
@@ -344,7 +340,7 @@ class MarkovChain:
             'batch_time': float('nan'),
             'batch_iterations': 1,
             'current_norm': current_norm,
-            'tolerance': float(TOLERANCE),
+            'tolerance': float(constants.TOLERANCE),
             'batch_norm_goal': float(previous_norm) 
         })
 
@@ -364,7 +360,7 @@ class MarkovChain:
             'batch_time': float(elapsed_time),
             'batch_iterations': float(batch_size),
             'current_norm': float(current_norm),
-            'tolerance': float(TOLERANCE),
+            'tolerance': float(constants.TOLERANCE),
             'batch_norm_goal': float(previous_norm)
         })
 
@@ -398,12 +394,12 @@ class MarkovChain:
                 'batch_time': float(batch_elapsed),
                 'batch_iterations': float(batch_size),
                 'current_norm': float(current_norm),
-                'tolerance': float(TOLERANCE),
+                'tolerance': float(constants.TOLERANCE),
                 'batch_norm_goal': float(batch_norm_goal)
             })
             
             # Stopping criteria
-            if current_norm > batch_norm_goal or current_norm < TOLERANCE:
+            if current_norm > batch_norm_goal or current_norm < constants.TOLERANCE:
                 break
                         
             previous_norm = current_norm
@@ -454,6 +450,8 @@ class MarkovChain:
                 raise ValueError("initial_guess is not supported for partitioned Markov Chains.")
             MC_lumped = lump(self, partitions)
             MC_lumped.solve(solver=solver, time_per_digit=time_per_digit)
+            if MC_lumped.convergence_history is not None:
+                self.convergence_history = MC_lumped.convergence_history
             if MC_lumped.stationary_distribution is None:
                 self.stationary_distribution = None
                 return None
@@ -510,16 +508,16 @@ class MarkovChain:
         # Note: for 2-state chains with other solvers, shape is (n,) which is already correct
         if solver == "bifurcated_power_method" and self.stationary_distribution.ndim == 2:
             # require stationary distributions to be similar within BAD_STATIONARY_TOLERANCE
-            if jnp.linalg.norm(self.stationary_distribution[0] - self.stationary_distribution[1], ord=1) > BAD_STATIONARY_TOLERANCE:
+            if jnp.linalg.norm(self.stationary_distribution[0] - self.stationary_distribution[1], ord=1) > constants.BAD_STATIONARY_TOLERANCE:
                 raise RuntimeError("Markov chain convergence failure with solver='bifurcated_power_method': stationary distributions are not similar")
             self.stationary_distribution = self.stationary_distribution.mean(axis=0)
 
         check_sum = self.stationary_distribution.sum().block_until_ready()
-        if jnp.abs(check_sum-1.0) > (2.0*EPSILON*self.N):
+        if jnp.abs(check_sum-1.0) > (2.0*constants.EPSILON*self.N):
             raise RuntimeError(f"Markov chain check sum=1 failure with solver={solver}: sum={check_sum}")
 
         final_check_norm = self.L1_step_norm(self.stationary_distribution).block_until_ready()
-        if final_check_norm > BAD_STATIONARY_TOLERANCE:
+        if final_check_norm > constants.BAD_STATIONARY_TOLERANCE:
             raise RuntimeError(f"Markov chain convergence failure with solver={solver}")
  
         return self.stationary_distribution
