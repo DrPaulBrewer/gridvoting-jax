@@ -3,15 +3,91 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-import jax.numpy as jnp
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import numpy as np
 import scipy.sparse
+from dataclasses import dataclass, field
+from typing import Optional
 
 
 # Import from core
 from .core import constants
+
+
+@dataclass
+class PartitionMetadata:
+    """Metadata about partition structure for optimization.
+    
+    Attributes:
+        lazy_lumpable: If True, suggests checking lazy lumping (not guaranteed to work)
+        primary_group_size: Size of most groups (None if variable)
+        exceptions: Mapping of group_id to size for non-primary groups
+        source: How partition was created (e.g., 'rotation_120deg')
+    """
+    lazy_lumpable: bool = False
+    primary_group_size: Optional[int] = None
+    exceptions: dict[int, int] = field(default_factory=dict)
+    source: str = ""
+
+
+class Partition:
+    """Partition representation with metadata for optimization.
+    
+    A partition divides n states into k groups. This class wraps the partition
+    array with metadata that enables optimization of lumping operations.
+    
+    Attributes:
+        inverse_indices: Array mapping each state to its group (0 to k-1)
+        metadata: Optional metadata about partition structure
+        k: Number of groups in partition
+    
+    Note:
+        To use partition in array operations, access `.inverse_indices` directly:
+        ```python
+        partition = grid.partition_from_rotation(angle=120)
+        unique_groups = jnp.unique(partition.inverse_indices)
+        ```
+    """
+    
+    def __init__(self, inverse_indices: jnp.ndarray, metadata: Optional[PartitionMetadata] = None):
+        """Initialize a Partition.
+        
+        Args:
+            inverse_indices: Array of shape (n,) mapping states to groups
+            metadata: Optional metadata for optimization
+        """
+        self.inverse_indices = jnp.asarray(inverse_indices, dtype=jnp.int32)
+        self.metadata = metadata or PartitionMetadata()
+        self.k = int(self.inverse_indices.max()) + 1
+    
+    def __jax_tree_flatten__(self):
+        """Make Partition a JAX pytree for JIT compatibility."""
+        children = (self.inverse_indices,)
+        aux_data = (self.metadata, self.k)
+        return children, aux_data
+    
+    @classmethod
+    def __jax_tree_unflatten__(cls, aux_data, children):
+        """Reconstruct Partition from pytree."""
+        metadata, k = aux_data
+        inverse_indices, = children
+        return cls(inverse_indices, metadata)
+    
+    def __len__(self):
+        """Return number of states."""
+        return len(self.inverse_indices)
+    
+    def max(self):
+        """Return maximum value in inverse_indices (for backward compatibility)."""
+        return self.inverse_indices.max()
+
+
+# Register Partition as a JAX pytree
+jax.tree_util.register_pytree_node(
+    Partition,
+    Partition.__jax_tree_flatten__,
+    Partition.__jax_tree_unflatten__
+)
+
 
 
 def dist_sqeuclidean(XA, XB):
@@ -447,7 +523,7 @@ class Grid:
             plt.savefig(fname)
 
 
-    def parts_from_linear_discriminator(self, center=(0,0), d1=(0,0), d2=(0,0), d3=(0,0)) -> jnp.ndarray:
+    def parts_from_linear_discriminator(self, center=(0,0), d1=(0,0), d2=(0,0), d3=(0,0), symmetry_type: str = "") -> 'Partition':
         """
         Generate partition using linear discriminant function.
     
@@ -461,13 +537,16 @@ class Grid:
             d1: Linear term direction vector (default: (0,0))
             d2: Absolute value term direction vector (default: (0,0))
             d3: Absolute dot product direction vector (default: (0,0))
+            symmetry_type: Type of symmetry (e.g., "reflect_x", "reflect_y", "swap_xy")
         
         Returns:
-            Inverse indices array grouping points by discriminant value
+            Partition: Partition object grouping points by discriminant value
         
         Notes:
             - Used internally for efficient symmetry partitioning
             - Optimized for reflection symmetries on regular grids
+            - For reflections, most groups have size 2 (reflected pairs)
+            - Points on reflection axis form singleton groups (size 1)
         """
         center = jnp.array(center)
         d1 = jnp.array(d1)
@@ -476,13 +555,24 @@ class Grid:
         centered = self.points - center
         discriminant_values = jnp.dot(centered, d1) + jnp.dot(jnp.abs(centered), d2) + jnp.abs(jnp.dot(centered, d3))
         inverse_indices = jnp.unique(discriminant_values, return_inverse=True)[1]
-        return inverse_indices
+        
+        # Count group sizes to identify singleton exceptions (points on reflection axis)
+        group_sizes = jnp.bincount(inverse_indices, length=int(inverse_indices.max()) + 1)
+        exceptions = {int(g): int(size) for g, size in enumerate(group_sizes) if size == 1}
+        
+        metadata = PartitionMetadata(
+            lazy_lumpable=True,
+            primary_group_size=2,  # Most groups are reflected pairs
+            exceptions=exceptions,  # Singleton groups on reflection axis
+            source=symmetry_type if symmetry_type else "linear_discriminator"
+        )
+        return Partition(inverse_indices, metadata)
 
     def partition_from_symmetry(
         self,
         symmetries: list,
         tolerance: float = 1e-6
-    ) -> jnp.ndarray:
+    ) -> 'Partition':
         """
         Generate partition from spatial symmetries.
         
@@ -504,8 +594,7 @@ class Grid:
                        Useful for approximate symmetries like 120° rotation on grid
         
         Returns:
-            jnp.ndarray: Inverse indices array where inverse_indices[i] gives
-                        the group ID for grid point i
+            Partition: Partition object grouping symmetric grid points
         
         Examples:
             >>> # Reflection symmetry around y-axis
@@ -531,6 +620,17 @@ class Grid:
         """
         n_states = self.len
         
+        # Empty symmetries: identity partition
+        if len(symmetries) == 0:
+            inverse_indices = jnp.arange(n_states, dtype=jnp.int32)
+            metadata = PartitionMetadata(
+                lazy_lumpable=False,
+                primary_group_size=1,
+                exceptions={},
+                source="identity"
+            )
+            return Partition(inverse_indices, metadata)
+        
         # Fast path: For singleton symmetries, use parts_from_linear_discriminator
         if len(symmetries) == 1:
             sym = symmetries[0]
@@ -546,7 +646,8 @@ class Grid:
                         center=(offset, 0),
                         d1=(0, self.len),  # self.len * y
                         d2=(1, 0),         # |x - offset|
-                        d3=(0, 0)
+                        d3=(0, 0),
+                        symmetry_type=sym
                     )
                 
                 elif sym == 'reflect_y' or sym.startswith('reflect_y='):
@@ -558,7 +659,8 @@ class Grid:
                         center=(0, offset),
                         d1=(self.len, 0),  # self.len * x
                         d2=(0, 1),         # |y - offset|
-                        d3=(0, 0)
+                        d3=(0, 0),
+                        symmetry_type=sym
                     )
                 
                 elif sym in ('swap_xy', 'reflect_xy'):
@@ -568,7 +670,8 @@ class Grid:
                         center=(0, 0),
                         d1=(self.len, self.len),  # self.len * (x+y)
                         d2=(0, 0),
-                        d3=(1, -1)                # |x-y|
+                        d3=(1, -1),                # |x-y|
+                        symmetry_type=sym
                     )
         
         # General case: Use connected components for multiple symmetries or rotations
@@ -708,10 +811,26 @@ class Grid:
             return_labels=True
         )
         
-        # Convert labels to inverse indices (already in correct format!)
+        # Convert labels to inverse indices
         inverse_indices = jnp.array(labels, dtype=jnp.int32)
         
-        return inverse_indices
+        # Create descriptive source string by concatenating symmetry names
+        symmetry_names = []
+        for sym in symmetries:
+            if isinstance(sym, str):
+                symmetry_names.append(sym)
+            elif isinstance(sym, tuple) and sym[0] == 'rotate':
+                # Format: rotate_cx_cy_degdeg
+                symmetry_names.append(f"rotate_{sym[1]}_{sym[2]}_{sym[3]}deg")
+        source = "_".join(symmetry_names)
+        
+        metadata = PartitionMetadata(
+            lazy_lumpable=True,  # Hint (not guaranteed)
+            primary_group_size=None,  # Variable - depends on symmetry combination
+            exceptions={},
+            source=source
+        )
+        return Partition(inverse_indices, metadata)
 
 
 class PolarGrid(Grid):
@@ -894,17 +1013,33 @@ class PolarGrid(Grid):
             raise ValueError("Angle must be specified, got: None")
         # test for angle==0 first, to avoid division by zero
         if angle == 0:  # continuous rotation lumps by radius; each ring is a partition
-            return jnp.round(self.r/self.rstep).astype(jnp.int32)
+            inverse_indices = jnp.round(self.r/self.rstep).astype(jnp.int32)
+            metadata = PartitionMetadata(
+                lazy_lumpable=True,
+                primary_group_size=None,  # Variable: each ring has different number of states
+                exceptions={},  # All groups are different sizes
+                source='rotation_continuous'
+            )
+            return Partition(inverse_indices, metadata)
         if angle % self.thetastep != 0:
             raise ValueError("Angle must be a multiple of the theta step, got: {}".format(angle))
         if 360 % angle != 0:
             raise ValueError("Angle must divide 360, got: {}".format(angle))
         angle_in_thetasteps = angle // self.thetastep
-        parts = (1+jnp.round(
+        inverse_indices = (1+jnp.round(
                     ((self.r-self.rstep)/self.rstep)*angle_in_thetasteps
                     +((self.theta_deg%angle)/self.thetastep))
             ).astype(jnp.int32).at[0].set(0)
-        return parts    
+        
+        # Create metadata for discrete rotation symmetry
+        primary_group_size = 360 // angle  # Number of states per group (except origin)
+        metadata = PartitionMetadata(
+            lazy_lumpable=True,  # Suggests lazy lumping (not guaranteed)
+            primary_group_size=primary_group_size,
+            exceptions={0: 1},  # Origin group has 1 state
+            source=f'rotation_{angle}deg'
+        )
+        return Partition(inverse_indices, metadata)    
 
     def partition_from_symmetry(self, *, symmetries:list[str]):
         """

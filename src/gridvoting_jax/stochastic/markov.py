@@ -666,7 +666,104 @@ def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indi
     return P_lumped
     
 
-def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
+def _can_lump_lazy_weighted(P, inverse_indices):
+    """
+    Check if lumping can preserve lazy weighted structure.
+    
+    Validates:
+    1. Uniform status quo within groups (O(n))
+    2. Uniform mask pattern within groups (O(n*k))
+    
+    Args:
+        P: LazyWeightedStochasticMatrix to check
+        inverse_indices: Partition mapping states to groups
+        
+    Returns:
+        True if lazy lumping is possible, False otherwise
+    """
+    from .lazy_weighted_stochastic import LazyWeightedStochasticMatrix
+    
+    if not isinstance(P, LazyWeightedStochasticMatrix):
+        return False
+    
+    k = int(inverse_indices.max()) + 1
+    n = P.mask.shape[0]
+    
+    # Condition 1: Uniform status quo within groups (fully vectorized)
+    group_mins = jax.ops.segment_min(P.status_quo_values, inverse_indices, num_segments=k)
+    group_maxs = jax.ops.segment_max(P.status_quo_values, inverse_indices, num_segments=k)
+    if not jnp.allclose(group_mins, group_maxs, atol=constants.EPSILON * 10):
+        return False
+    
+    # Condition 2: Uniform mask pattern within groups (fully vectorized)
+    # Create one-hot encoding of groups: group_matrix[i,g] = (inverse_indices[i] == g)
+    group_matrix = jnp.arange(k)[None, :] == inverse_indices[:, None]  # (n, k)
+    
+    # Compute destination group signatures: dest_groups[i,g] = any(mask[i,j] for j in group g)
+    # Vectorized: dest_groups = (mask @ group_matrix) > 0
+    dest_groups = (P.mask @ group_matrix) > 0  # (n, k) boolean
+    
+    # For each source group, check if all signatures are identical
+    # Loop over k groups (not n states), so this is O(k) iterations
+    for g in range(k):
+        in_group_g = (inverse_indices == g)
+        if jnp.sum(in_group_g) <= 1:
+            continue  # Single-state groups trivially satisfy condition
+        
+        # Get signatures for all states in this group
+        group_sigs = dest_groups[in_group_g]  # (group_size, k)
+        first_sig = group_sigs[0]  # (k,)
+        
+        # Check if all signatures match the first one
+        if not jnp.all(jnp.all(group_sigs == first_sig[None, :], axis=1)):
+            return False
+    
+    return True
+
+
+def _lump_lazy_weighted(P, inverse_indices):
+    """
+    Lump LazyWeightedStochasticMatrix while preserving lazy structure.
+    
+    Precondition: _can_lump_lazy_weighted(P, inverse_indices) == True
+    
+    Args:
+        P: LazyWeightedStochasticMatrix to lump
+        inverse_indices: Partition mapping states to groups
+        
+    Returns:
+        Lumped LazyWeightedStochasticMatrix
+    """
+    from .lazy_weighted_stochastic import LazyWeightedStochasticMatrix
+    
+    k = int(inverse_indices.max()) + 1
+    
+    # Create one-hot encoding of groups: group_matrix[i,g] = (inverse_indices[i] == g)
+    group_matrix = jnp.arange(k)[None, :] == inverse_indices[:, None]  # (n, k) boolean
+    
+    # 1. Compute lumped mask (fully vectorized)
+    # mask_lumped[g₁,g₂] = any(mask[i,j] for i∈g₁, j∈g₂)
+    # Note: JAX matmul doesn't support bool @ bool, so we cast to int8 (minimal memory overhead)
+    mask_lumped = (group_matrix.T @ P.mask.astype(jnp.int8) @ group_matrix) > 0  # (k, k)
+    
+    # 2. Compute lumped status quo (fully vectorized)
+    # Since status quo is uniform within groups (validated), take any representative
+    # Use jnp.unique to get first occurrence of each group (more efficient than segment ops)
+    _, first_indices = jnp.unique(inverse_indices, return_index=True, size=k, fill_value=-1)
+    status_quo_lumped = P.status_quo_values[first_indices]
+    
+    # 3. Compute lumped weights (fully vectorized)
+    # Sum weights within groups
+    weights_lumped = jax.ops.segment_sum(P.weights, inverse_indices, num_segments=k)
+    
+    return LazyWeightedStochasticMatrix(
+        mask=mask_lumped,
+        status_quo_values=status_quo_lumped,
+        weights=weights_lumped
+    )
+
+
+def lump(MC: MarkovChain, partition, force_dense: bool = False) -> MarkovChain:
     """
     Create a lumped (aggregated) Markov chain by combining states.
     
@@ -678,13 +775,16 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     
     Args:
         MC: Original MarkovChain instance
-        inverse_indices: Inverse indices mapping states to their aggregate groups
+        partition: Either a Partition object or inverse_indices array mapping 
+                   states to their aggregate groups
+        force_dense: If True, force dense lumping (skip lazy optimization).
+                     If False (default), use lazy when possible.
     
     Returns:
-        MarkovChain: New chain with k states where k = len(inverse_indices)
+        MarkovChain: New chain with k states where k = number of groups
     
     Raises:
-        ValueError: If inverse_indices is invalid (missing states, duplicates, 
+        ValueError: If partition is invalid (missing states, duplicates, 
                     empty groups, etc.)
     
     References:
@@ -696,22 +796,53 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
         >>> inverse_indices = jnp.array([0, 1, 0, 1])  # States 0,2 in group 0; 1,3 in group 1
         >>> lumped = lump(mc, inverse_indices)
         
-        >>> # Swap states
-        >>> inverse_indices = jnp.array([1, 0])  # Swaps states 0 and 1
-        >>> lumped = lump(mc, inverse_indices)
+        >>> # Using Partition object with metadata
+        >>> partition = grid.partition_from_rotation(angle=120)
+        >>> lumped = lump(mc, partition)  # Automatically uses lazy path if possible
+        
+        >>> # Force dense lumping
+        >>> lumped = lump(mc, partition, force_dense=True)
     
     Notes:
-        - inverse_indices must include all states exactly once
+        - partition must include all states exactly once
         - Each group in partition must be non-empty
         - States within each aggregate are weighted equally
         - Lumping may not preserve the Markov property (strong lumpability)
+        - For LazyWeightedStochasticMatrix, lazy structure is preserved when possible
     """
+    from ..geometry import Partition
+    
+    # Handle both Partition objects and raw arrays
+    if isinstance(partition, Partition):
+        inverse_indices = partition.inverse_indices
+        metadata = partition.metadata
+    else:
+        inverse_indices = partition
+        metadata = None
+    
     n_states = MC.P.shape[0]
     
     # Validate inverse indices (strict checking, fails on first violation)
     _validate_inverse_indices(inverse_indices, n_states)
     
-    # Compute lumped transition matrix
+    # Fast path for LazyWeightedStochasticMatrix (if not forcing dense)
+    from .lazy_weighted_stochastic import LazyWeightedStochasticMatrix
+    
+    if isinstance(MC.P, LazyWeightedStochasticMatrix) and not force_dense:
+        # Check if lazy lumping is possible
+        if _can_lump_lazy_weighted(MC.P, inverse_indices):
+            # Preserve lazy structure
+            P_lumped = _lump_lazy_weighted(MC.P, inverse_indices)
+            return MarkovChain(P=P_lumped)
+        # else: fall through to dense lumping
+    
+    # Force dense path if requested
+    if force_dense:
+        P_dense = MC.P.to_dense() if hasattr(MC.P, 'to_dense') else MC.P
+        P_lumped = _compute_lumped_transition_matrix(P_dense, inverse_indices)
+        return MarkovChain(P=P_lumped)
+    
+    # Standard lumping path (dense or lazy)
     if matrix_is_dense(MC.P):
         P_lumped = _compute_lumped_transition_matrix(MC.P, inverse_indices)
     else:
@@ -721,7 +852,8 @@ def lump(MC: MarkovChain, inverse_indices: jnp.ndarray) -> MarkovChain:
     return MarkovChain(P=P_lumped)
 
 
-def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jnp.ndarray:
+
+def unlump(lumped_distribution: jnp.ndarray, partition) -> jnp.ndarray:
     """
     Map a probability distribution from lumped space back to original space.
     
@@ -729,7 +861,8 @@ def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jn
     
     Args:
         lumped_distribution: Probability distribution over k aggregate states
-        inverse_indices: Same inverse indices used to create the lumped chain
+        partition: Either a Partition object or inverse_indices array mapping 
+                   states to their aggregate groups
     
     Returns:
         jnp.ndarray: Probability distribution over n original states
@@ -744,6 +877,14 @@ def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jn
         - If the original lumping violated strong lumpability, the unlumped
           distribution will not match the original chain's stationary distribution
     """
+    from ..geometry import Partition
+    
+    # Handle both Partition objects and raw arrays
+    if isinstance(partition, Partition):
+        inverse_indices = partition.inverse_indices
+    else:
+        inverse_indices = partition
+    
     k = int(inverse_indices.max()) + 1
     n_states = len(inverse_indices)
     
@@ -764,7 +905,7 @@ def unlump(lumped_distribution: jnp.ndarray, inverse_indices: jnp.ndarray) -> jn
     return prob_per_state
 
 
-def is_lumpable(MC: MarkovChain, inverse_indices: jnp.ndarray, tolerance: float = 1e-6) -> bool:
+def is_lumpable(MC: MarkovChain, partition, tolerance: float = 1e-6) -> bool:
     """
     Test whether a partition preserves the Markov property (strong lumpability).
     
@@ -775,7 +916,7 @@ def is_lumpable(MC: MarkovChain, inverse_indices: jnp.ndarray, tolerance: float 
     
     Args:
         MC: MarkovChain instance
-        inverse_indices: Inverse indices representing the partition
+        partition: Either a Partition object or inverse_indices array representing the partition
         tolerance: Numerical tolerance for equality check (default: 1e-6)
     
     Returns:
@@ -793,6 +934,14 @@ def is_lumpable(MC: MarkovChain, inverse_indices: jnp.ndarray, tolerance: float 
         - Complexity: O(nk + n²k) where n=states, k=aggregates
         - Creates indicator matrix and uses matrix-vector products to compute transition sums
     """
+    from ..geometry import Partition
+    
+    # Handle both Partition objects and raw arrays
+    if isinstance(partition, Partition):
+        inverse_indices = partition.inverse_indices
+    else:
+        inverse_indices = partition
+    
     _validate_inverse_indices(inverse_indices, MC.P.shape[0])
     
     n = MC.P.shape[0]

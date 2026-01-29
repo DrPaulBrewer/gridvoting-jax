@@ -9,7 +9,7 @@ def test_partition_spatial_reflect_x():
     partition = grid.partition_from_symmetry(['reflect_x'])
     
     # Should have some grouping (points symmetric around x=0)
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len  # Some grouping occurred
     
@@ -23,7 +23,7 @@ def test_partition_spatial_reflect_y():
     partition = grid.partition_from_symmetry(['reflect_y'])
     
     # Should have some grouping
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len
     
@@ -37,7 +37,7 @@ def test_partition_spatial_swap_xy():
     partition = grid.partition_from_symmetry(['swap_xy'])
     
     # Should have some grouping
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len
     
@@ -46,8 +46,8 @@ def test_partition_spatial_swap_xy():
     for i in range(grid.len):
         if abs(grid.x[i] - grid.y[i]) < 1e-6:
             # Diagonal point - check if paired with itself only
-            group_id = partition[i]
-            group_size = jnp.sum(partition == group_id)
+            group_id = partition.inverse_indices[i]
+            group_size = jnp.sum(partition.inverse_indices == group_id)
             assert group_size == 1  # Singleton
     
     # Verify partition is valid
@@ -65,7 +65,7 @@ def test_partition_spatial_rotation_120():
     )
     
     # Should group points that are approximately 120° rotations
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups <= grid.len
     
@@ -81,7 +81,7 @@ def test_partition_spatial_multiple_symmetries():
     partition = grid.partition_from_symmetry(['reflect_x', 'reflect_y'])
     
     # Should have significant grouping
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len / 2  # At least 2x reduction
     
@@ -95,10 +95,10 @@ def test_partition_spatial_identity():
     partition = grid.partition_from_symmetry([])
     
     # Should have one state per group (no grouping)
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups == grid.len
     # Each state in its own group
-    assert jnp.all(partition == jnp.arange(grid.len))
+    assert jnp.all(partition.inverse_indices == jnp.arange(grid.len))
 
 
 def test_partition_spatial_reflect_x_custom_axis():
@@ -107,7 +107,7 @@ def test_partition_spatial_reflect_x_custom_axis():
     partition = grid.partition_from_symmetry(['reflect_x=1'])
     
     # Should group points symmetric around x=1
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len
     
@@ -125,7 +125,7 @@ def test_partition_spatial_rotation_90():
     )
     
     # Should group points in sets of up to 4 (90° rotations)
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups <= grid.len
     
@@ -278,7 +278,7 @@ def test_spatial_voting_model_symmetry():
     partition = model.get_spatial_symmetry_partition(['reflect_x'])
     
     # Should group symmetric points
-    num_groups = int(partition.max()) + 1
+    num_groups = int(partition.inverse_indices.max()) + 1
     assert num_groups > 0
     assert num_groups < grid.len
     
@@ -319,24 +319,24 @@ def test_polar_partition_from_rotation_basic():
     partition = grid.partition_from_rotation(angle=120)
     
     # (i) Check number of partitions is correct
-    num_partitions = int(partition.max()) + 1
+    num_partitions = int(partition.inverse_indices.max()) + 1
     expected_partitions = _expected_partition_count(grid, 120)
     assert num_partitions == expected_partitions, f"Expected {expected_partitions} partitions, got {num_partitions}"
     
     # (ii) Check no gaps in partition indices
-    unique_partitions = jnp.unique(partition)
+    unique_partitions = jnp.unique(partition.inverse_indices)
     expected_indices = jnp.arange(num_partitions)
     assert jnp.array_equal(unique_partitions, expected_indices), "Partition indices have gaps"
     
     # (iii) Check inverse_indices are exactly correct
     # Origin should be in partition 0, alone
-    assert partition[0] == 0
-    origin_group = jnp.where(partition == 0)[0]
+    assert partition.inverse_indices[0] == 0
+    origin_group = jnp.where(partition.inverse_indices == 0)[0]
     assert len(origin_group) == 1
     
     # For each partition, verify points are related by rotation
     for partition_id in range(1, num_partitions):
-        group_indices = jnp.where(partition == partition_id)[0]
+        group_indices = jnp.where(partition.inverse_indices == partition_id)[0]
         
         # All points in group should be at same radius
         group_radii = grid.r[group_indices]
@@ -375,26 +375,26 @@ def test_polar_partition_from_rotation_parameterized(radius, thetastep, angle):
     partition = grid.partition_from_rotation(angle=angle)
     
     # (i) Check number of partitions is correct
-    num_partitions = int(partition.max()) + 1
+    num_partitions = int(partition.inverse_indices.max()) + 1
     expected_partitions = _expected_partition_count(grid, angle)
     assert num_partitions == expected_partitions, \
         f"radius={radius}, thetastep={thetastep}, angle={angle}: Expected {expected_partitions} partitions, got {num_partitions}"
     
     # (ii) Check no gaps in partition indices
-    unique_partitions = jnp.unique(partition)
+    unique_partitions = jnp.unique(partition.inverse_indices)
     expected_indices = jnp.arange(num_partitions)
     assert jnp.array_equal(unique_partitions, expected_indices), \
         f"radius={radius}, thetastep={thetastep}, angle={angle}: Partition indices have gaps"
     
     # (iii) Check inverse_indices are exactly correct
     # Origin check
-    assert partition[0] == 0
-    origin_group = jnp.where(partition == 0)[0]
+    assert partition.inverse_indices[0] == 0
+    origin_group = jnp.where(partition.inverse_indices == 0)[0]
     assert len(origin_group) == 1
     
     # Check each partition
     for partition_id in range(1, num_partitions):
-        group_indices = jnp.where(partition == partition_id)[0]
+        group_indices = jnp.where(partition.inverse_indices == partition_id)[0]
         
         # All points in group should be at same radius
         group_radii = grid.r[group_indices]
@@ -432,24 +432,24 @@ def test_polar_partition_continuous_rotation():
     partition = grid.partition_from_rotation(angle=0)
     
     # (i) Check number of partitions is correct
-    num_partitions = int(partition.max()) + 1
+    num_partitions = int(partition.inverse_indices.max()) + 1
     expected_partitions = grid.n_rvals
     assert num_partitions == expected_partitions, f"Expected {expected_partitions} partitions, got {num_partitions}"
     
     # (ii) Check no gaps in partition indices
-    unique_partitions = jnp.unique(partition)
+    unique_partitions = jnp.unique(partition.inverse_indices)
     expected_indices = jnp.arange(num_partitions)
     assert jnp.array_equal(unique_partitions, expected_indices), "Partition indices have gaps"
     
     # (iii) Check inverse_indices are exactly correct
     # Origin should be in partition 0, alone
-    assert partition[0] == 0
-    origin_group = jnp.where(partition == 0)[0]
+    assert partition.inverse_indices[0] == 0
+    origin_group = jnp.where(partition.inverse_indices == 0)[0]
     assert len(origin_group) == 1
     
     # For each partition, verify points are related by rotation
     for partition_id in range(1, num_partitions):
-        group_indices = jnp.where(partition == partition_id)[0]
+        group_indices = jnp.where(partition.inverse_indices == partition_id)[0]
         
         # All points in group should be at same radius
         group_radii = grid.r[group_indices]

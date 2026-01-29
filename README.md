@@ -293,7 +293,48 @@ Constructs a 2D polar grid for spatial voting models with radial symmetry.
 - Weights represent the area of each grid cell in state space
 - Useful for models with radial or rotational symmetry
 
+#### `class Partition`
+
+```python
+partition = gv.Partition(inverse_indices, metadata=None)
+```
+
+Wraps partition arrays with optimization metadata for lumping operations *(New in v0.46.0)*.
+
+**Attributes:**
+- `partition.inverse_indices`: JAX array of shape `(n,)` mapping states to groups (0 to k-1)
+- `partition.metadata`: `PartitionMetadata` object with optimization hints
+- `partition.k`: Number of groups in partition
+
+**Methods:**
+- `len(partition)`: Returns number of states
+- `partition.max()`: Returns maximum group ID (for backward compatibility)
+
+**PartitionMetadata:**
+- `lazy_lumpable`: Boolean hint suggesting lazy lumping is possible
+- `primary_group_size`: Expected group size (2 for reflections, None for variable)
+- `exceptions`: Dict mapping group IDs to sizes for non-standard groups
+- `source`: Descriptive string (e.g., "reflect_x", "rotate_0_0_120deg")
+
+**Example:**
+```python
+# Partition objects are returned by partition-generating functions
+partition = grid.partition_from_symmetry(['reflect_x'])
+
+# Access inverse indices for array operations
+num_groups = partition.k  # or int(partition.inverse_indices.max()) + 1
+group_id = partition.inverse_indices[i]
+
+# Check metadata
+print(f"Source: {partition.metadata.source}")  # "reflect_x"
+print(f"Primary group size: {partition.metadata.primary_group_size}")  # 2
+
+# Use with lumping functions (automatically extracts inverse_indices)
+lumped_mc = gv.lump(model.MarkovChain, partition)
+```
+
 ### Symmetry & Dimension Reduction
+
 Reduce computational cost by exploiting spatial symmetries.
 
 Known issue: Practicality.  Time currently required to calculate symmetries and lumping is often higher than solution time
@@ -310,11 +351,10 @@ symmetries = suggest_symmetries(model)
 print(f"Detected: {symmetries}") 
 
 # 2. Partition Grid
-# Create partition using inverse indices (JAX array format)
-# partition[i] gives the group ID for state i
+# Returns Partition object with metadata (v0.46.0)
 partition = model.grid.partition_from_symmetry(['reflect_x'])
-print(f"Partition shape: {partition.shape}")  # (N,) array
-print(f"Number of groups: {int(partition.max()) + 1}")
+print(f"Number of groups: {partition.k}")
+print(f"Source: {partition.metadata.source}")  # "reflect_x"
 
 # 3. Lump Markov Chain
 # Solve on reduced state space (e.g., 50% fewer states)
@@ -331,11 +371,12 @@ is_valid = gv.is_lumpable(model.MarkovChain, partition)
 print(f"Strongly lumpable: {is_valid}")
 ```
 
-**Partition Format** :
-- Partitions are represented as **inverse indices** (JAX arrays)
-- Format: `jnp.ndarray` of shape `(N,)` where `partition[i]` is the group ID for state `i`
-- Example: `jnp.array([0, 0, 1, 1])` means states 0,1 are in group 0; states 2,3 are in group 1
-- Migration helper: `gv.list_partition_to_inverse(old_partition, n_states)` converts from list-based partition format to inverse indices
+**Partition Format** *(Updated in v0.46.0)*:
+- Partitions are now returned as `Partition` objects with metadata
+- Access inverse indices via `.inverse_indices` attribute
+- Format: `jnp.ndarray` of shape `(N,)` where `partition.inverse_indices[i]` is the group ID for state `i`
+- Example: `Partition(jnp.array([0, 0, 1, 1]))` means states 0,1 are in group 0; states 2,3 are in group 1
+- Backward compatible: Lumping functions accept both `Partition` objects and raw arrays
 
 **Symmetry Types**:
 - `'reflect_x'`: Reflection across x=0 (vertical line)
@@ -348,8 +389,7 @@ print(f"Strongly lumpable: {is_valid}")
 **Performance**:
 - Singleton symmetries (single symmetry) use optimized fast path
 - Multiple symmetries use general connected components algorithm
-- Lumping uses fully vectorized JAX operations)
-```
+- Lumping uses fully vectorized JAX operations
 
 ### Pareto Efficiency
 Finds the Pareto Optimal set (points where no other point is unanimously preferred).
