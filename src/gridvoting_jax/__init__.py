@@ -1,6 +1,6 @@
 """gridvoting-jax: Spatial voting models with JAX."""
 
-__version__ = "0.46.0"
+__version__ = "0.45.0"
 
 # Core utilities
 from .core.constants import TOLERANCE
@@ -9,7 +9,7 @@ from .core.config import enable_float64, device_type, use_accelerator
 # Core components
 from .stochastic import MarkovChain, lump, unlump, is_lumpable, partition_from_permutation_symmetry
 from .symmetry import suggest_symmetries
-from .geometry import Grid, Partition, PartitionMetadata, dist_sqeuclidean, dist_manhattan
+from .geometry import Grid, dist_sqeuclidean, dist_manhattan
 
 # Models
 from .models import VotingModel, SpatialVotingModel, BudgetVotingModel
@@ -38,7 +38,7 @@ __all__ = [
     'MarkovChain',
     'lump', 'unlump', 'is_lumpable', 'partition_from_permutation_symmetry',
     'suggest_symmetries',
-    'Grid', 'Partition', 'PartitionMetadata', 'dist_sqeuclidean', 'dist_manhattan',
+    'Grid', 'dist_sqeuclidean', 'dist_manhattan',
     # Models
     'VotingModel', 'SpatialVotingModel', 'BudgetVotingModel',
     # Examples

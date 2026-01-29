@@ -353,23 +353,19 @@ class SpatialVotingModel:
             tolerance: Distance tolerance for matching points (default: 1e-6)
         
         Returns:
-            Partition: Partition object grouping symmetric grid points
-        
-        Raises:
-            NotImplementedError: If grid is a PolarGrid (currently unimplemented)
+            jnp.ndarray: Inverse indices array grouping symmetric grid points
         
         Examples:
-            >>> # Reflection around y-axis (Grid only)
+            >>> # Reflection around y-axis
             >>> partition = model.get_spatial_symmetry_partition(['reflect_x'])
             
-            >>> # 120° rotation for BJM spatial triangle (Grid only)
+            >>> # 120° rotation for BJM spatial triangle
             >>> partition = model.get_spatial_symmetry_partition(
             ...     [('rotate', 0, 0, 120)], tolerance=0.5
             ... )
         
         Notes:
             - This is a convenience wrapper around grid.partition_from_symmetry()
-            - Only works with Cartesian Grid, not PolarGrid
             - See Grid.partition_from_symmetry() for full documentation
         """
         return self.grid.partition_from_symmetry(symmetries, tolerance=tolerance)
@@ -380,23 +376,15 @@ class SpatialVotingModel:
         This is a fast check for rejecting a lumping, before running a full lumping test.
         
         Args:
-            partition: Partition object or inverse indices array grouping lumped grid points
+            partition: inverse indices array grouping lumped grid points
         
         Returns:
             int: Number of mismatches
         """
-        from ..geometry import Partition
-        
-        # Handle both Partition objects and raw arrays
-        if isinstance(partition, Partition):
-            inverse_indices = partition.inverse_indices
-        else:
-            inverse_indices = partition
-        
-        _, idxs = jnp.unique(inverse_indices, return_index=True) # idxs are index of first occurrence of each part
+        _, idxs = jnp.unique(partition, return_index=True) # idxs are index of first occurrence of each part
         counts_all = jnp.vectorize(lambda i: self.model.what_beats(i=i).sum(), signature='()->()')(jnp.arange(self.grid.len))
         counts_parts = counts_all[idxs]
-        counts_expected = counts_parts[inverse_indices]
+        counts_expected = counts_parts[partition]
         mismatches = (counts_expected != counts_all).sum()
         return mismatches
 
