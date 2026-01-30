@@ -621,12 +621,12 @@ def _compute_lumped_transition_matrix(P: jnp.ndarray, inverse_indices: jnp.ndarr
     
     return P_lumped
     
-def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indices: jnp.ndarray) -> jnp.ndarray:
+def _compute_lumped_transition_matrix_lazy(P, inverse_indices: jnp.ndarray) -> jnp.ndarray:
     """
     Compute lumped transition matrix using lazy matrix operations.
     
     Args:
-        P: LazyStochasticMatrix object
+        P: LazyStochasticMatrix or LazyWeightedStochasticMatrix object
         inverse_indices: Array mapping each state to its group (0 to k-1)
     
     Returns:
@@ -638,29 +638,66 @@ def _compute_lumped_transition_matrix_lazy(P: LazyStochasticMatrix, inverse_indi
     # Compute group sizes
     group_sizes = jnp.bincount(inverse_indices, length=k)
     
-    # Initialize result
-    P_lumped = jnp.zeros((k, k), dtype=P.dtype)
+    # 1. Diagonal contributions (status quo)
+    # Sum status_quo values for each group: these remain in the group (diagonal of lumped)
+    # Shape: (k,)
+    diag_sums = jax.ops.segment_sum(P.status_quo_values, inverse_indices, num_segments=k)
+    P_lumped = jnp.diag(diag_sums)
     
-    # For each row in original matrix
-    def process_row(i, P_lumped_carry):
-        row_i = jnp.zeros(n, dtype=P.dtype).at[i].set(1.0) @ P  # Get row i from Lazy P
-        src_group = inverse_indices[i]  # Which group does state i belong to?
+    # 2. Off-diagonal contributions
+    # We need to sum P[i,j] for all i in group u, j in group v.
+    
+    # Handle different Lazy types
+    if hasattr(P, 'challenger_values'):
+        # LazyStochasticMatrix: P[i,j] = mask[i,j] * challenger_values[i] (for i!=j)
+        # We need sum_{i \in u} challenger_values[i] * (sum_{j \in v} mask[i,j])
         
-        # For each destination group j, sum transitions to states in that group
-        def add_to_group(j, carry):
-            dest_mask = (inverse_indices == j)  # States in group j
-            transition_sum = jnp.sum(row_i*dest_mask)  # Sum P[i, t] for t in Sj
-            return carry.at[src_group, j].add(transition_sum)
+        # Count connections from each row i to each group v
+        # mask_to_groups = jax.ops.segment_sum(P.mask.astype(float).T, inverse_indices, num_segments=k).T
+        # Optimization: Use int32 for summation to save bandwidth/compute, then cast to float for multiplication
+        # Note: Tested int8 but found no performance gain, so sticking with int32 for safety against overflow.
+        mask_to_groups = jax.ops.segment_sum(P.mask.astype(jnp.int32).T, inverse_indices, num_segments=k).T
         
-        return jax.lax.fori_loop(0, k, add_to_group, P_lumped_carry)
+        # Weight by challenger values for each row
+        # (n, k) * (n, 1) -> (n, k)
+        weighted_to_groups = mask_to_groups * P.challenger_values[:, None]
+        
+    elif hasattr(P, 'row_normalized_weights'):
+        # LazyWeightedStochasticMatrix: 
+        # P[i,j] = mask[i,j] * challenger_scale[i] * row_normalized_weights[i,j]
+        
+        # Combine mask and weights
+        effective_mask = P.mask * P.row_normalized_weights
+        
+        # Aggregate columns by group
+        mask_to_groups = jax.ops.segment_sum(effective_mask.T, inverse_indices, num_segments=k).T
+        
+        # Weight by challenger scale
+        weighted_to_groups = mask_to_groups * P.challenger_scale[:, None]
+        
+    else:
+        # Fallback for unknown type (shouldn't happen with strict typing but good for safety)
+        # Materialize row by row (slow, original implementation logic)
+        warn("Unknown lazy matrix type in lumping, falling back to slow loop.")
+        return jax.lax.fori_loop(
+            0, n, 
+            lambda i, carry: carry.at[inverse_indices[i]].add(P[i] @ jax.nn.one_hot(inverse_indices, k)), 
+            jnp.zeros((k, k))
+        ) / group_sizes[:, None]
+
+    # Sum rows by source group
+    # (n, k) -> (k, k)
+    off_diag_sums = jax.ops.segment_sum(weighted_to_groups, inverse_indices, num_segments=k)
     
-    # Process all rows
-    P_lumped = jax.lax.fori_loop(0, n, process_row, P_lumped)
+    # Add off-diagonal contributions to the lumped matrix
+    # Note: P.mask has False on diagonal, so these are strictly off-diagonal transitions in the original space.
+    # In lumped space, they might be self-loops (u->u) or cross-group (u->v).
+    P_lumped = P_lumped + off_diag_sums
     
-    # Divide by source group sizes (average over states in source group)
+    # Divide by source group sizes to get average probability
     P_lumped = P_lumped / group_sizes[:, jnp.newaxis]
     
-    # Renormalize rows
+    # Renormalize rows to handle numerical errors
     P_lumped = normalize_if_needed(P_lumped)
     
     return P_lumped

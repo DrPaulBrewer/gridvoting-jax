@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.47.0] - 2026-01-29
+
+### Optimized - Lumping Performance
+
+- **Vectorized Lazy Lumping**: Optimized `lump` operation for `LazyStochasticMatrix` and `LazyWeightedStochasticMatrix`
+  - **Improvement**: Replaced slow loop-based logic with fully vectorized `jax.ops.segment_sum` implementation
+  - **Performance**: Achieved ~100x speedup (0.77s → 0.008s for 900-state model)
+  - **Safety**: Uses `int32` casting for mask operations to prevent overflow while maintaining performance
+  - **Location**: `src/gridvoting_jax/stochastic/markov.py`
+
+### Added - Benchmarking
+
+- **Lumping Benchmark**: New script to profile and verify lumping operations
+  - **Features**: Compares lazy vs dense lumping performance and correctness
+  - **Location**: `benchmarks/benchmark_lump_polar.py`
+
 ## [0.45.0] - 2026-01-26
 
 ### Fixed - Critical Float64 Propagation Bug

@@ -1,6 +1,6 @@
 """gridvoting-jax: Spatial voting models with JAX."""
 
-__version__ = "0.45.0"
+__version__ = "0.47.0"
 
 # Core utilities
 from .core.constants import TOLERANCE
