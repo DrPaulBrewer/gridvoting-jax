@@ -3,7 +3,7 @@
 **A JAX-powered derivative of the original [gridvoting](https://github.com/drpaulbrewer/gridvoting) project**
 
 [![PyPI version](https://img.shields.io/pypi/v/gridvoting-jax.svg)](https://pypi.org/project/gridvoting-jax/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This library provides GPU/TPU/CPU-accelerated spatial voting simulations using Google's JAX framework with float32 precision.
@@ -165,13 +165,13 @@ docker build -f Dockerfiles/dev/Dockerfile.dev-cpu -t dev/cpu:local .
 
 ## Requirements
 
-- Python 3.10+
-- numpy >= 2.0.0
-- matplotlib >= 3.8.0
-- jax >= 0.4.20
-- chex >= 0.1.0
+- Python 3.14+
+- numpy >= 2.5.0
+- matplotlib >= 3.11.0
+- jax >= 0.10.2
+- chex >= 0.1.92
 
-**Google Colab**: All dependencies are pre-installed (numpy 2.0.2, matplotlib 3.10, jax 0.7).
+**Google Colab**: All dependencies are pre-installed (numpy 2.0.2, matplotlib 3.11.0, jax 0.7).
 
 **Note**: pandas and scipy are NOT required. gridvoting-jax uses only JAX for numerical operations.
 

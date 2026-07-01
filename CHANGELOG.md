@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. This file a
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.50.0] - 2026-07-01
+
+### Changed
+
+- **Version Bump**: Updated version to 0.50.0 due to dependency and Python version requirements changes.
+  - Bumped Python requirement to `python>=3.14`.
+  - Updated dependencies to their latest stable versions (`numpy>=2.5.0`, `matplotlib>=3.11.0`, `jax>=0.10.2`, `chex>=0.1.92`, `scipy>=1.18.0`).
+  - Removed explicit references to older Python versions (3.10, 3.11, 3.12) across configuration files and documentation.
+  - Bumped dev dependencies `pytest>=9.1.1` and `pytest-cov>=7.1.0`.
+
 ## [0.47.0] - 2026-01-29
 
 ### Optimized - Lumping Performance
